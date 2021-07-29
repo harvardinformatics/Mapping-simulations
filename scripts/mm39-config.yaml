@@ -1,0 +1,25 @@
+#############################################################################
+# Configuration information for using the mouse genome in the mapping simulation pipeline
+#############################################################################
+
+data_dir: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/
+# The base datadir where reference genomes and output data are stored
+
+ref_str: mm39
+# The subfolder and abbreviation for the current reference genome
+
+ref_file: Mus_musculus.GRCm39.dna.primary_assembly.fa
+# The current reference genome directory
+
+regions: ["18", "19"]
+
+# Reference path should be:
+# <data_dir>/<ref_str>/<ref_file>
+# 
+# Individual chromosomes in FASTA format should also be in <data_dir>/<ref_str>
+# with the format:
+# <ref_str>-chr<chrome>.fa
+
+covs: ["20", "30"]
+
+divs: ["0.02", "0.04"]
