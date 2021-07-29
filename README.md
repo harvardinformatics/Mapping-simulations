@@ -38,23 +38,24 @@ That should be everything!
 
 ## Running the pipeline
 
-The commands for the pipeline are compiled in a snakemake workflow, `scripts/mapping_sims.smk`
-
-To run a given set of simulations, you will have to create a <b>config file</b> with the parameters and inputs of that simulation. An example config file for the mouse genome is provided here: `scripts/mm39-config.yaml`
-
 To make things easier, let's just switch to the `scripts` directory.
 
 ```bash
     cd scripts
 ```
-
 If you'd rather not switch to `scripts`, just be sure to add that to all paths listed below.
-
-Take a look at that config file and make any changes, including paths to data directories and reference genomes, as well as simulation parameters.
 
 ### Important note: use `--dryrun` on any snakemake commands before running them.
 
 `--dryrun` will show you the commands that snakemake will run without actually running them. This can let you address errors before you start the whole pipeline.
+
+### Running snakemake with a config file
+
+The commands for the pipeline are compiled in a snakemake workflow, `mapping_sims.smk`
+
+To run a given set of simulations, you will have to create a <b>config file</b> with the parameters and inputs of that simulation. An example config file for the mouse genome is provided here: `mm39-config.yaml`
+
+Take a look at that config file and make any changes, including paths to data directories and reference genomes, as well as simulation parameters.
 
 After you have edited the config file, you can run the pipeline directly:
 
