@@ -57,13 +57,16 @@ After you have edited the config file, you can run the pipeline directly:
 ```
 snakemake -j <number of jobs to run in parallel> \
     -s mapping_sims.smk                          \
+    -p                                           \
     --configfile <your config file>
 ```
+
+I like to include the `-p` option that prints out the exact shell command run for each rule, which I find helpful to understand exactly what's going on.
 
 For example, the exact command for the provided mm39 config file to launch 20 jobs would be:
 
 ```bash
-snakemake -j 20 -s mapping_sims.smk --configfile mm30-config.yaml
+snakemake -j 20 -s mapping_sims.smk -p --configfile mm30-config.yaml
 ```
 
 ### Using a SLURM profile to launch snakemake jobs on the cluster
@@ -71,16 +74,16 @@ snakemake -j 20 -s mapping_sims.smk --configfile mm30-config.yaml
 Snakemake also allows jobs to be submitted to a cluster rather than run directly on the terminal. This is advantageous as it can allow the pipeline to access many more resources than using a single node with the command above. To do this, you must set-up a <b>profile</b> for your cluster. An example profile for the Harvard SLURM cluster is provided in `scripts/profiles/slurm_profile/config.yaml`. Once your profile is set-up, you can launch the pipeline as follows:
 
 ```
-snakemake -j <number of jobs to run in parallel> \
-    -s mapping_sims.smk                          \
+snakemake -s mapping_sims.smk                    \
+    -p                                           \
     --configfile <your config file>              \
     --profile <path to directory containing config.yaml profile>
 ```
 
-Similar, to the previous command, but now with the `--profile` option. Note that the provided path must be to a directory containing your profile, which is saved as `config.yaml`.
+Similar, to the previous command, but without specifying the number of jobs with `-j`, which is now done with the `--profile` option. Note that the provided path must be to a directory containing your profile, which is saved as `config.yaml`.
 
 So, the command to run the pipeline with the provided config and profile would be:
 
 ```bash
-snakemake -j 20 -s mapping_sims.smk --configfile mm30-config.yaml --profile profiles/slurm_profile/
+snakemake -s mapping_sims.smk -p --configfile mm30-config.yaml --profile profiles/slurm_profile/
 ```
