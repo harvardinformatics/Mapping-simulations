@@ -52,6 +52,10 @@ If you'd rather not switch to `scripts`, just be sure to add that to all paths l
 
 Take a look at that config file and make any changes, including paths to data directories and reference genomes, as well as simulation parameters.
 
+### Important note: use `--dryrun` on any snakemake commands before running them.
+
+`--dryrun` will show you the commands that snakemake will run without actually running them. This can let you address errors before you start the whole pipeline.
+
 After you have edited the config file, you can run the pipeline directly:
 
 ```
