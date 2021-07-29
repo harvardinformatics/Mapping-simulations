@@ -11,15 +11,15 @@ ref_str: mm39
 ref_file: Mus_musculus.GRCm39.dna.primary_assembly.fa
 # The current reference genome directory
 
-regions: ["18", "19"]
-
 # Reference path should be:
 # <data_dir>/<ref_str>/<ref_file>
-# 
-# Individual chromosomes in FASTA format should also be in <data_dir>/<ref_str>
-# with the format:
-# <ref_str>-chr<chrome>.fa
+
+regions: ["18", "19"]
+# The regions in the reference genome to simulate reads over. Will be
+# extracted with samtools faidx
 
 covs: ["20", "30"]
+# The varying amounts of coverage to simulate
 
 divs: ["0.02", "0.04"]
+# The varying amounts of divergence to simulate
