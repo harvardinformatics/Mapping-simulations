@@ -8,12 +8,13 @@ cluster:
   --mem={resources.mem}
   --time={resources.time}
   --output=slurm-logs/{rule}/{rule}-{wildcards}-%j.out
-  --mail-type=FAIL
+  --mail-type=END,FAIL
   --mail-user=gthomas@g.harvard.edu
 default-resources:
   - cpus=1
   - partition="holy-info,holy-cow,holy-smokes,shared"
   - mem="12g"
   - time="16:00:00"
+restart-times: 3
 latency-wait: 15
 verbose: true

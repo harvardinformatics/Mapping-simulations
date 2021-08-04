@@ -2,3 +2,4 @@ pkgs/
 *.code-workspace
 scripts/slurm-logs/
 scripts/.snakemake/
+scripts/old/

@@ -8,10 +8,14 @@ data_dir: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/
 ref_str: mm39
 # The subfolder and abbreviation for the current reference genome
 
-ref_file: Mus_musculus.GRCm39.dna.primary_assembly.fa
+ref_file: Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
 # The current reference genome directory
+# Must be pre-indexed with:
+# 1. samtools faidx
+# 2. bwa index
+# 3. picard CreateSequenceDictionary
 
-# Reference path should be:
+# Full reference path should be:
 # <data_dir>/<ref_str>/<ref_file>
 
 regions: ["18", "19"]
