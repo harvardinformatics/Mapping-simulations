@@ -124,8 +124,7 @@ overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable)) +
   scale_fill_manual(guide=guide_legend(reverse=T), labels=c("False positive", "True positive", "False negative"), values=cols) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
-  theme(legend.position="bottom",
-        axis.title.y=element_blank()) +
+  theme(legend.position="bottom") +
   coord_flip()
 print(overlaps_p)
 
