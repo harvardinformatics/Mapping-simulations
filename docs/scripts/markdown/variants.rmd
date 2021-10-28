@@ -1,0 +1,151 @@
+---
+title: "Mapping simulation variants"
+author: "[gwct](https://gwct.github.io/)"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M:%S %Z')`"
+output:
+  #html_document:
+  rmdformats::robobook:
+    highlight: kate
+    includes:
+      in_header: '../html-chunks/rmd_header.html'
+    df_print: paged
+    code_folding: hide
+    number_sections: true
+    toc_depth: 3
+---
+
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(ggplot2)
+library(cowplot)
+library(here)
+library(reshape2)
+source("../lib/design.r")
+```
+
+[< Back ](index.html)
+
+# Introduction
+
+Reference genome: mm39
+
+NEAT > BWA > GATK
+
+# Results (chr19 only)
+
+chr19 length = 61420004
+
+## Divergence 0-10%
+
+### 20X coverage
+
+```{r read, out.width="100%", fig.align = "center", warning=FALSE}
+sim_stats_file = here("docs", "data", "mm39-20X-variants-summary.csv")
+sim_stats = read.csv(sim_stats_file, header=T)
+```
+
+#### Divergence vs. simulated variants
+
+```{r div-v-sim, out.width="50%", fig.align = "center", warning=FALSE}
+
+div_sim_p = ggplot(sim_stats, aes(x=divergence, y=golden.variants)) +
+  geom_point(size=3, color="#666666") +
+  geom_smooth(method="lm", se=F, linetype="dashed", color=corecol(pal="wilke", numcol=1)) +
+  #scale_y_continuous(expand=c(0,0)) +
+  xlab("Simulated divergence") +
+  ylab("# of simulated variants") +
+  bartheme()
+
+print(div_sim_p)
+```
+
+#### Divergence vs. called variants
+
+```{r div-v-called, out.width="50%", fig.align = "center", warning=FALSE}
+
+div_called_p = ggplot(sim_stats, aes(x=divergence, y=called.variants)) +
+  geom_point(size=3, color="#666666") +
+  geom_smooth(method="lm", se=F, linetype="dashed", color=corecol(pal="wilke", numcol=1)) +
+  #scale_y_continuous(expand=c(0,0)) +
+  xlab("Simulated divergence") +
+  ylab("# of called variants") +
+  bartheme()
+
+print(div_called_p)
+#cat(paste("# Avg. length: ", mean(ratite_data$length)))
+#cat(paste("# Median length: ", median(ratite_data$length)))
+```
+
+#### Simulated variants vs. called variants
+
+```{r sim-v-called, out.width="50%", fig.align = "center", warning=FALSE}
+
+one = data.frame("x"=c(0,1167969), "y"=c(0,1167969))
+
+sim_called_p = ggplot(sim_stats, aes(x=golden.variants, y=called.variants)) +
+  geom_smooth(aes(color="Fit"), method="lm", se=F, linetype="dashed") +
+  geom_abline(aes(slope=1, intercept=0, color="1:1"), size=1, linetype="dashed", show.legend=F) +
+  geom_point(size=3, color="#666666") +
+  scale_color_manual(values=c("1:1"="#999999", "Fit"=corecol(pal="wilke", numcol=1))) +
+  #scale_y_continuous(expand=c(0,0)) +
+  xlab("# of simulated variants") +
+  ylab("# of called variants") +
+  bartheme()
+
+print(sim_called_p)
+```
+
+#### Error rates by divergence
+
+```{r overlaps, out.width="50%", fig.align = "center", warning=FALSE}
+
+sim_stats$tp.prop = sim_stats$tp / (sim_stats$tp + sim_stats$fp + sim_stats$fn)
+sim_stats$fp.prop = sim_stats$fp / (sim_stats$tp + sim_stats$fp + sim_stats$fn)
+sim_stats$fn.prop = sim_stats$fn / (sim_stats$tp + sim_stats$fp + sim_stats$fn)
+
+long_data = melt(sim_stats, id.vars=c("coverage", "divergence", "golden.variants", "called.variants", "shared.pos"))
+long_data = subset(long_data, variable != "fp" & variable != "fn" & variable != "tp")
+long_data$variable = factor(long_data$variable, levels=c("fp.prop", "tp.prop", "fn.prop"))
+cols = c(corecol(pal="wilke", numcol=1, offset=1), "#bda988", corecol(pal="wilke", numcol=1))
+
+overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable)) +
+  geom_bar(stat="identity") +
+  #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
+  #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
+  #geom_text(aes(label=text3), size=2.3, color="#f2f2f2", nudge_y=-0.05) +
+  #geom_text(aes(label=text4), size=2.3, color="#f2f2f2", nudge_y=0.82) +
+  xlab("Divergence") +
+  ylab("% of variants") +
+  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
+  #scale_x_discrete(limits=unique(long_data$divergence)) +
+  scale_x_continuous(breaks=unique(long_data$divergence)) +
+  scale_fill_manual(guide=guide_legend(reverse=T), labels=c("False positive", "True positive", "False negative"), values=cols) +
+  #scale_fill_discrete(, values=cols) +
+  bartheme() +
+  theme(legend.position="bottom",
+        axis.title.y=element_blank()) +
+  coord_flip()
+print(overlaps_p)
+
+```
+
+[< Back ](index.html)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
