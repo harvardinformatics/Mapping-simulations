@@ -33,8 +33,9 @@ Reference genome: mm39
 
 NEAT > BWA > GATK
 
-# Results (chr19 only)
+# Results (chr18 and chr19 only)
 
+chr18 length = 90720763
 chr19 length = 61420004
 
 ## Divergence 0-10%
@@ -107,12 +108,20 @@ sim_stats$fn.prop = sim_stats$fn / (sim_stats$tp + sim_stats$fp + sim_stats$fn)
 
 long_data = melt(sim_stats, id.vars=c("coverage", "divergence", "golden.variants", "called.variants", "shared.pos"))
 long_data = subset(long_data, variable != "fp" & variable != "fn" & variable != "tp")
+
+long_data$text = NA
+
+long_data[long_data$variable=="fp.prop",]$text = sim_stats$fp[sim_stats$divergence==long_data[long_data$variable=="fp.prop",]$divergence]
+long_data[long_data$variable=="tp.prop",]$text = sim_stats$tp[sim_stats$divergence==long_data[long_data$variable=="tp.prop",]$divergence]
+long_data[long_data$variable=="fn.prop",]$text = sim_stats$fn[sim_stats$divergence==long_data[long_data$variable=="fn.prop",]$divergence]
+
 long_data$variable = factor(long_data$variable, levels=c("fp.prop", "tp.prop", "fn.prop"))
+
 cols = c(corecol(pal="wilke", numcol=1, offset=1), "#bda988", corecol(pal="wilke", numcol=1))
 
-overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable)) +
+overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable, label=text)) +
   geom_bar(stat="identity") +
-  #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
+  geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
   #geom_text(aes(label=text3), size=2.3, color="#f2f2f2", nudge_y=-0.05) +
   #geom_text(aes(label=text4), size=2.3, color="#f2f2f2", nudge_y=0.82) +
