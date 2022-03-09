@@ -1,0 +1,420 @@
+{
+    "total_runtime": 288.0382297039032,
+    "rules": {
+        "compare_vcfs": {
+            "mean-runtime": 236.18623439470926,
+            "min-runtime": 186.1131715774536,
+            "max-runtime": 287.6407425403595
+        }
+    },
+    "files": {
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.04/regions/mm39-19-20X-0.04-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:25:58 2022",
+            "duration": 257.55274987220764,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1040,
+                "disk_mb": 1040,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.04/regions/mm39-19-20X-0.04-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:25:58 2022",
+            "duration": 257.55274987220764,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1040,
+                "disk_mb": 1040,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.01/regions/mm39-19-20X-0.01-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:46 2022",
+            "duration": 186.1131715774536,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.01/regions/mm39-19-20X-0.01-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:46 2022",
+            "duration": 186.1131715774536,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.00/regions/mm39-19-20X-0.00-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:47 2022",
+            "duration": 186.14907932281494,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.00/regions/mm39-19-20X-0.00-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:47 2022",
+            "duration": 186.14907932281494,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/regions/mm39-19-20X-0.02-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:47 2022",
+            "duration": 186.19689321517944,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/regions/mm39-19-20X-0.02-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:47 2022",
+            "duration": 186.19689321517944,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.03/regions/mm39-19-20X-0.03-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:47 2022",
+            "duration": 186.25063109397888,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.03/regions/mm39-19-20X-0.03-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:24:47 2022",
+            "duration": 186.25063109397888,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.05/regions/mm39-19-20X-0.05-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:25:28 2022",
+            "duration": 227.1836016178131,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1103,
+                "disk_mb": 1103,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.05/regions/mm39-19-20X-0.05-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:40 2022",
+            "stop-time": "Wed Mar  9 13:25:28 2022",
+            "duration": 227.1836016178131,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1103,
+                "disk_mb": 1103,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.00/regions/mm39-18-20X-0.00-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:25:28 2022",
+            "duration": 227.21937251091003,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1085,
+                "disk_mb": 1085,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.00/regions/mm39-18-20X-0.00-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:25:28 2022",
+            "duration": 227.21937251091003,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1085,
+                "disk_mb": 1085,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.01/regions/mm39-18-20X-0.01-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:25:58 2022",
+            "duration": 257.38476395606995,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1228,
+                "disk_mb": 1228,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.01/regions/mm39-18-20X-0.01-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:25:58 2022",
+            "duration": 257.38476395606995,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1228,
+                "disk_mb": 1228,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/regions/mm39-18-20X-0.02-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:25:58 2022",
+            "duration": 257.4345977306366,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1340,
+                "disk_mb": 1340,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/regions/mm39-18-20X-0.02-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:25:58 2022",
+            "duration": 257.4345977306366,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1340,
+                "disk_mb": 1340,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.03/regions/mm39-18-20X-0.03-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:26:28 2022",
+            "duration": 287.5247118473053,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1445,
+                "disk_mb": 1445,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.03/regions/mm39-18-20X-0.03-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:26:28 2022",
+            "duration": 287.5247118473053,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1445,
+                "disk_mb": 1445,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.04/regions/mm39-18-20X-0.04-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:26:28 2022",
+            "duration": 287.5844974517822,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1545,
+                "disk_mb": 1545,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.04/regions/mm39-18-20X-0.04-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:26:28 2022",
+            "duration": 287.5844974517822,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1545,
+                "disk_mb": 1545,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.05/regions/mm39-18-20X-0.05-compare-vcf-summary.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:26:28 2022",
+            "duration": 287.6407425403595,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1640,
+                "disk_mb": 1640,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.05/regions/mm39-18-20X-0.05-compare-vcf-snps.csv": {
+            "start-time": "Wed Mar  9 13:21:41 2022",
+            "stop-time": "Wed Mar  9 13:26:28 2022",
+            "duration": 287.6407425403595,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1640,
+                "disk_mb": 1640,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        }
+    }
+}

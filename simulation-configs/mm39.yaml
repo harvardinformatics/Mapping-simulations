@@ -1,0 +1,29 @@
+#############################################################################
+# Configuration information for using the mouse genome in the mapping simulation pipeline
+#############################################################################
+
+ref_file: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+# The current reference genome directory
+# Must be pre-indexed with:
+# 1. samtools faidx
+# 2. bwa index
+# 3. picard CreateSequenceDictionary
+
+ref_index: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+
+ref_str: mm39
+# The abbreviation for the current reference genome, used for output files
+
+regions: ["18", "19"]
+#regions: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "X", "Y"]
+# The regions in the reference genome to simulate reads over. Will be
+# extracted with samtools faidx
+
+covs: ["20"]
+# The varying amounts of coverage to simulate
+
+#divs: ["0.00", "0.02", "0.04", "0.06", "0.08", "0.10", "0.12", "0.14", "0.16", "0.18", "0.20"]
+divs: ["0.00", "0.01", "0.02", "0.03", "0.04", "0.05"]
+# The varying amounts of divergence to simulate
+
+sim_outdir: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/

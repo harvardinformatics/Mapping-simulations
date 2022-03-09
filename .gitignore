@@ -1,5 +1,13 @@
+old/
 pkgs/
 *.code-workspace
 scripts/slurm-logs/
 scripts/.snakemake/
 scripts/old/
+scripts/wub/
+.snakemake/
+slurm-logs/
+etc/
+snakemake/.snakemake/
+
+docs/data/mm39-20X-vcf-snps.csv
