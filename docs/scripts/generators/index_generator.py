@@ -4,8 +4,8 @@
 ############################################################
 
 import sys, os
-sys.path.append('..')
-import lib.read_chunks as RC
+sys.path.append(os.path.abspath('../lib/'))
+import read_chunks as RC
 
 ######################
 # HTML template
@@ -33,10 +33,17 @@ html_template = """
 
             <ul>
 				<h3>
-					<a href="variants.html">Called variants with varying levels of divergence (mouse chr19 only)</a>
+					<a href="variants.html">Called variants with varying levels of divergence (mouse chr18 and chr19 only)</a>
+				</h3>
+				<h3>
+					<a href="iterative.html">Called variants with iterative mapping (mouse chr19, 4% divergence only)</a>
 				</h3>
 			<ul>
 
+
+
+
+								
 		</div>
         <div class="col-2-24" id="margin"></div>
 	</div>

@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser(description="Gets stats from a bunch of abyss a
 parser.add_argument("--all", dest="all", help="Build all pages", action="store_true", default=False);
 parser.add_argument("--index", dest="index", help="Without --all: build index.html. With --all: exlude index.html", action="store_true", default=False);
 parser.add_argument("--variants", dest="variants", help="Without --all: build variants.html. With --all: exlude variants.html", action="store_true", default=False);
+parser.add_argument("--iterative", dest="iterative", help="Without --all: build iterative.html. With --all: exlude iterative.html", action="store_true", default=False);
 parser.add_argument("--people", dest="people", help="Without --all: build people.html. With --all: exlude people.html", action="store_true", default=False);
 parser.add_argument("--links", dest="links", help="Without --all: build links.html. With --all: exlude links.html", action="store_true", default=False);
 args = parser.parse_args();
@@ -20,6 +21,7 @@ os.chdir("generators");
 pages = {
     'index' : args.index,
     'variants' : args.variants,
+    'iterative' : args.iterative,
     'people' : args.people,
     'links' : args.links
 }
@@ -32,6 +34,9 @@ if pages['index']:
 
 if pages['variants']:
     os.system("Rscript variants_generator.r");
+
+if pages['iterative']:
+    os.system("Rscript iterative_generator.r");
 
 if pages['people']:
     os.system("python people_generator.py");

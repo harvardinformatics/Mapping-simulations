@@ -11,3 +11,4 @@ etc/
 snakemake/.snakemake/
 
 docs/data/mm39-20X-vcf-snps.csv
+docs/data/mm39-iterative-20X-vcf-snps.csv
