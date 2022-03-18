@@ -1,0 +1,283 @@
+{
+    "total_runtime": 113684.44411468506,
+    "rules": {
+        "gatk_haplotypecaller": {
+            "mean-runtime": 110600.2783229351,
+            "min-runtime": 110600.2783229351,
+            "max-runtime": 110600.2783229351
+        },
+        "gatk_genotypegvcfs": {
+            "mean-runtime": 2412.1865088939667,
+            "min-runtime": 2412.1865088939667,
+            "max-runtime": 2412.1865088939667
+        },
+        "index_vcfs_regions": {
+            "mean-runtime": 49.85376477241516,
+            "min-runtime": 49.85376477241516,
+            "max-runtime": 49.85376477241516
+        },
+        "merge_vcfs": {
+            "mean-runtime": 50.12953042984009,
+            "min-runtime": 50.12953042984009,
+            "max-runtime": 50.12953042984009
+        },
+        "compare_vcfs": {
+            "mean-runtime": 240.25142073631287,
+            "min-runtime": 240.25142073631287,
+            "max-runtime": 240.25142073631287
+        },
+        "index_vcfs_merged": {
+            "mean-runtime": 49.88720774650574,
+            "min-runtime": 49.88720774650574,
+            "max-runtime": 49.88720774650574
+        },
+        "filter_vcf": {
+            "mean-runtime": 180.4590253829956,
+            "min-runtime": 180.4590253829956,
+            "max-runtime": 180.4590253829956
+        },
+        "index_vcfs_filtered": {
+            "mean-runtime": 50.01065111160278,
+            "min-runtime": 50.01065111160278,
+            "max-runtime": 50.01065111160278
+        },
+        "select_snps": {
+            "mean-runtime": 180.30452036857605,
+            "min-runtime": 180.30452036857605,
+            "max-runtime": 180.30452036857605
+        },
+        "index_vcfs_snps": {
+            "mean-runtime": 50.03000044822693,
+            "min-runtime": 50.03000044822693,
+            "max-runtime": 50.03000044822693
+        },
+        "generate_consensus": {
+            "mean-runtime": 60.133965253829956,
+            "min-runtime": 60.133965253829956,
+            "max-runtime": 60.133965253829956
+        }
+    },
+    "files": {
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/regions/mm39-19-20X-0.04.gvcf.gz": {
+            "start-time": "Thu Mar 17 00:29:42 2022",
+            "stop-time": "Fri Mar 18 07:13:02 2022",
+            "duration": 110600.2783229351,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 7218,
+                "disk_mb": 7218,
+                "tmpdir": "/tmp",
+                "cpus": 4,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "48:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/regions/mm39-19-20X-0.04.vcf.gz": {
+            "start-time": "Fri Mar 18 07:13:02 2022",
+            "stop-time": "Fri Mar 18 07:53:15 2022",
+            "duration": 2412.1865088939667,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 6086,
+                "disk_mb": 6086,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "6:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/regions/mm39-19-20X-0.04.vcf.gz.tbi": {
+            "start-time": "Fri Mar 18 07:53:15 2022",
+            "stop-time": "Fri Mar 18 07:54:05 2022",
+            "duration": 49.85376477241516,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1020,
+                "disk_mb": 1020,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "2g",
+                "time": "2:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/mm39.vcf.gz": {
+            "start-time": "Fri Mar 18 07:54:05 2022",
+            "stop-time": "Fri Mar 18 07:54:55 2022",
+            "duration": 50.12953042984009,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1020,
+                "disk_mb": 1020,
+                "tmpdir": "/tmp",
+                "cpus": 8,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "2:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/summary-files/20X/0.04/regions/mm39-iter4-19-20X-0.04-compare-vcf-summary.csv": {
+            "start-time": "Fri Mar 18 07:54:05 2022",
+            "stop-time": "Fri Mar 18 07:58:05 2022",
+            "duration": 240.25142073631287,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1040,
+                "disk_mb": 1040,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/summary-files/20X/0.04/regions/mm39-iter4-19-20X-0.04-compare-vcf-snps.csv": {
+            "start-time": "Fri Mar 18 07:54:05 2022",
+            "stop-time": "Fri Mar 18 07:58:05 2022",
+            "duration": 240.25142073631287,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1040,
+                "disk_mb": 1040,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "4g",
+                "time": "1:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/mm39.vcf.gz.tbi": {
+            "start-time": "Fri Mar 18 07:54:55 2022",
+            "stop-time": "Fri Mar 18 07:55:45 2022",
+            "duration": 49.88720774650574,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "2g",
+                "time": "2:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/mm39-filtered.vcf.gz": {
+            "start-time": "Fri Mar 18 07:55:45 2022",
+            "stop-time": "Fri Mar 18 07:58:46 2022",
+            "duration": 180.4590253829956,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "12g",
+                "time": "16:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/mm39-filtered.vcf.gz.tbi": {
+            "start-time": "Fri Mar 18 07:58:46 2022",
+            "stop-time": "Fri Mar 18 07:59:36 2022",
+            "duration": 50.01065111160278,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "2g",
+                "time": "2:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/mm39-filtered-snps.vcf.gz": {
+            "start-time": "Fri Mar 18 07:59:36 2022",
+            "stop-time": "Fri Mar 18 08:02:36 2022",
+            "duration": 180.30452036857605,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "12g",
+                "time": "16:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/20X/0.04/iter4/mm39-filtered-snps.vcf.gz.tbi": {
+            "start-time": "Fri Mar 18 08:02:36 2022",
+            "stop-time": "Fri Mar 18 08:03:26 2022",
+            "duration": 50.03000044822693,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 1000,
+                "disk_mb": 1000,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "2g",
+                "time": "2:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/20X/0.04/iter4/mm39-snps-consensus.fa": {
+            "start-time": "Fri Mar 18 08:03:26 2022",
+            "stop-time": "Fri Mar 18 08:04:26 2022",
+            "duration": 60.133965253829956,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 5497,
+                "disk_mb": 5497,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "12g",
+                "time": "16:00:00"
+            }
+        },
+        "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/20X/0.04/iter4/mm39-snps-consensus.chain": {
+            "start-time": "Fri Mar 18 08:03:26 2022",
+            "stop-time": "Fri Mar 18 08:04:26 2022",
+            "duration": 60.133965253829956,
+            "priority": 0,
+            "resources": {
+                "_cores": 1,
+                "_nodes": 1,
+                "mem_mb": 5497,
+                "disk_mb": 5497,
+                "tmpdir": "/tmp",
+                "cpus": 1,
+                "partition": "holy-info,shared,bos-info",
+                "mem": "12g",
+                "time": "16:00:00"
+            }
+        }
+    }
+}

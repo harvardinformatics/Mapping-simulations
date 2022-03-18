@@ -50,7 +50,8 @@ def runTime(msg=False, writeout=False, printout=True):
 
 #############################################################################
 
-coverage, divergence, ref_index, golden_bam_file, query_bam_file, summary_outfilename = sys.argv[1:];
+regions, coverage, divergence, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename = sys.argv[1:];
+regions = regions.split(",");
 # Inputs
 
 #divergence = "0.02";
@@ -107,7 +108,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
     for chrome in chr_lens:
     # Go through the reads by chromosome
 
-        if chrome not in ["18", "19"]:
+        if chrome not in regions:
             continue;
         # For debugging/testing
 
@@ -246,10 +247,10 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
 
     #outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0 };
 
-    headers = ["coverage", "divergence", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
+    headers = ["coverage", "divergence", "iteration", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
     PWS(",".join(headers), outfile);
 
-    outline = [coverage, divergence, outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
+    outline = [coverage, divergence, iteration, outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
     outline = [str(col) for col in outline];
     PWS(",".join(outline), outfile, newline=False);
 

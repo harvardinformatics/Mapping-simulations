@@ -496,8 +496,10 @@ rule compare_vcfs:
         query = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz"),
         query_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz.tbi")
     params:
-       div = "{div}",
-       cov = "{cov}"
+        outdir = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions"),
+        div = "{div}",
+        cov = "{cov}",
+        iteration = "1"
     output:
         summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}-compare-vcf-summary.csv"),
         snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}-compare-vcf-snps.csv")
@@ -506,7 +508,7 @@ rule compare_vcfs:
         time = "1:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {input.golden} {input.query} {output.summary} {output.snps}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
@@ -522,7 +524,9 @@ rule compare_bams:
         index = REF_INDEX
     params:
        div = "{div}",
-       cov = "{cov}"
+       cov = "{cov}",
+       reg = ",".join(regions),
+       iteration = "1"
     output:
         summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}-compare-bam-summary.csv"),
     resources:
@@ -530,7 +534,7 @@ rule compare_bams:
         time = "8:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.cov} {params.div} {input.index} {input.golden} {input.query} {output.summary}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.reg} {params.cov} {params.div} {params.iteration} {input.index} {input.golden} {input.query} {output.summary}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:

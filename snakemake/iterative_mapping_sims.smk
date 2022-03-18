@@ -213,7 +213,7 @@ rule simulate_reads:
         time = get_runtime_neat
     shell:
         """
-        python pkgs/NEAT/gen_reads.py -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.div} &> {log}
+        python ../pkgs/NEAT/gen_reads.py -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.div} &> {log}
         """
 # Simulate reads per chromosome with varying levels of divergence (and possibly varying coverage) with NEAT
 # This generates read pairs, a golden VCF and a golden BAM for each chromosome
@@ -365,7 +365,7 @@ rule trim_simulated_reads:
 # QC on simulated reads
 #################
 
-def map_iters(wcs):
+def map_iters_ref(wcs):
     n = int(wcs.n)
     if n == 1:
         r = REF
@@ -376,12 +376,23 @@ def map_iters(wcs):
     #print(r);
     return r
 
+def map_iters_ind(wcs):
+    n = int(wcs.n)
+    if n == 1:
+        r = multiext(REF, ".amb", ".ann", ".bwt", ".pac", ".sa")
+    elif n > 1:
+        r = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(n-1), ref_str + "-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa")
+    else:
+        raise ValueError("loop numbers must be 1 or greater: received %s" % wcs.n)
+    #print(r);
+    return r
+
 rule map_simulated_reads:
     input:
         read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fastp.fq.gz"),
         read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fastp.fq.gz"),
-        ref = map_iters,
-        ref_index = multiext(REF, ".amb", ".ann", ".bwt", ".pac", ".sa"),
+        ref = map_iters_ref,
+        ref_index = map_iters_ind
     output:
         os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam")
     params:
@@ -536,8 +547,10 @@ rule compare_vcfs:
         query = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz"),
         query_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz.tbi")
     params:
-       div = "{div}",
-       cov = "{cov}"
+        outdir = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions"),
+        div = "{div}",
+        cov = "{cov}",
+        iteration = "{n}"
     output:
         summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}-compare-vcf-summary.csv"),
         snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}-compare-vcf-snps.csv")
@@ -546,7 +559,7 @@ rule compare_vcfs:
         time = "1:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {input.golden} {input.query} {output.summary} {output.snps}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
@@ -563,7 +576,9 @@ rule compare_bams:
         ref_index = REF_INDEX
     params:
        div = "{div}",
-       cov = "{cov}"
+       cov = "{cov}",
+       reg = ",".join(regions),
+       iteration = "{n}"
     output:
         summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}-compare-bam-summary.csv"),
     resources:
@@ -571,7 +586,7 @@ rule compare_bams:
         time = "8:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.cov} {params.div} {input.ref_index} {input.golden} {input.query} {output.summary}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.reg} {params.cov} {params.div} {params.iteration} {input.ref_index} {input.golden} {input.query} {output.summary}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
@@ -615,26 +630,48 @@ rule filter_vcf:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz")
     params:
         filt = FILTER_STR
+    log:
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-vcf-filter.log")
     shell:
         """
-        bcftools filter -m+ -e {params.filt} -s pseudoit --IndelGap 5 -Oz -o {output} {input.vcf}
+        bcftools filter -m+ -e {params.filt} -s pseudoit --IndelGap 5 -Oz -o {output} {input.vcf} &> {log}
         """
-#rule filter_snps:
+#rule filter_snps
+# NOTE: bcftools leaves an empty file if it errors, but snakemake thinks this has completed when it tries again....
 
+#################
+
+rule index_vcfs_filtered:
+    input:
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz")
+    output:
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz.tbi")
+    log:
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-filter-tabix.log")
+    resources:
+        mem = "2g",
+        time = "2:00:00"
+    shell:
+        """
+        tabix {input} &> {log}
+        """
+# Index the merged VCFs
 
 #################
 
 rule select_snps:
     input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz")
+        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz"),
+        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz.tbi")
     output:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz"),
     log:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-vcf-select-snps.log")
     shell:
         """
-        gatk SelectVariants -V {input} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
+        gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
         """
+# Select SNPs only
 
 #################
 
@@ -690,7 +727,23 @@ rule generate_consensus:
         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-consensus.log")
     shell:
         """
-        bcftools consensus -f {input.ref} -o {output.fasta} -c {output.chain} -e ""FILTER='pseudoit' || FILTER='IndelGap'" {input.vcf}
+        bcftools consensus -f {input.ref} -o {output.fasta} -c {output.chain} -e "FILTER='pseudoit' || FILTER='IndelGap'" {input.vcf} &> {log}
+        """   
+    
+#################
+
+rule index_consensus:
+    input:
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa")
+    output:
+        samtools_index = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa.fai"),
+        bwa_index = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
+    log:
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-consensus-index.log")
+    shell:
+        """
+        samtools faidx {input} 2> {log}
+        bwa index {input} 2>> {log}
         """   
     
 #################
