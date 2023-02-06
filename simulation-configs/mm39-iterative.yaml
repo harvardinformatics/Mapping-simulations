@@ -14,7 +14,7 @@ ref_index: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/
 ref_str: mm39
 # The abbreviation for the current reference genome, used for output files
 
-regions: ["19"]
+regions: ["18", "19"]
 #regions: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "X", "Y"]
 # The regions in the reference genome to simulate reads over. Will be
 # extracted with samtools faidx
@@ -24,7 +24,7 @@ covs: ["20"]
 
 #divs: ["0.00", "0.02", "0.04", "0.06", "0.08", "0.10", "0.12", "0.14", "0.16", "0.18", "0.20"]
 #divs: ["0.00", "0.02", "0.04", "0.06", "0.08", "0.10"]
-divs: ["0.04"]
+divs: ["0.00", "0.01", "0.02", "0.03", "0.04"]
 # The varying amounts of divergence to simulate
 
 iterations: 4

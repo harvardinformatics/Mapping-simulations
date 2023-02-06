@@ -432,7 +432,7 @@ rule index_bams:
 #################
 
 def get_runtime_gatk(wildcards, attempt):
-    times = ["32:00:00", "40:00:00", "48:00:00", "56:00:00", "72:00:00"];
+    times = ["168:00:00", "200:00:00", "250:00:00", "300:00:00", "400:00:00"];
     return times[attempt];
 # Sets the run time based on the number of times the job has been restarted
 
@@ -450,7 +450,7 @@ rule gatk_haplotypecaller:
     resources:
         cpus = 4,
         mem="4g",
-        time = get_runtime_gatk
+        time = "168:00:00"
     shell:
         """
         gatk HaplotypeCaller -R {input.ref} -I {input.bam} -stand-call-conf 30 --native-pair-hmm-threads {resources.cpus} -L {params.region} -ERC GVCF -O {output} &> {log}

@@ -1,4 +1,4 @@
-jobs: 32
+jobs: 40
 cluster-sync:
   mkdir -p slurm-logs/{rule}/ &&
   sbatch
@@ -9,11 +9,11 @@ cluster-sync:
   --mem={resources.mem}
   --time={resources.time}
   --output=slurm-logs/{rule}/{rule}-{wildcards}-%j.out
-  --mail-type=END,FAIL
+  --mail-type=FAIL
   --mail-user=gthomas@g.harvard.edu
 default-resources:
   - cpus=1
-  - partition="holy-info,shared,bos-info"
+  - partition="holy-info,shared"
   - mem="12g"
   - time="16:00:00"
 restart-times: 3

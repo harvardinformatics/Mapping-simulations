@@ -50,7 +50,7 @@ def runTime(msg=False, writeout=False, printout=True):
 
 #############################################################################
 
-regions, coverage, divergence, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename = sys.argv[1:];
+regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename = sys.argv[1:];
 regions = regions.split(",");
 # Inputs
 
@@ -247,10 +247,10 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
 
     #outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0 };
 
-    headers = ["coverage", "divergence", "iteration", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
+    headers = ["coverage", "divergence", "heterozygosity", "iteration", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
     PWS(",".join(headers), outfile);
 
-    outline = [coverage, divergence, iteration, outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
+    outline = [coverage, divergence, heterozygosity, iteration, outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
     outline = [str(col) for col in outline];
     PWS(",".join(outline), outfile, newline=False);
 

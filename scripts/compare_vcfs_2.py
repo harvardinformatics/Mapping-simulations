@@ -76,7 +76,7 @@ def readVCF(vcffile):
     
 #############################################################################
 
-coverage, divergence, iteration, golden_vcf_file, query_vcf_file, outdir, summary_outfilename, snp_outfilename = sys.argv[1:];
+coverage, divergence, heterozygosity, iteration, golden_vcf_file, query_vcf_file, outdir, summary_outfilename, snp_outfilename = sys.argv[1:];
 # Inputs
 
 #coverage = "20";
@@ -110,7 +110,7 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
     ####################
 
     PWS("# Writing headers for SNP file...", sumfile);
-    snp_headers = ["# coverage", "divergence", "iteration", "type", "chr", "pos", "ref", "alt", "dp", "mq", "alt.dp", "gq", "pl"];
+    snp_headers = ["# coverage", "divergence", "heterozygosity", "iteration", "type", "chr", "pos", "ref", "alt", "dp", "mq", "alt.dp", "gq", "pl"];
     snpfile.write(",".join(snp_headers) + "\n");
     # Write the headers for the detailed SNP file
 
@@ -240,7 +240,7 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
                     # Save details to dict to write later
             ## End detail parse block
 
-            outline = [coverage, divergence, iteration, type_str] + variant.split(":") + [ cur_details[val] for val in snp_headers[8:] ];
+            outline = [coverage, divergence, heterozygosity, iteration, type_str] + variant.split(":") + [ cur_details[val] for val in snp_headers[9:] ];
             snpfile.write(",".join(outline) + "\n");
             # Write the details to the SNP file
         ## End detailed block
@@ -322,11 +322,11 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
 
     ####################
 
-    headers = ["region", "coverage", "divergence", "iteration", "golden variants", "called variants", "tp", "fp", "fn", "shared pos", "no info"];
+    headers = ["region", "coverage", "divergence", "heterozygosity", "iteration", "golden variants", "called variants", "tp", "fp", "fn", "shared pos", "no info"];
     PWS(",".join(headers), sumfile);
     # Write the headers for the summary file
 
-    outline = [region, coverage, divergence, iteration, num_golden, str(num_query), str(num_tp), str(num_fp), str(num_fn), str(num_tp_pos), str(no_info)];
+    outline = [region, coverage, divergence, heterozygosity, iteration, num_golden, str(num_query), str(num_tp), str(num_fp), str(num_fn), str(num_tp_pos), str(no_info)];
     PWS(",".join(outline), sumfile, newline=False);
     # Write the final counts to the summary file
 ## End file block and close files
