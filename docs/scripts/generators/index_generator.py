@@ -35,9 +35,9 @@ html_template = """
 				<h3>
 					<a href="variants.html">Called variants with varying levels of divergence (mouse chr18 and chr19 only)</a>
 				</h3>
-				<h3>
+				<!-- <h3>
 					<a href="iterative.html">Called variants with iterative mapping (mouse chr19, 4% divergence only)</a>
-				</h3>
+				</h3> -->
 			<ul>
 
 
