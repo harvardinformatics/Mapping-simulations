@@ -70,7 +70,7 @@ rule all:
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv"), cov=covs, div=divs, het=hets, region=regions),
         # Expected output from compare_vcfs
 
-        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-summary.csv"), cov=covs, div=divs, het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-summary.csv"), cov=covs, div=divs, het=hets),
         # Expected output from compare_bams
 
         #expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "golden", "qualimapReport.html"), cov=covs, div=divs),
@@ -485,6 +485,7 @@ rule liftover_vcfs:
         """
 # Liftover the coordinates of the called variants from the mouse reference to the simulated divergent genome (same as golden vcf here)
 # https://gatk.broadinstitute.org/hc/en-us/articles/360036831351-LiftoverVcf-Picard-
+## NOT USED, only comparing called variants to original golden variants, both of which are in ref coords
 
 #################
 
@@ -511,20 +512,20 @@ rule liftover_bams:
 
 #################
 
-rule index_liftover_bams:
-    input:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam")
-    output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam.bai")
-    log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-crossmap-index.log")
-    resources:
-        time = "4:00:00",
-        mem = "4g"
-    shell:
-        """
-        samtools index {input} 2> {log}
-        """
+# rule index_liftover_bams:
+#     input:
+#         os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam")
+#     output:
+#         os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam.bai")
+#     log:
+#         os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-crossmap-index.log")
+#     resources:
+#         time = "4:00:00",
+#         mem = "4g"
+#     shell:
+#         """
+#         samtools index {input} 2> {log}
+#         """
 # Index the lifted over mapped reads
 ## NOT USED, crossmap sortes, indexes bam automatically
 
@@ -534,12 +535,8 @@ rule compare_vcfs:
     input:
         golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz"),
         golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), 
-        #golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz"),
-        #golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"),
         query = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz"),
         query_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz.tbi"),
-        #query = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-liftover.vcf.gz"),
-        #query_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-liftover.vcf.gz.tbi")
     params:
         outdir = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions"),
         het = "{het}",
@@ -551,14 +548,12 @@ rule compare_vcfs:
         snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv")
     resources:
         mem = "4g",
-        time = "1:00:00"
+        time = "24:00:00"
+    retries: 0
     shell:
         """
         python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {params.het} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}
         """
-
-## TODO: EXCLUDE HETEROZYGOUS SITES FROM COMPARISON
-
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
 # for f in *.csv; do (cat "${f}"; echo); done | grep -v "#" | sort -r | uniq
@@ -567,14 +562,10 @@ rule compare_vcfs:
 
 rule compare_bams:
     input:
-        golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.bam"),
-        golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.bam.bai"),
-        #golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
-        #golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai"),
-        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
-        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai"),        
-        #query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
-        #query_index = query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai"),
+        golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
+        golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai"),
+        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
+        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai"),        
         sim_index = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa.fai")
     params:
         het = "{het}",

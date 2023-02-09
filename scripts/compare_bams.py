@@ -98,7 +98,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
 
     ####################
 
-    outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0 };
+    outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0, "missing" : 0 };
     # Just doing counts for now. Could do full distributions of distance between golden and mapped positions, but
     # would have to deal with the memory issues
 
@@ -115,6 +115,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
         PWS("# " + getDateTime() + " Finding reads in " + chrome + "...", outfile);
 
         num_reads = 0;
+        num_reads_missing = 0;
 
         for read in golden_bam.fetch(chrome):
         # Find every golden read in the current chromosome
@@ -145,7 +146,11 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
             # print(golden_chr);
             # print(golden_pos);
 
-            matches = name_indexed_query.find(read.query_name);
+            try:
+                matches = name_indexed_query.find(read.query_name);
+            except:
+                outdict['missing'] += 1;
+                continue;
             # Find all mappings for the current read in the query bam file
 
             matches_found = 0;
@@ -247,10 +252,10 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
 
     #outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0 };
 
-    headers = ["coverage", "divergence", "heterozygosity", "iteration", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
+    headers = ["coverage", "divergence", "heterozygosity", "iteration", "missing.in.query", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
     PWS(",".join(headers), outfile);
 
-    outline = [coverage, divergence, heterozygosity, iteration, outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
+    outline = [coverage, divergence, heterozygosity, iteration, outdict['missing'], outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
     outline = [str(col) for col in outline];
     PWS(",".join(outline), outfile, newline=False);
 

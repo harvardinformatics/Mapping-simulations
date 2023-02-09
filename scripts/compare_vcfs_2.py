@@ -54,6 +54,15 @@ def readVCF(vcffile):
     variant_pos, variants = [], [];
     # The basic info about the SNPs (chr, pos, ref, alt)
 
+    confusing_pos = [];
+    # A list of positions that are confusing because NEAT simulated multiple variants at them
+    # According to https://github.com/samtools/bcftools/issues/600, only the first variant should
+    # be inserted, but I'll just skip them for now
+    # Rough count of 4792 out of 1764233 sites
+
+    prev_pos = "";
+    x = 1;
+
     for line in gzip.open(vcffile):
     # Open the file with gzip and read each line
         line = line.decode().strip().split("\t");
@@ -68,11 +77,22 @@ def readVCF(vcffile):
         variant = ":".join([ line[0], line[1], line[3], line[4].replace(",", ";") ]);
         # Parse the basic infor of the SNP and join into a string for set comparisons and use as dict key later
 
-        #variant_pos.append(pos);
+        if pos == prev_pos:
+            confusing_pos.append(pos);
+            #print(variant);
+            x += 1;
+            # if x == 100:
+            #     sys.exit();
+            continue;
+
+        variant_pos.append(pos);
         variants.append(variant);
+        prev_pos = pos;
     ## End file loop
 
-    return variants;
+    #print(x);
+
+    return variants, set(confusing_pos);
     
 #############################################################################
 
@@ -109,30 +129,36 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
 
     ####################
 
-    PWS("# Writing headers for SNP file...", sumfile);
+    PWS("#" + getDateTime() + " Writing headers for SNP file...", sumfile);
     snp_headers = ["# coverage", "divergence", "heterozygosity", "iteration", "type", "chr", "pos", "ref", "alt", "dp", "mq", "alt.dp", "gq", "pl"];
     snpfile.write(",".join(snp_headers) + "\n");
     # Write the headers for the detailed SNP file
 
     ####################
 
-    PWS("# Reading variants from golden file...", sumfile);
-    golden_variants = readVCF(golden_vcf_file);
+    PWS("#" + getDateTime() + " Reading variants from golden file...", sumfile);
+    golden_variants, golden_dup_pos = readVCF(golden_vcf_file);
     # Read the SNPs from the golden VCF
     # golden_details is an empty dict since it doesn't have any extra info
 
     golden_variants = set(golden_variants);
     num_golden = str(len(golden_variants));
-    golden_pos = set([ ":".join(v.split(":")[:2]) for v in list(golden_variants) ]);
+    golden_variants_list = list(golden_variants);
+    golden_pos = set([ ":".join(v.split(":")[:2]) for v in golden_variants_list ]);
+    golden_pos_list = list(golden_pos);
+    golden_variants_dict = { golden_pos_list[i] : golden_variants_list[i] for i in range(len(golden_pos_list)) };
     num_golden_pos = str(len(golden_pos));
-    PWS("# " + num_golden + " variants read at " + num_golden_pos + " positions.", sumfile);
+    PWS("#" + getDateTime() + " " + num_golden + " variants read at " + num_golden_pos + " positions.", sumfile);
+    #print(len(golden_variants_dict));
     # Convert the list of SNPs to a set and count
     # Some variants at same site but other haplotype
 
     ####################
 
-    PWS("# Reading variants from query file and checking overlaps...", sumfile);
-    num_query, num_tp, num_fp, num_fn, num_tp_pos, no_info = 0,0,0,0,0,0;
+    PWS("#" + getDateTime() + " Reading variants from query file and checking overlaps...", sumfile);
+    num_query, num_golden, num_golden_dup_pos, num_non_golden, num_tp, num_fp, num_fn, num_tn, no_info = 0,0,0,0,0,0,0,0,0;
+    num_het_in_golden = 0;
+    num_het_not_in_golden = 0;
     # The counts of each type of site category
 
     for line in gzip.open(query_vcf_file):
@@ -145,7 +171,13 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
             continue;
         # Skip comment lines
 
+        if line[1] in golden_dup_pos:
+            num_golden_dup_pos += 1;
+            continue;
+        # Skip the positions that had more than 1 variant simulated, for now
+
         query_variant = False;
+        query_gt = False;
         golden_variant = False;
         # Flags for the current line to determine site overlaps
 
@@ -159,12 +191,16 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
             # Set the query_variant flag to True
 
             variant = ":".join([ line[0], line[1], line[3], line[4].replace(",", ";") ]);
+            query_gt = line[9].split(":")[0];        
             # Parse the basic info of the SNP and join into a string for set comparisons and use as dict key later
         ## End query variant block
 
         pos = ":".join([ line[0], line[1] ]);
         if pos in golden_pos:
             golden_variant = True;
+            num_golden += 1;
+        else:
+            num_non_golden += 1;
         # Parse the current position and set golden_variant to True if the position is in golden_variants
 
         type_str = "NA";
@@ -173,23 +209,32 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
 
         if query_variant and golden_variant:
         # If the current site is variant in both sets it will be tp or tp.pos
-            if variant in golden_variants:
+            if query_gt in ["0/1", "1/0", "1|0", "0|1"]:
+                num_het_in_golden += 1;
+            elif query_gt in ["1/1", "1|1"]:
                 num_tp += 1;
                 type_str = "tp";
-            # If the variant is identical to one in the golden variants, it is a true positive
-            # Increment tp count and set type_str to tp
-            else:
-                num_tp_pos += 1;
-                type_str = "tp.pos";
-            # If the variant doesn't exist in the golden variant set, but the position does overlap, that
-            # means it is a called variant with a different alternate allele, which I call tp.pos for true positive
-            # at position
+
+            # if variant in golden_variants:
+            #     num_tp += 1;
+            #     type_str = "tp";
+            # # If the variant is identical to one in the golden variants, it is a true positive
+            # # Increment tp count and set type_str to tp
+            # else:
+            #     num_tp_pos += 1;
+            #     type_str = "tp.pos";
+            # # If the variant doesn't exist in the golden variant set, but the position does overlap, that
+            # # means it is a called variant with a different alternate allele, which I call tp.pos for true positive
+            # # at position
         ## End tp block
 
         if query_variant and not golden_variant:
         # If the current site is variant in the query but not the golden set, it is a false positive
-            num_fp += 1;
-            type_str = "fp";
+            if query_gt in ["0/1", "1/0", "1|0", "0|1"]:
+                num_het_not_in_golden += 1;
+            elif query_gt in ["1/1", "1|1"]:
+                num_fp += 1;
+                type_str = "fp";
         ## End fp block
 
         if not query_variant and golden_variant:
@@ -201,6 +246,10 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
             # Also get the basic site info for a fn to write the details later
         ## End fn block
 
+        if not query_variant and not golden_variant:
+            num_tn += 1;
+            type_str = "tn";
+        ## End tn block
 
         if query_variant or golden_variant:
         # If the site is variant in either set, we want to get some more details
@@ -322,11 +371,11 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
 
     ####################
 
-    headers = ["region", "coverage", "divergence", "heterozygosity", "iteration", "golden variants", "called variants", "tp", "fp", "fn", "shared pos", "no info"];
+    headers = ["region", "coverage", "divergence", "heterozygosity", "iteration", "golden variants", "golden variants same site", "golden invariant", "called variants", "tp", "fp", "fn", "tn", "called het golden", "called het non golden" "no info"];
     PWS(",".join(headers), sumfile);
     # Write the headers for the summary file
 
-    outline = [region, coverage, divergence, heterozygosity, iteration, num_golden, str(num_query), str(num_tp), str(num_fp), str(num_fn), str(num_tp_pos), str(no_info)];
+    outline = [region, coverage, divergence, heterozygosity, iteration, str(num_golden), str(num_golden_dup_pos), str(num_non_golden), str(num_query), str(num_tp), str(num_fp), str(num_fn), str(num_tn), str(num_het_in_golden), str(num_het_not_in_golden), str(no_info)];
     PWS(",".join(outline), sumfile, newline=False);
     # Write the final counts to the summary file
 ## End file block and close files
