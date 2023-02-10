@@ -10,7 +10,9 @@ slurm-logs/
 etc/
 snakemake/.snakemake/
 docs/scripts/lib/__pycache__/
+*.RHistory*
 
 data/old/mm39-20X-vcf-snps.csv
 data/old/mm39-iterative-20X-vcf-snps.csv
 data/mm39-30X-vcf-snps.csv.gz
+data/mm39-30X-vcf-snps-genmap.csv.gz

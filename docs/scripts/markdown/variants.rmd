@@ -70,10 +70,10 @@ sum_stats %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condende
 
 ####################
 
-snp_file = here("data", "mm39-30X-vcf-snps.csv.gz")
-snp_stats_chr = read.csv(gzfile(snp_file), header=T)
-names(snp_stats_chr)[1] = "coverage"
-snp_stats_chr = subset(snp_stats_chr, coverage != "# coverage")
+snp_file = here("data", "mm39-30X-vcf-snps-genmap.csv.gz")
+snp_stats_chr = read.csv(gzfile(snp_file), header=T, comment.char="#")
+#names(snp_stats_chr)[1] = "coverage"
+#snp_stats_chr = subset(snp_stats_chr, coverage != "# coverage")
 # Read the snp stats file
 
 ####################
@@ -274,17 +274,21 @@ print(snp_rates_p)
 
 # SNP errors and read depth
 
+NAs are called heterozygous sites (either at simulated diverged sites or not)
+
 ```{r fp-fn-depth, out.width="50%", fig.align = "center", warning=FALSE}
 
-snp_stats_chr = subset(snp_stats_chr, !is.na(dp))
-snp_stats_chr$dp = as.numeric(snp_stats_chr$dp)
+#snp_stats_chr = subset(snp_stats_chr, !is.na(dp))
+#snp_stats_chr$dp = as.numeric(snp_stats_chr$dp)
 
 dp_p = ggplot(snp_stats_chr, aes(x=type, y=dp)) +
-  geom_boxplot() +
+  geom_violin(aes(fill=type), alpha=0.3) +
+  geom_boxplot(width=0.1, outlier.shape=NA) +
   xlab("SNP classification") +
   ylab("Depth") +
   facet_wrap(~divergence) +
-  bartheme()
+  bartheme() +
+  theme(legend.position="none")
 print(dp_p)
 
 
@@ -292,18 +296,41 @@ print(dp_p)
 
 # SNP errors and mapping quality
 
+NAs are called heterozygous sites (either at simulated diverged sites or not)
+
 ```{r fp-fn-mq, out.width="50%", fig.align = "center", warning=FALSE}
 
-snp_stats_chr$mq = as.numeric(snp_stats_chr$mq)
+#snp_stats_chr$mq = as.numeric(snp_stats_chr$mq)
 
 mq_p = ggplot(snp_stats_chr, aes(x=type, y=mq)) +
-  geom_boxplot() +
+  geom_violin(aes(fill=type), alpha=0.3) +
+  geom_boxplot(width=0.1, outlier.shape=NA) +
   xlab("SNP classification") +
   ylab("Mapping Quality") +
   facet_wrap(~divergence) +
-  bartheme()
+  bartheme() +
+  theme(legend.position="none")
 print(mq_p)
 
+```
+
+# SNP errors and mappability
+
+Mappability determined with [GenMap's](https://github.com/cpockrandt/genmap) kmer approach with k = 150bp (same as simulated read size).
+
+NAs are called heterozygous sites (either at simulated diverged sites or not)
+
+```{r fp-fn-mb, out.width="50%", fig.align = "center", warning=FALSE}
+
+mb_p = ggplot(snp_stats_chr, aes(x=type, y=mappability)) +
+  geom_violin(aes(fill=type), alpha=0.3) +
+  geom_boxplot(width=0.1, outlier.shape=NA) +
+  xlab("SNP classification") +
+  ylab("Mappability") +
+  facet_wrap(~divergence) +
+  bartheme() +
+  theme(legend.position="none")
+print(mb_p)
 
 ```
 
