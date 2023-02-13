@@ -24,6 +24,7 @@ library(here)
 library(reshape2)
 library(dplyr)
 library(kableExtra)
+library(viridis)
 source("../lib/design.r")
 ```
 
@@ -218,22 +219,22 @@ sum_stats$fn.prop = sum_stats$fn / sum_stats$total.snps
 
 sum_stats_sum = select(sum_stats, divergence, golden.variants, called.variants, fp.prop, tp.prop, fn.prop)
 
-long_data = melt(sum_stats_sum, id.vars=c("divergence", "golden.variants", "called.variants"))
+long_data_snp = melt(sum_stats_sum, id.vars=c("divergence", "golden.variants", "called.variants"))
 #long_data = subset(long_data, variable != "no.info")
 #long_data = subset(long_data, variable != "fp" & variable != "fn" & variable != "tp")
 
-long_data$text = NA
+long_data_snp$text = NA
 
-long_data[long_data$variable=="fp.prop",]$text = sum_stats$fp[sum_stats$divergence==long_data[long_data$variable=="fp.prop",]$divergence]
-long_data[long_data$variable=="tp.prop",]$text = sum_stats$tp[sum_stats$divergence==long_data[long_data$variable=="tp.prop",]$divergence]
+long_data_snp[long_data_snp$variable=="fp.prop",]$text = sum_stats$fp[sum_stats$divergence==long_data_snp[long_data_snp$variable=="fp.prop",]$divergence]
+long_data_snp[long_data_snp$variable=="tp.prop",]$text = sum_stats$tp[sum_stats$divergence==long_data_snp[long_data_snp$variable=="tp.prop",]$divergence]
 #long_data[long_data$variable=="shared.pos.prop",]$text = NA
-long_data[long_data$variable=="fn.prop",]$text = sum_stats$fn[sum_stats$divergence==long_data[long_data$variable=="fn.prop",]$divergence]
+long_data_snp[long_data_snp$variable=="fn.prop",]$text = sum_stats$fn[sum_stats$divergence==long_data_snp[long_data_snp$variable=="fn.prop",]$divergence]
 
-long_data$variable = factor(long_data$variable, levels=c("fp.prop", "tp.prop", "fn.prop"))
+long_data_snp$variable = factor(long_data_snp$variable, levels=c("fp.prop", "tp.prop", "fn.prop"))
 
 cols = c(corecol(pal="wilke", numcol=1, offset=1), "#bda988", corecol(pal="wilke", numcol=1))
 
-overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable, label=text)) +
+overlaps_p = ggplot(long_data_snp, aes(x=divergence, y=value, fill=variable, label=text)) +
   geom_bar(stat="identity") +
   geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
@@ -243,7 +244,7 @@ overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable, label=t
   ylab("Proportion of variants") +
   scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
-  scale_x_continuous(breaks=unique(long_data$divergence)) +
+  scale_x_continuous(breaks=unique(long_data_snp$divergence)) +
   scale_fill_manual(guide=guide_legend(reverse=T), labels=c("False positive", "True positive", "False negative"), values=cols) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
@@ -259,12 +260,12 @@ print(overlaps_p)
 
 cols = c(corecol(pal="wilke", numcol=1, offset=1), corecol(pal="wilke", numcol=1))
 
-snp_rates_p = ggplot(subset(long_data, variable != "tp.prop" & divergence > 0), aes(x=divergence, y=value, color=variable)) +
+snp_rates_p = ggplot(subset(long_data_snp, variable != "tp.prop" & divergence > 0), aes(x=divergence, y=value, color=variable)) +
   geom_line(size=1.2) +
   geom_point(size=3) +
   xlab("Simulated divergence") +
   ylab("Proportion of variants") +
-  scale_x_continuous(breaks=unique(long_data$divergence)) +
+  scale_x_continuous(breaks=unique(long_data_snp$divergence)) +
   scale_color_manual(guide=guide_legend(reverse=T), labels=c("False positive", "False negative"), values=cols) +
   bartheme() +
   theme(legend.position="bottom")
@@ -324,7 +325,7 @@ NAs are called heterozygous sites (either at simulated diverged sites or not)
 
 mb_p = ggplot(snp_stats_chr, aes(x=type, y=mappability)) +
   geom_violin(aes(fill=type), alpha=0.3) +
-  geom_boxplot(width=0.1, outlier.shape=NA) +
+  geom_boxplot(width=0.25, outlier.shape=NA) +
   xlab("SNP classification") +
   ylab("Mappability") +
   facet_wrap(~divergence) +
@@ -360,29 +361,30 @@ bam_stats$missing.prop = bam_stats$missing.in.query / bam_stats$total.reads
 
 bam_stats_sum = select(bam_stats, divergence, exact.map.prop, close.map.prop, mismapped.prop, diff.chr.prop, unmapped.prop, missing.prop)
 
-long_data = melt(bam_stats_sum, id.vars=c("divergence"))
+long_data_bam = melt(bam_stats_sum, id.vars=c("divergence"))
 #long_data = subset(long_data, variable != "coverage")
 #long_data = subset(long_data, variable != "exact.map" & variable != "close.map" & variable != "mismapped" & variable != "diff.chr" & variable != "unmapped")
 
-#long_data$text = NA
+long_data_bam$text = NA
 
 #long_data$text = bam_stats
 
-#long_data[long_data$variable=="exact.map.prop",]$text = bam_stats$exact.map[bam_stats$divergence==long_data[long_data$variable=="exact.map.prop",]$divergence]
-#long_data[long_data$variable=="close.map.prop",]$text = bam_stats$close.map[bam_stats$divergence==long_data[long_data$variable=="close.map.prop",]$divergence]
-#long_data[long_data$variable=="mismapped.prop",]$text = bam_stats$mismapped[bam_stats$divergence==long_data[long_data$variable=="mismapped.prop",]$divergence]
-#long_data[long_data$variable=="diff.chr.prop",]$text = bam_stats$diff.chr[bam_stats$divergence==long_data[long_data$variable=="diff.chr.prop",]$divergence]
-#long_data[long_data$variable=="unmapped.prop",]$text = bam_stats$unmapped[bam_stats$divergence==long_data[long_data$variable=="unmapped.prop",]$divergence]
+long_data_bam[long_data_bam$variable=="exact.map.prop",]$text = bam_stats$exact.map[bam_stats$divergence==long_data_bam[long_data_bam$variable=="exact.map.prop",]$divergence]
+long_data_bam[long_data_bam$variable=="close.map.prop",]$text = bam_stats$close.map[bam_stats$divergence==long_data_bam[long_data_bam$variable=="close.map.prop",]$divergence]
+long_data_bam[long_data_bam$variable=="mismapped.prop",]$text = bam_stats$mismapped[bam_stats$divergence==long_data_bam[long_data_bam$variable=="mismapped.prop",]$divergence]
+long_data_bam[long_data_bam$variable=="diff.chr.prop",]$text = bam_stats$diff.chr[bam_stats$divergence==long_data_bam[long_data_bam$variable=="diff.chr.prop",]$divergence]
+long_data_bam[long_data_bam$variable=="unmapped.prop",]$text = bam_stats$unmapped[bam_stats$divergence==long_data_bam[long_data_bam$variable=="unmapped.prop",]$divergence]
+long_data_bam[long_data_bam$variable=="missing.prop",]$text = bam_stats$missing.in.query[bam_stats$divergence==long_data_bam[long_data_bam$variable=="missing.prop",]$divergence]
 
 read_classes = c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop")
 read_class_names = c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped", "Missing")
 
-long_data$variable = factor(long_data$variable, levels=rev(read_classes))
+long_data_bam$variable = factor(long_data_bam$variable, levels=rev(read_classes))
 
 cols = corecol(pal="wilke", numcol=length(read_class_names), offset=1)
 names(cols) = read_classes
 
-overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable)) +
+overlaps_p = ggplot(long_data_bam, aes(x=divergence, y=value, fill=variable)) +
   geom_bar(stat="identity") +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
@@ -392,7 +394,7 @@ overlaps_p = ggplot(long_data, aes(x=divergence, y=value, fill=variable)) +
   ylab("Proportion of reads") +
   scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
-  scale_x_continuous(breaks=unique(long_data$divergence)) +
+  scale_x_continuous(breaks=unique(long_data_bam$divergence)) +
   scale_fill_manual(labels=read_class_names, values=cols) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
@@ -407,7 +409,7 @@ print(overlaps_p)
 cols = corecol(pal="wilke", numcol=5, offset=2)
 names(cols) = read_classes[-1]
 
-read_rates_p = ggplot(subset(long_data, variable != "exact.map.prop"), aes(x=divergence, y=value, color=variable)) +
+read_rates_p = ggplot(subset(long_data_bam, variable != "exact.map.prop"), aes(x=divergence, y=value, color=variable)) +
   geom_line(size=1.2) +
   geom_point(size=3) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
@@ -418,7 +420,7 @@ read_rates_p = ggplot(subset(long_data, variable != "exact.map.prop"), aes(x=div
   ylab("Proportion of reads") +
   #scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
-  scale_x_continuous(breaks=unique(long_data$divergence)) +
+  scale_x_continuous(breaks=unique(long_data_bam$divergence)) +
   scale_color_manual(labels=read_class_names[-1], values=cols) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
@@ -426,6 +428,142 @@ read_rates_p = ggplot(subset(long_data, variable != "exact.map.prop"), aes(x=div
 print(read_rates_p)
 
 ```
+
+# SNP errors and read errors
+
+## True positive SNPs
+
+```{r read-tp-cors, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+comb_stats = merge(sum_stats, bam_stats, by="divergence")
+
+read_types <- c("missing.prop"="Missing", "unmapped.prop"="Unmapped", "diff.chr.prop"="Diff. chrome", "mismapped.prop"="Mismapped", "close.map.prop"="Close map", "exact.map.prop"="Exact map")
+
+comb_stats_long = merge(long_data_bam, long_data_snp, by="divergence")
+comb_stats_long = subset(comb_stats_long, divergence != 0.00)
+tmp = subset(comb_stats_long, variable.y == "tp.prop")
+
+count_p = ggplot(tmp, aes(x=text.y, y=text.x, color=as.character(divergence))) +
+  geom_point(size=4, alpha=0.8) +
+  geom_smooth(method="lm", se=F, linetype="dotted", show.legend=F, color="#333333") +
+  #scale_color_manual(values=corecol(pal="trek", numcol=5)) +
+  scale_color_viridis(name="Divergence", discrete=T, option="E") +
+  xlab("# of called SNPs that are True Positives") +
+  ylab("# of reads") +
+  facet_wrap(~variable.x, scales="free", labeller=as_labeller(read_types)) +
+  bartheme() +
+  theme(legend.position="right",
+        legend.title = element_text(size=12),
+        axis.text.x=element_text(angle=45, hjust=1, size=8))
+#print(count_p)
+
+prop_p = ggplot(tmp, aes(x=value.y, y=value.x, color=as.character(divergence))) +
+  geom_point(size=4, alpha=0.8) +
+  geom_smooth(method="lm", se=F, linetype="dotted", show.legend=F, color="#333333") +
+  #scale_color_manual(values=corecol(pal="trek", numcol=5)) +
+  scale_color_viridis(name="Divergence", discrete=T, option="E") +
+  xlab("Proportion of called SNPs that\nare True Positives") +
+  ylab("Proportion of reads") +
+  facet_wrap(~variable.x, scales="free", labeller=as_labeller(read_types)) +
+  bartheme() +
+  theme(legend.position="right",
+        legend.title = element_text(size=12),
+        axis.text.x=element_text(angle=45, hjust=1, size=8))
+#print(prop_p)
+
+leg = get_legend(prop_p)
+
+p_main = plot_grid(count_p + theme(legend.position="none"), prop_p + theme(legend.position="none"), nrow=2, labels=c("Raw counts", "Proportions"))
+p = plot_grid(p_main, leg, ncol=2, rel_widths=c(1,0.1))
+print(p)
+
+
+```
+
+## False positive SNPs
+
+```{r read-fp-cors, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+tmp = subset(comb_stats_long, variable.y == "fp.prop")
+
+count_p = ggplot(tmp, aes(x=text.y, y=text.x, color=as.character(divergence))) +
+  geom_point(size=4, alpha=0.8) +
+  geom_smooth(method="lm", se=F, linetype="dotted", show.legend=F, color="#333333") +
+  #scale_color_manual(values=corecol(pal="trek", numcol=5)) +
+  scale_color_viridis(name="Divergence", discrete=T, option="E") +
+  xlab("# of called SNPs that are False Positives") +
+  ylab("# of reads") +
+  facet_wrap(~variable.x, scales="free", labeller=as_labeller(read_types)) +
+  bartheme() +
+  theme(legend.position="right",
+        legend.title = element_text(size=12),
+        axis.text.x=element_text(angle=45, hjust=1, size=8))
+#print(count_p)
+
+prop_p = ggplot(tmp, aes(x=value.y, y=value.x, color=as.character(divergence))) +
+  geom_point(size=4, alpha=0.8) +
+  geom_smooth(method="lm", se=F, linetype="dotted", show.legend=F, color="#333333") +
+  #scale_color_manual(values=corecol(pal="trek", numcol=5)) +
+  scale_color_viridis(name="Divergence", discrete=T, option="E") +
+  xlab("Proportion of called SNPs that\nare False Positives") +
+  ylab("Proportion of reads") +
+  facet_wrap(~variable.x, scales="free", labeller=as_labeller(read_types)) +
+  bartheme() +
+  theme(legend.position="right",
+        legend.title = element_text(size=12),
+        axis.text.x=element_text(angle=45, hjust=1, size=8))
+#print(prop_p)
+
+leg = get_legend(prop_p)
+
+p_main = plot_grid(count_p + theme(legend.position="none"), prop_p + theme(legend.position="none"), nrow=2, labels=c("Raw counts", "Proportions"))
+p = plot_grid(p_main, leg, ncol=2, rel_widths=c(1,0.1))
+print(p)
+
+```
+
+## False negative SNPs
+
+```{r read-fn-cors, out.width="50%", fig.align = "center", warning=FALSE, fig.height=8}
+
+tmp = subset(comb_stats_long, variable.y == "fn.prop")
+
+count_p = ggplot(tmp, aes(x=text.y, y=text.x, color=as.character(divergence))) +
+  geom_point(size=4, alpha=0.8) +
+  geom_smooth(method="lm", se=F, linetype="dotted", show.legend=F, color="#333333") +
+  #scale_color_manual(values=corecol(pal="trek", numcol=5)) +
+  scale_color_viridis(name="Divergence", discrete=T, option="E") +
+  xlab("# of called SNPs that are False Negatives") +
+  ylab("# of reads") +
+  facet_wrap(~variable.x, scales="free", labeller=as_labeller(read_types)) +
+  bartheme() +
+  theme(legend.position="right",
+        legend.title = element_text(size=12),
+        axis.text.x=element_text(angle=45, hjust=1, size=8))
+#print(count_p)
+
+prop_p = ggplot(tmp, aes(x=value.y, y=value.x, color=as.character(divergence))) +
+  geom_point(size=4, alpha=0.8) +
+  geom_smooth(method="lm", se=F, linetype="dotted", show.legend=F, color="#333333") +
+  #scale_color_manual(values=corecol(pal="trek", numcol=5)) +
+  scale_color_viridis(name="Divergence", discrete=T, option="E") +
+  xlab("Proportion of called SNPs that\nare False Negatives") +
+  ylab("Proportion of reads") +
+  facet_wrap(~variable.x, scales="free", labeller=as_labeller(read_types)) +
+  bartheme() +
+  theme(legend.position="right",
+        legend.title = element_text(size=12),
+        axis.text.x=element_text(angle=45, hjust=1, size=8))
+#print(prop_p)
+
+leg = get_legend(prop_p)
+
+p_main = plot_grid(count_p + theme(legend.position="none"), prop_p + theme(legend.position="none"), nrow=2, labels=c("Raw counts", "Proportions"))
+p = plot_grid(p_main, leg, ncol=2, rel_widths=c(1,0.1))
+print(p)
+
+```
+
 
 [< Back ](index.html)
 
