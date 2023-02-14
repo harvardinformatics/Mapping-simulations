@@ -45,7 +45,7 @@ NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK
 - Coverage: 30X for both NEAT runs
 
 ```{r read, out.width="100%", fig.align = "center", warning=FALSE}
-summary_file = here("data", "mm39-30X-vcf-summary.csv")
+summary_file = here("data", "mm39-30X-0.005h-vcf-summary.csv")
 sum_stats_chr = read.csv(summary_file, header=T)
 # Read the summary file from compare_vcfs
 
@@ -71,7 +71,7 @@ sum_stats %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condende
 
 ####################
 
-snp_file = here("data", "mm39-30X-vcf-snps-genmap.csv.gz")
+snp_file = here("data", "mm39-30X-0.005h-snps-genmap.csv.gz")
 snp_stats_chr = read.csv(gzfile(snp_file), header=T, comment.char="#")
 #names(snp_stats_chr)[1] = "coverage"
 #snp_stats_chr = subset(snp_stats_chr, coverage != "# coverage")
@@ -79,7 +79,7 @@ snp_stats_chr = read.csv(gzfile(snp_file), header=T, comment.char="#")
 
 ####################
 
-mapping_file = here("data", "mm39-30X-bam-summary.csv")
+mapping_file = here("data", "mm39-30X-0.005h-bam-summary.csv")
 bam_stats = read.csv(mapping_file, header=T)
 # Read the bam compare file
 
@@ -325,7 +325,7 @@ NAs are called heterozygous sites (either at simulated diverged sites or not)
 
 mb_p = ggplot(snp_stats_chr, aes(x=type, y=mappability)) +
   geom_violin(aes(fill=type), alpha=0.3) +
-  geom_boxplot(width=0.25, outlier.shape=NA) +
+  geom_boxplot(width=0.2, outlier.shape=NA) +
   xlab("SNP classification") +
   ylab("Mappability") +
   facet_wrap(~divergence) +
