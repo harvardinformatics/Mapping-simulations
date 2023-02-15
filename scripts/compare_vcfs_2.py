@@ -211,6 +211,7 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
         # If the current site is variant in both sets it will be tp or tp.pos
             if query_gt in ["0/1", "1/0", "1|0", "0|1"]:
                 num_het_in_golden += 1;
+                type_str = "het.golden";
             elif query_gt in ["1/1", "1|1"]:
                 num_tp += 1;
                 type_str = "tp";
@@ -232,6 +233,7 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
         # If the current site is variant in the query but not the golden set, it is a false positive
             if query_gt in ["0/1", "1/0", "1|0", "0|1"]:
                 num_het_not_in_golden += 1;
+                type_str = "het.non.golden";
             elif query_gt in ["1/1", "1|1"]:
                 num_fp += 1;
                 type_str = "fp";
@@ -371,7 +373,7 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
 
     ####################
 
-    headers = ["region", "coverage", "divergence", "heterozygosity", "iteration", "golden variants", "golden variants same site", "golden invariant", "called variants", "tp", "fp", "fn", "tn", "called het golden", "called het non golden" "no info"];
+    headers = ["region", "coverage", "divergence", "heterozygosity", "iteration", "golden variants", "golden variants same site", "golden invariant", "called variants", "tp", "fp", "fn", "tn", "called het golden", "called het non golden", "no info"];
     PWS(",".join(headers), sumfile);
     # Write the headers for the summary file
 

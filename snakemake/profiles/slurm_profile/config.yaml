@@ -16,6 +16,6 @@ default-resources:
   - partition="holy-info,shared"
   - mem="12g"
   - time="16:00:00"
-restart-times: 3
+restart-times: 0
 latency-wait: 15
 verbose: true 

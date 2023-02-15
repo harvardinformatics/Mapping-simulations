@@ -100,9 +100,11 @@ def fastaReadSeqs(filename, header_sep=False):
 
 #############################################################################
 
-snpfile = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/mm39-30X-vcf-snps.csv.gz";
-genmap_txt = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes-genmap.txt";
-outfile_name = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/mm39-30X-vcf-snps-genmap.csv";
+snpfile, genmap_txt, outfile_name = sys.argv[1:];
+
+#snpfile = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/mm39-30X-vcf-snps.csv.gz";
+#genmap_txt = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes-genmap.txt";
+#outfile_name = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/mm39-30X-vcf-snps-genmap.csv";
 # File names
 
 print("# " + getDateTime() + " Counting lines in SNP file...");

@@ -16,6 +16,8 @@ import re
 #############################################################################
 # Reference file and path info
 
+indir = config["sim_indir"];
+
 ref_str = config["ref_str"];
 # The subfolder and abbreviation for the current reference genome
 
@@ -43,6 +45,9 @@ covs = config["covs"];
 divs = config["divs"];
 # Average divergence to simulate
 
+hets = config["hets"];
+# Average heterozygosity to simulate
+
 #############################################################################
 # Python checks
 
@@ -67,19 +72,19 @@ localrules: all
 
 rule all:
     input:
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}-compare-vcf-summary.csv"), cov=covs, div=divs, region=regions, n=range(1, num_iters+1)),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}-compare-vcf-snps.csv"), cov=covs, div=divs, region=regions, n=range(1, num_iters+1)),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-summary.csv"), cov=covs, div=divs, het=hets, region=regions, n=range(1, num_iters+1)),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv"), cov=covs, div=divs, het=hets, region=regions, n=range(1, num_iters+1)),
         # Expected output from compare_vcfs
 
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}-compare-bam-summary.csv"), cov=covs, div=divs, n=range(1, num_iters+1)),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-compare-bam-summary.csv"), cov=covs, div=divs, het=hets, n=range(1, num_iters+1)),
         # Expected output from compare_bams
 
-        expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden", "qualimapReport.html"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped", "qualimapReport.html"), cov=covs, div=divs, n=range(1, num_iters+1)),
+        # expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden", "qualimapReport.html"), cov=covs, div=divs, n=range(1, num_iters+1)),
+        # expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped", "qualimapReport.html"), cov=covs, div=divs, n=range(1, num_iters+1)),
         # Expected output from qualimap_bams
 
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-snps-consensus.fa"), cov=covs, div=divs),
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-snps-consensus.chain"), cov=covs, div=divs)
+        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), cov=covs, div=divs, het=hets,),
+        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets,)
         # Expected output from generate_consensus
 
         #expand(os.path.join(outdir, "ref-regions", ref_str + "-{region}.fa"), region=regions),
@@ -158,11 +163,11 @@ rule all:
 #############################################################################
 # Pipeline rules
 
-rule extract_region:
+rule extract_region_sim:
     input:
-        ref = REF
+        ref = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa")
     output:
-        os.path.join(outdir, "ref-regions", ref_str + "-{region}.fa")
+        os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
     params:
         region = "{region}"
     resources:
@@ -176,41 +181,49 @@ rule extract_region:
 
 #################
 
-# rule index_fasta:
-#     input:
-#         os.path.join(ref_dir, ref_str + "-{region}.fa")
-#     output:
-#         os.path.join(ref_dir, ref_str + "-{region}.fa.fai")
-#     shell:
-#         """
-#         samtools faidx {input}
-#         """
-# Indexing the chromosome FASTAs... not needed if merging before mapping.
+rule index_region_sim:
+    input:
+        os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
+    output:
+        #bwa_indices = multiext(os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
+        #samtools_index = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa.fai"),
+        picard_dict = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.dict")
+    log:
+        os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", "logs", ref_str + "{region}-dict.log")
+    shell:
+        """
+        rm -f {output.picard_dict}
+        picard CreateSequenceDictionary R={input} O={output.picard_dict}
+        """
+# Index the simulated genome
 
 #################
 
 def get_runtime_neat(wildcards, attempt):
-    times = ["8:00:00", "8:00:00", "16:00:00", "20:00:00", "24:00:00"];
-    return times[attempt];
+    base_time = 6;
+    multiplier = 100;
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
 rule simulate_reads:
     input:
-        os.path.join(outdir, "ref-regions", ref_str + "-{region}.fa")
+        os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
     output:
-        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_read1.fq.gz"),
-        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_read2.fq.gz"),
-        bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.bam"),
-        vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz"),
+        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_read1.fq.gz"),
+        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_read2.fq.gz"),
+        bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.bam"),
+        vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz"),
     params:
-        prefix = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}"),
+        prefix = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}"),
         div = "{div}",
         cov = "{cov}"
     log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "-{region}.log")
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{region}.log")
     resources:
         mem = "12g",
         time = get_runtime_neat
+    retries: 3
     shell:
         """
         python ../pkgs/NEAT/gen_reads.py -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.div} &> {log}
@@ -222,23 +235,26 @@ rule simulate_reads:
 #################
 
 def get_runtime_merge_fq(wildcards, attempt):
-    times = ["8:00:00", "8:00:00", "12:00:00", "16:00:00", "24:00:00"];
-    return times[attempt];
+    base_time = 6;
+    multiplier = 100;
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
 rule merge_simulated_fastqs:
     input:
-        read1 = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_read1.fq.gz"), region=regions),
-        read2 = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_read2.fq.gz"), region=regions)
+        read1 = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_read1.fq.gz"), region=regions),
+        read2 = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_read2.fq.gz"), region=regions)
     output:
-        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fq.gz"),
-        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fq.gz"),
+        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read1.fq.gz"),
+        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read2.fq.gz"),
     params:
-        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fq"),
-        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fq"),
+        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read1.fq"),
+        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read2.fq"),
     resources:
         mem = "4g",
         time = get_runtime_merge_fq
+    retries: 3    
     shell:
         """
         zcat {input.read1} > {params.read1}
@@ -252,11 +268,11 @@ rule merge_simulated_fastqs:
 
 rule merge_golden_bams:
     input:
-        expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_golden.bam"), region=regions)
+        expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_golden.bam"), region=regions)
     output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam"),
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
     log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "_golden-bam-merge.log"),
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "_golden-bam-merge.log"),
     resources:
         cpus = 8,
         time = "2:00:00",
@@ -271,11 +287,11 @@ rule merge_golden_bams:
 
 rule index_golden_bams:
     input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam")
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam")
     output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam.bai")
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai")
     log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}-index.log")
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}-index.log")
     resources:
         time = "4:00:00",
         mem = "4g"
@@ -287,76 +303,76 @@ rule index_golden_bams:
 
 #################
 
-rule index_golden_vcfs_region:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "-{region}-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the golden VCFs, otherwise bcftools concat errors
+# rule index_golden_vcfs_region:
+#     input:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz")
+#     output:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi")
+#     log:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "-{region}-tabix.log")
+#     resources:
+#         mem = "2g",
+#         time = "2:00:00"
+#     shell:
+#         """
+#         tabix {input} &> {log}
+#         """
+# # Index the golden VCFs, otherwise bcftools concat errors
 
-#################
+# #################
 
-rule merge_golden_vcfs:
-    input:
-        vcf = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_golden.vcf.gz"), region=regions),
-        index = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), region=regions)
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz"),
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "_golden-vcf-merge.log"),
-    resources:
-        cpus = 8,
-        time = "2:00:00",
-        mem = "4g"
-    shell:
-        """
-        bcftools concat --threads {resources.cpus} -Oz -o {output} {input.vcf} &> {log}
-        """
-# Merge simulated VCF files for all chromosomes
+# rule merge_golden_vcfs:
+#     input:
+#         vcf = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_golden.vcf.gz"), region=regions),
+#         index = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), region=regions)
+#     output:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz"),
+#     log:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "_golden-vcf-merge.log"),
+#     resources:
+#         cpus = 8,
+#         time = "2:00:00",
+#         mem = "4g"
+#     shell:
+#         """
+#         bcftools concat --threads {resources.cpus} -Oz -o {output} {input.vcf} &> {log}
+#         """
+# # Merge simulated VCF files for all chromosomes
 
-#################
+# #################
 
-rule index_golden_vcfs_merged:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz"),
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz.tbi"),
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the merged golden VCFs
+# rule index_golden_vcfs_merged:
+#     input:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz"),
+#     output:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz.tbi"),
+#     log:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "tabix.log")
+#     resources:
+#         mem = "2g",
+#         time = "2:00:00"
+#     shell:
+#         """
+#         tabix {input} &> {log}
+#         """
+# # Index the merged golden VCFs
 
 #################
 
 rule trim_simulated_reads:
     input:
-        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fq.gz"),
-        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fq.gz")
+        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read1.fq.gz"),
+        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read2.fq.gz")
     output:
-        trim_read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fastp.fq.gz"),
-        trim_read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fastp.fq.gz"),
-        html = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_fastp.html"),
-        json = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_fastp.json"),
+        trim_read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read1.fastp.fq.gz"),
+        trim_read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read2.fastp.fq.gz"),
+        html = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_fastp.html"),
+        json = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_fastp.json"),
     resources:
         cpus = 4,
         time = "4:00:00"
     log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "logs", ref_str + "-fastp.log")
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-fastp.log")
     shell:
         """
         fastp -i {input.read1} -I {input.read2} --out1 {output.trim_read1} --out2 {output.trim_read2} --detect_adapter_for_pe --cut_front --cut_front_window_size 5 --cut_front_mean_quality 20 -l 25 -j {output.json} -h {output.html} -w {resources.cpus} 2> {log}
@@ -370,7 +386,7 @@ def map_iters_ref(wcs):
     if n == 1:
         r = REF
     elif n > 1:
-        r = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(n-1), ref_str + "-snps-consensus.fa")
+        r = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(n-1), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa")
     else:
         raise ValueError("loop numbers must be 1 or greater: received %s" % wcs.n)
     #print(r);
@@ -381,7 +397,7 @@ def map_iters_ind(wcs):
     if n == 1:
         r = multiext(REF, ".amb", ".ann", ".bwt", ".pac", ".sa")
     elif n > 1:
-        r = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(n-1), ref_str + "-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa")
+        r = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(n-1), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa")
     else:
         raise ValueError("loop numbers must be 1 or greater: received %s" % wcs.n)
     #print(r);
@@ -389,16 +405,16 @@ def map_iters_ind(wcs):
 
 rule map_simulated_reads:
     input:
-        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fastp.fq.gz"),
-        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fastp.fq.gz"),
+        read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read1.fastp.fq.gz"),
+        read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read2.fastp.fq.gz"),
         ref = map_iters_ref,
         ref_index = map_iters_ind
     output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
     params:
-        read_group = "@RG\\tID:" + ref_str + "-{cov}X-{div}\\tLB:NEAT\\tPL:ILLUMINA" + "\\tSM:" + ref_str + "-{cov}X-{div}"
+        read_group = "@RG\\tID:" + ref_str + "-{cov}X-{div}d-{het}h\\tLB:NEAT\\tPL:ILLUMINA" + "\\tSM:" + ref_str + "-{cov}X-{div}d-{het}h"
     log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}-iter{n}.log")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}.log")
     wildcard_constraints:
         n="[0-9]+"
     resources:
@@ -415,11 +431,11 @@ rule map_simulated_reads:
 
 rule index_bams:
     input:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
     output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam.bai")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai")
     log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}-iter{n}-index.log")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-index.log")
     resources:
         time = "4:00:00",
         mem = "4g"
@@ -431,26 +447,28 @@ rule index_bams:
 
 #################
 
-def get_runtime_gatk(wildcards, attempt):
-    times = ["168:00:00", "200:00:00", "250:00:00", "300:00:00", "400:00:00"];
-    return times[attempt];
+def get_runtime_gatk_hc(wildcards, attempt):
+    base_time = 160;
+    multiplier = 200;
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
 rule gatk_haplotypecaller: 
     input:
-        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam"),
-        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam.bai"),
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai"),
         ref = REF
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.gvcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.gvcf.gz")
     params:
         region = "{region}"
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-haplotypecaller-{region}-{cov}X-{div}-iter{n}.log"),
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-haplotypecaller-{region}-{cov}X-{div}d-{het}h-iter{n}.log"),
     resources:
         cpus = 4,
         mem="4g",
-        time = "168:00:00"
+        time = get_runtime_gatk_hc
     shell:
         """
         gatk HaplotypeCaller -R {input.ref} -I {input.bam} -stand-call-conf 30 --native-pair-hmm-threads {resources.cpus} -L {params.region} -ERC GVCF -O {output} &> {log}
@@ -459,24 +477,26 @@ rule gatk_haplotypecaller:
 
 #################
 
-def get_runtime_gatk(wildcards, attempt):
-    times = ["4:00:00", "6:00:00", "12:00:00", "24:00:00", "32:00:00"];
-    return times[attempt];
+def get_runtime_gatk_gt(wildcards, attempt):
+    base_time = 6;
+    multiplier = 100;
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
 rule gatk_genotypegvcfs: 
     input:
-        gvcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.gvcf.gz"),
+        gvcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.gvcf.gz"),
         ref = REF
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz")
     params:
         region = "{region}"
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-genotypegvcfs-{region}-{cov}X-{div}-iter{n}.log"),
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-genotypegvcfs-{region}-{cov}X-{div}d-{het}h-iter{n}.log"),
     resources:
         mem="4g",
-        time = get_runtime_gatk
+        time = get_runtime_gatk_gt
     shell:
         """
         gatk GenotypeGVCFs -R {input.ref} -V {input.gvcf} -O {output} --include-non-variant-sites &> {log}
@@ -487,11 +507,11 @@ rule gatk_genotypegvcfs:
 
 rule index_vcfs_regions:
     input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz.tbi")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{region}-{cov}X-{div}-iter{n}-tabix.log")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{region}-{cov}X-{div}d-{het}h-iter{n}-tabix.log")
     resources:
         mem = "2g",
         time = "2:00:00"
@@ -504,12 +524,12 @@ rule index_vcfs_regions:
 
 rule merge_vcfs:
     input:
-        vcf = expand(os.path.join(outdir, "called-variants", "gatk", "{{cov}}X", "{{div}}", "iter{{n}}", "regions", ref_str + "-{region}-{{cov}}X-{{div}}.vcf.gz"), region=regions),
-        index = expand(os.path.join(outdir, "called-variants", "gatk", "{{cov}}X", "{{div}}", "iter{{n}}", "regions", ref_str + "-{region}-{{cov}}X-{{div}}.vcf.gz.tbi"), region=regions)
+        vcf = expand(os.path.join(outdir, "called-variants", "gatk", "{{cov}}X", "{{div}}", "iter{{n}}", "regions", ref_str + "-{region}-{{cov}}X-{{div}}d-{{het}}h.vcf.gz"), region=regions),
+        index = expand(os.path.join(outdir, "called-variants", "gatk", "{{cov}}X", "{{div}}", "iter{{n}}", "regions", ref_str + "-{region}-{{cov}}X-{{div}}d-{{het}}h.vcf.gz.tbi"), region=regions)
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz"),
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz")
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-vcf-merge.log"),
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-vcf-merge.log"),
     resources:
         cpus = 8,
         time = "2:00:00",
@@ -524,11 +544,11 @@ rule merge_vcfs:
 
 rule index_vcfs_merged:
     input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz.tbi")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-tabix.log")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-tabix.log")
     resources:
         mem = "2g",
         time = "2:00:00"
@@ -542,18 +562,18 @@ rule index_vcfs_merged:
 
 rule compare_vcfs:
     input:
-        golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz"),
-        golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"),
-        query = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz"),
-        query_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz.tbi")
+        golden = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz"),
+        golden_index = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), 
+        query = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz"),
+        query_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     params:
         outdir = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions"),
         div = "{div}",
         cov = "{cov}",
         iteration = "{n}"
     output:
-        summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}-compare-vcf-summary.csv"),
-        snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}-compare-vcf-snps.csv")
+        summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-summary.csv"),
+        snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv")
     resources:
         mem = "4g",
         time = "1:00:00"
@@ -567,12 +587,35 @@ rule compare_vcfs:
 
 #################
 
+rule liftover_bams:
+    input:
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+        chain = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.chain")
+    output:
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam"),
+        bam_sorted = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
+        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai")
+    params:
+        out_prefix = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-crossmap"),
+    log:
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-crossmap.log")
+    resources:
+        mem = "24g"
+    shell:
+        """
+        CrossMap.py bam -a {input.chain} {input.bam} {params.out_prefix} &> {log}
+        """
+# Liftover the coordinates of the mapped reads from the mouse reference to the simulated divergent genome (same as golden bam here)
+# https://crossmap.sourceforge.net/#convert-bam-cram-sam-format-files 
+
+#################
+
 rule compare_bams:
     input:
-        golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam"),
-        golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam.bai"),
-        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam"),
-        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam.bai"),
+        golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
+        golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai"),
+        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
+        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai"),
         ref_index = REF_INDEX
     params:
        div = "{div}",
@@ -580,7 +623,7 @@ rule compare_bams:
        reg = ",".join(regions),
        iteration = "{n}"
     output:
-        summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}-compare-bam-summary.csv"),
+        summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-compare-bam-summary.csv"),
     resources:
         mem = "24g",
         time = "8:00:00"
@@ -594,44 +637,44 @@ rule compare_bams:
 
 #################
 
-def get_runtime_qualimap(wildcards, attempt):
-    times = ["8:00:00", "12:00:00", "16:00:00", "20:00:00", "32:00:00"];
-    return times[attempt];
-# Sets the run time based on the number of times the job has been restarted
-rule qualimap_bams:
-    input:
-        golden_bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam"),
-        mapped_bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam")
-    output:
-        golden_qualimap = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden", "qualimapReport.html"),
-        mapped_qualimap = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped", "qualimapReport.html")
-    params:
-        golden_outdir = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden"),
-        mapped_outdir = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped")
-    log:
-        golden_log = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-golden.log"),
-        mapped_log = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-mapped.log")
-    resources:
-        cpus = 32,
-        time = get_runtime_qualimap
-    shell:
-        """
-        qualimap bamqc -bam {input.golden_bam} -nt {resources.cpus} -outdir {params.golden_outdir} -outformat html --java-mem-size=12G &> {log.golden_log}
-        qualimap bamqc -bam {input.mapped_bam} -nt {resources.cpus} -outdir {params.mapped_outdir} -outformat html --java-mem-size=12G &> {log.mapped_log}
-        """        
+# def get_runtime_qualimap(wildcards, attempt):
+#     times = ["8:00:00", "12:00:00", "16:00:00", "20:00:00", "32:00:00"];
+#     return times[attempt];
+# # Sets the run time based on the number of times the job has been restarted
+# rule qualimap_bams:
+#     input:
+#         golden_bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam"),
+#         mapped_bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam")
+#     output:
+#         golden_qualimap = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden", "qualimapReport.html"),
+#         mapped_qualimap = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped", "qualimapReport.html")
+#     params:
+#         golden_outdir = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden"),
+#         mapped_outdir = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped")
+#     log:
+#         golden_log = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-golden.log"),
+#         mapped_log = os.path.join(outdir, "qualimap", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-mapped.log")
+#     resources:
+#         cpus = 32,
+#         time = get_runtime_qualimap
+#     shell:
+#         """
+#         qualimap bamqc -bam {input.golden_bam} -nt {resources.cpus} -outdir {params.golden_outdir} -outformat html --java-mem-size=12G &> {log.golden_log}
+#         qualimap bamqc -bam {input.mapped_bam} -nt {resources.cpus} -outdir {params.mapped_outdir} -outformat html --java-mem-size=12G &> {log.mapped_log}
+#         """        
 
 #################
 
 rule filter_vcf:
     input:
-        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz"),
-        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz.tbi")
+        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz"),
+        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz")
     params:
         filt = FILTER_STR
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-vcf-filter.log")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-vcf-filter.log")
     shell:
         """
         bcftools filter -m+ -e {params.filt} -s pseudoit --IndelGap 5 -Oz -o {output} {input.vcf} &> {log}
@@ -643,11 +686,11 @@ rule filter_vcf:
 
 rule index_vcfs_filtered:
     input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz.tbi")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz.tbi")
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-filter-tabix.log")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-filter-tabix.log")
     resources:
         mem = "2g",
         time = "2:00:00"
@@ -661,12 +704,12 @@ rule index_vcfs_filtered:
 
 rule select_snps:
     input:
-        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz"),
-        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz.tbi")
+        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz"),
+        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz.tbi")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz"),
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz"),
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-vcf-select-snps.log")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-vcf-select-snps.log")
     shell:
         """
         gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
@@ -677,11 +720,11 @@ rule select_snps:
 
 rule index_vcfs_snps:
     input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz.tbi")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz.tbi")
     log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-snps-tabix.log")
+        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-snps-tabix.log")
     resources:
         mem = "2g",
         time = "2:00:00"
@@ -692,54 +735,54 @@ rule index_vcfs_snps:
 # Index the SNP VCFs
 #################
 
-rule get_mask_sites:
-    input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-filtered-snps.vcf.gz")
-    output:
-        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-masksites.bed")
-    shell:
-        """
-        zgrep \"\./\.\" {input} | awk '{{OFS=\"\t\"; if ($0 !~ /\#/); print $1, $2-1, $2}}' | bedtools merge -i - > {output}
-        """
+# rule get_mask_sites:
+#     input:
+#         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz")
+#     output:
+#         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-masksites.bed")
+#     shell:
+#         """
+#         zgrep \"\./\.\" {input} | awk '{{OFS=\"\t\"; if ($0 !~ /\#/); print $1, $2-1, $2}}' | bedtools merge -i - > {output}
+#         """
 
-rule mask_fa:
-    input:
-        ref = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters-1), ref_str + "-snps-consensus.fa"),
-        bed = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-masksites.bed")
-    output:
-        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-snps-consensus-iter" + str(num_iters-1) + "-masked.fa")
-    shell:
-        """
-        bedtools maskfasta -fi {input.ref} -bed {input.bed} -soft -fo {output}
-        """
+# rule mask_fa:
+#     input:
+#         ref = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "{het}", "iter" + str(num_iters-1), ref_str + "-snps-consensus.fa"),
+#         bed = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-masksites.bed")
+#     output:
+#         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-snps-consensus-iter" + str(num_iters-1) + "-{cov}X-{div}d-{het}h-masked.fa")
+#     shell:
+#         """
+#         bedtools maskfasta -fi {input.ref} -bed {input.bed} -soft -fo {output}
+#         """
 
 #################
 
 rule generate_consensus:
     input:
-        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz"),
-        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz.tbi"),
+        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz"),
+        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz.tbi"),
         ref = REF
     output:
-        fasta = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa"),
-        chain = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.chain")
+        fasta = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"),
+        chain = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain")
     log:
-        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-consensus.log")
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-consensus.log")
     shell:
         """
         bcftools consensus -f {input.ref} -o {output.fasta} -c {output.chain} -e "FILTER='pseudoit' || FILTER='IndelGap'" {input.vcf} &> {log}
         """   
-    
+
 #################
 
 rule index_consensus:
     input:
-        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa")
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa")
     output:
-        samtools_index = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa.fai"),
-        bwa_index = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
+        samtools_index = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa.fai"),
+        bwa_index = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
     log:
-        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-consensus-index.log")
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-consensus-index.log")
     shell:
         """
         samtools faidx {input} 2> {log}

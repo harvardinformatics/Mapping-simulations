@@ -10,6 +10,11 @@ ref_file: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/r
 # 3. picard CreateSequenceDictionary
 
 ref_index: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+# The index for the reference genome, from samtools faidx
+
+ref_genmap: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes-genmap.txt
+# The text format output from running genmap on the reference genome
+# Needed if annotating SNP calls with mappability (annotate_mappability rule)
 
 ref_str: mm39
 # The abbreviation for the current reference genome, used for output files
