@@ -469,6 +469,7 @@ rule gatk_haplotypecaller:
         cpus = 4,
         mem="4g",
         time = get_runtime_gatk_hc
+    retries: 3
     shell:
         """
         gatk HaplotypeCaller -R {input.ref} -I {input.bam} -stand-call-conf 30 --native-pair-hmm-threads {resources.cpus} -L {params.region} -ERC GVCF -O {output} &> {log}
@@ -497,6 +498,7 @@ rule gatk_genotypegvcfs:
     resources:
         mem="4g",
         time = get_runtime_gatk_gt
+    retries: 3
     shell:
         """
         gatk GenotypeGVCFs -R {input.ref} -V {input.gvcf} -O {output} --include-non-variant-sites &> {log}
