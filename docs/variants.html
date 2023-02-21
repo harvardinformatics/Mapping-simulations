@@ -3118,7 +3118,7 @@ border: 0;
         <ul class="authors">
           <li class="divider"></li>
                                 <li><span><i class="glyphicon glyphicon-user"></i> <a href="https://gwct.github.io/">gwct</a></span></li>
-                                         <li><span><i class="glyphicon glyphicon-calendar"></i> 02/14/2023 13:05:40 EST</span></li>
+                                         <li><span><i class="glyphicon glyphicon-calendar"></i> 02/16/2023 14:23:22 EST</span></li>
                   </ul>     
       </div>
       <div class="book-body fixed">
@@ -3645,10 +3645,10 @@ NaN
 <h1 number="8"><span class="header-section-number">8</span> SNP error rates by divergence</h1>
 <p>SNP calls were classified as follows:</p>
 <ul>
-<li>True positive (TP): Variant in original golden VCF and heterozygous alternate in called VCF</li>
-<li>False positive (FP): Invariant in original golden VCF and heterozygous alternate in called VCF</li>
-<li>False negative (FN): Variant in original golden VCF and heterozygous reference in called VCF</li>
-<li>True negative (TN): Invariant in original golden VCF and heterozygous reference in called VCF</li>
+<li>True positive (TP): Variant in original golden VCF and homozygous alternate in called VCF</li>
+<li>False positive (FP): Invariant in original golden VCF and homozygous alternate in called VCF</li>
+<li>False negative (FN): Variant in original golden VCF and homozygous reference in called VCF</li>
+<li>True negative (TN): Invariant in original golden VCF and homozygous reference in called VCF</li>
 </ul>
 <div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a>sum_stats<span class="op">$</span>total.snps =<span class="st"> </span>sum_stats<span class="op">$</span>tp <span class="op">+</span><span class="st"> </span>sum_stats<span class="op">$</span>fp <span class="op">+</span><span class="st"> </span>sum_stats<span class="op">$</span>fn</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a></span>
