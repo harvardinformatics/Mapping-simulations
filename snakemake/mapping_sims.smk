@@ -80,66 +80,6 @@ rule all:
         expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-snps-genmap.csv.gz"), cov=covs, het=hets)
         # Expected output from annotate_mappability
 
-        #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-vcf-summary.csv"), cov=covs, het=hets),
-        #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-snps.csv.gz"), cov=covs, het=hets),
-        #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-bam-summary.csv"), cov=covs, het=hets),
-        # Expected output from combine_summaries
-
-        #expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "golden", "qualimapReport.html"), cov=covs, div=divs),
-        #expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "mapped", "qualimapReport.html"), cov=covs, div=divs)
-        # Expected output from qualimap_bams
-
-        #expand(os.path.join(outdir, "ref-regions", ref_str + "-{region}.fa"), region=regions),
-        # Expected outputs from extract_region
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_read1.fq.gz"), cov=covs, div=divs, region=regions),
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_read2.fq.gz"), cov=covs, div=divs, region=regions),
-        # Expected outputs from simulate_reads
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fq.gz"), cov=covs, div=divs),
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fq.gz"), cov=covs, div=divs),
-        # Expected outputs from merge_simulated_reads
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam"), cov=covs, div=divs),
-        # Expected output from merge_golden_bams
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam.bai"), cov=covs, div=divs),
-        # Expected output from index_golden_bams
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), cov=covs, div=divs, region=regions),
-        # Expected output from index_golden_vcfs_regions
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz"), cov=covs, div=divs),
-        # Expected output from merge_golden_vcfs
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz.tbi"), cov=covs, div=divs),
-        # Expected output from index_golden_vcfs_merged
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fastp.fq.gz"), cov=covs, div=divs),
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fastp.fq.gz"), cov=covs, div=divs),
-        # Expected outputs from trim_simulated_reads
-
-        #expand(os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}.bam"), cov=covs, div=divs),
-        # Expected outputs from map_simulated_reads
-
-        #expand(os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-{cov}X-{div}.bam.bai"), cov=covs, div=divs),
-        # Expected outputs from index_bams
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}.gvcf.gz"), cov=covs, div=divs, region=regions),
-        # Expected outputs from gatk_haplotypecaller
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz"), cov=covs, div=divs, region=regions),
-        # Expected outputs from gatk_genotypegvcfs
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz.tbi"), cov=covs, div=divs, region=regions),
-        # Expected output from index_vcfs_regions
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", ref_str + ".vcf.gz"), cov=covs, div=divs),
-        # Expected output from merge_vcfs
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", ref_str + ".vcf.gz.tbi"), cov=covs, div=divs),
-        # Expected output from index_vcfs_merged
-
 ## The final expected outputs should be listed in this rule. Only necessary to list final output from final rule, but I found it useful to list them 
 ## for all rules for debugging (can comment out outputs for rules you don't want to run), though there's also probably a better way to do this
 
@@ -164,21 +104,21 @@ rule extract_region_sim:
 
 #################
 
-rule index_region_sim:
-    input:
-        os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
-    output:
-        #bwa_indices = multiext(os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
-        #samtools_index = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa.fai"),
-        picard_dict = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.dict")
-    log:
-        os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", "logs", ref_str + "{region}-dict.log")
-    shell:
-        """
-        rm -f {output.picard_dict}
-        picard CreateSequenceDictionary R={input} O={output.picard_dict}
-        """
-# Index the simulated genome
+# rule index_region_sim:
+#     input:
+#         os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
+#     output:
+#         #bwa_indices = multiext(os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
+#         #samtools_index = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa.fai"),
+#         picard_dict = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.dict")
+#     log:
+#         os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", "logs", ref_str + "{region}-dict.log")
+#     shell:
+#         """
+#         rm -f {output.picard_dict}
+#         picard CreateSequenceDictionary R={input} O={output.picard_dict}
+#         """
+# # Index the simulated genome
 
 ######################################################################################################
 
@@ -612,7 +552,7 @@ rule combine_summaries:
     input:
         vcf_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-summary.csv"), cov=covs, div=divs, region=regions, het=hets),
         snp_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv"), cov=covs, div=divs, region=regions, het=hets),
-        bam_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-summary.csv"), cov=covs, div=divs, region=regions, het=hets)
+        bam_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-summary.csv"), cov=covs, div=divs, het=hets)
     output:
         vcf_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-vcf-summary.csv"),
         snp_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-snps.csv.gz"),

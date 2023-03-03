@@ -72,90 +72,14 @@ localrules: all
 
 rule all:
     input:
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-summary.csv"), cov=covs, div=divs, het=hets, region=regions, n=range(1, num_iters+1)),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv"), cov=covs, div=divs, het=hets, region=regions, n=range(1, num_iters+1)),
-        # Expected output from compare_vcfs
-
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-compare-bam-summary.csv"), cov=covs, div=divs, het=hets, n=range(1, num_iters+1)),
-        # Expected output from compare_bams
-
-        # expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "golden", "qualimapReport.html"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # expand(os.path.join(outdir, "qualimap", "{cov}X", "{div}", "iter{n}", "mapped", "qualimapReport.html"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected output from qualimap_bams
-
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), cov=covs, div=divs, het=hets,),
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets,)
+        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), cov=covs, div=divs, het=hets),
+        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets),
         # Expected output from generate_consensus
 
-        #expand(os.path.join(outdir, "ref-regions", ref_str + "-{region}.fa"), region=regions),
-        # Expected outputs from extract_region
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_read1.fq.gz"), cov=covs, div=divs, region=regions),
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_read2.fq.gz"), cov=covs, div=divs, region=regions),
-        # Expected outputs from simulate_reads
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fq.gz"), cov=covs, div=divs),
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fq.gz"), cov=covs, div=divs),
-        # Expected outputs from merge_simulated_reads
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam"), cov=covs, div=divs),
-        # Expected output from merge_golden_bams
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.bam.bai"), cov=covs, div=divs),
-        # Expected output from index_golden_bams
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), cov=covs, div=divs, region=regions),
-        # Expected output from index_golden_vcfs_regions
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz"), cov=covs, div=divs),
-        # Expected output from merge_golden_vcfs
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_golden.vcf.gz.tbi"), cov=covs, div=divs),
-        # Expected output from index_golden_vcfs_merged
-
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read1.fastp.fq.gz"), cov=covs, div=divs),
-        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", ref_str + "_read2.fastp.fq.gz"), cov=covs, div=divs),
-        # Expected outputs from trim_simulated_reads
-
-        #expand(os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected outputs from map_simulated_reads
-
-        #expand(os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}.bam.bai"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected outputs from index_bams
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.gvcf.gz"), cov=covs, div=divs, region=regions, n=range(1, num_iters+1)),
-        # Expected outputs from gatk_haplotypecaller
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz"), cov=covs, div=divs, region=regions, n=range(1, num_iters+1)),
-        # Expected outputs from gatk_genotypegvcfs
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}.vcf.gz.tbi"), cov=covs, div=divs, region=regions, n=range(1, num_iters+1)),
-        # Expected output from index_vcfs_regions
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected output from merge_vcfs
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + ".vcf.gz.tbi"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected output from index_vcfs_merged
-
-
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered.vcf.gz"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected output from filter_vcf
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected output from select_snps
-
-        #expand(os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-filtered-snps.vcf.gz.tbi"), cov=covs, div=divs, n=range(1, num_iters+1)),
-        # Expected output from index_vcfs_snps
-
-        #expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-masksites.bed"), cov=covs, div=divs),
-        # Expected output from get_mask_sites
-
-        #expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-snps-consensus-iter" + str(num_iters-1) + "-masked.fa"), cov=covs, div=divs),
-        # Expected output from mask_fasta
-
-
+        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"), cov=covs, het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"), cov=covs, het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv"), cov=covs, het=hets),
+        # Expected output from combine summaries 
 
 ## The final expected outputs should be listed in this rule. Only necessary to list final output from final rule, but I found it useful to list them 
 ## for all rules for debugging (can comment out outputs for rules you don't want to run), though there's also probably a better way to do this
@@ -181,28 +105,32 @@ rule extract_region_sim:
 
 #################
 
-rule index_region_sim:
-    input:
-        os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
-    output:
-        #bwa_indices = multiext(os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
-        #samtools_index = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa.fai"),
-        picard_dict = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.dict")
-    log:
-        os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", "logs", ref_str + "{region}-dict.log")
-    shell:
-        """
-        rm -f {output.picard_dict}
-        picard CreateSequenceDictionary R={input} O={output.picard_dict}
-        """
+# rule index_region_sim:
+#     input:
+#         os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.fa")
+#     output:
+#         #bwa_indices = multiext(os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
+#         #samtools_index = os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.fa.fai"),
+#         picard_dict = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "regions", ref_str + "-{region}.dict")
+#     log:
+#         os.path.join(outdir, "simulated-genomes", "{cov}X", "{div}", "regions", "logs", ref_str + "{region}-dict.log")
+#     shell:
+#         """
+#         rm -f {output.picard_dict}
+#         picard CreateSequenceDictionary R={input} O={output.picard_dict}
+#         """
 # Index the simulated genome
+## NOT USED
 
 #################
 
 def get_runtime_neat(wildcards, attempt):
+    max_time = 168;
     base_time = 6;
     multiplier = 100;
-    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier );
+    if runtime > max_time:
+        runtime = max_time;
     return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
@@ -235,9 +163,12 @@ rule simulate_reads:
 #################
 
 def get_runtime_merge_fq(wildcards, attempt):
+    max_time = 168;
     base_time = 6;
     multiplier = 100;
-    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier );
+    if runtime > max_time:
+        runtime = max_time;
     return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
@@ -410,11 +341,11 @@ rule map_simulated_reads:
         ref = map_iters_ref,
         ref_index = map_iters_ind
     output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
     params:
         read_group = "@RG\\tID:" + ref_str + "-{cov}X-{div}d-{het}h\\tLB:NEAT\\tPL:ILLUMINA" + "\\tSM:" + ref_str + "-{cov}X-{div}d-{het}h"
     log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}.log")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}.log")
     wildcard_constraints:
         n="[0-9]+"
     resources:
@@ -431,11 +362,11 @@ rule map_simulated_reads:
 
 rule index_bams:
     input:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
     output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai")
     log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-index.log")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-index.log")
     resources:
         time = "4:00:00",
         mem = "4g"
@@ -448,16 +379,19 @@ rule index_bams:
 #################
 
 def get_runtime_gatk_hc(wildcards, attempt):
+    max_time = 168;
     base_time = 160;
     multiplier = 200;
-    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier );
+    if runtime > max_time:
+        runtime = max_time;
     return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
 rule gatk_haplotypecaller: 
     input:
-        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
-        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai"),
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai"),
         ref = REF
     output:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.gvcf.gz")
@@ -467,7 +401,7 @@ rule gatk_haplotypecaller:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-haplotypecaller-{region}-{cov}X-{div}d-{het}h-iter{n}.log"),
     resources:
         cpus = 4,
-        mem="4g",
+        mem="12g",
         time = get_runtime_gatk_hc
     retries: 3
     shell:
@@ -479,9 +413,12 @@ rule gatk_haplotypecaller:
 #################
 
 def get_runtime_gatk_gt(wildcards, attempt):
+    max_time = 168;
     base_time = 6;
     multiplier = 100;
-    runtime = base_time + ( float(wildcards.div) * attempt * multiplier )
+    runtime = base_time + ( float(wildcards.div) * attempt * multiplier );
+    if runtime > max_time:
+        runtime = max_time;
     return str(round(runtime)) + ":00:00";
 # Sets the run time based on the number of times the job has been restarted
 
@@ -571,6 +508,7 @@ rule compare_vcfs:
     params:
         outdir = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions"),
         div = "{div}",
+        het = "{het}",
         cov = "{cov}",
         iteration = "{n}"
     output:
@@ -581,7 +519,7 @@ rule compare_vcfs:
         time = "1:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.cov} {params.div} {params.het} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
@@ -591,16 +529,16 @@ rule compare_vcfs:
 
 rule liftover_bams:
     input:
-        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
         chain = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.chain")
     output:
-        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam"),
-        bam_sorted = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
-        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai")
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam"),
+        bam_sorted = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
+        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai")
     params:
-        out_prefix = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-crossmap"),
+        out_prefix = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap"),
     log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-crossmap.log")
+        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", "logs", ref_str + "-{cov}X-{div}d-{het}h-crossmap.log")
     resources:
         mem = "24g"
     shell:
@@ -616,22 +554,23 @@ rule compare_bams:
     input:
         golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
         golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai"),
-        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
-        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai"),
+        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
+        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai"),
         ref_index = REF_INDEX
     params:
        div = "{div}",
+       het = "{het}",
        cov = "{cov}",
        reg = ",".join(regions),
        iteration = "{n}"
     output:
-        summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-compare-bam-summary.csv"),
+        summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-summary.csv"),
     resources:
         mem = "24g",
         time = "8:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.reg} {params.cov} {params.div} {params.iteration} {input.ref_index} {input.golden} {input.query} {output.summary}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.reg} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_index} {input.golden} {input.query} {output.summary}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
@@ -793,8 +732,33 @@ rule index_consensus:
     
 #################
 
+rule combine_summaries:
+    input:
+        vcf_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-summary.csv"), cov=covs, div=divs, region=regions, het=hets, n=range(1, num_iters+1)),
+        snp_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv"), cov=covs, div=divs, region=regions, het=hets, n=range(1, num_iters+1)),
+        bam_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-summary.csv"), cov=covs, div=divs, het=hets, n=range(1, num_iters+1)) 
+    output:
+        vcf_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"),
+        snp_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"),
+        bam_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv")
+    params:
+        indir = os.path.join(outdir, "summary-files", "{cov}X"),
+        snp_int = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv")
+    resources:
+        mem = "4g",
+        time = "1:00:00"
+    shell:
+        """
+        find {params.indir} -type f -name *-compare-vcf-summary.csv -exec awk 1 {{}} \; | grep -v "#" | sort -r | uniq > {output.vcf_out}
+        find {params.indir} -type f -name *-compare-vcf-snps.csv -exec awk 1 {{}} \; > {params.snp_int}
+        gzip {params.snp_int}
+        find {params.indir} -type f -name *-compare-bam-summary.csv -exec awk 1 {{}} \; | grep -v "#" | sort -r | uniq > {output.bam_out}
+        """
+# Combines the output files from compare_vcfs and compare_bams
+# Originally ran separately as:
+# find . -type f -name *-vcf-summary.csv -not -name mm39-20X-vcf-summary.csv -exec awk 1 {} \; | grep -v "#" | sort -r | uniq > ../mm39-20X-vcf-summary.csv
+# find . -type f -name *-vcf-snps.csv -not -name mm39-20X-vcf-snps.csv -exec awk 1 {} \; > ../mm39-20X-vcf-snps.csv
+# find . -type f -name *-bam-summary.csv -exec awk 1 {} \; | grep -v "#" | sort -r | uniq > ../mm39-20X-bam-summary.csv
+
+
 #############################################################################
-
-
-# time -p samtools sort -n -o mm39_golden.name.sorted.bam mm39_golden.bam
-# name sorting for wub?
