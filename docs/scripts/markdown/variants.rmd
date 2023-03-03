@@ -203,10 +203,10 @@ print(sim_called_p)
 
 SNP calls were classified as follows:
 
-- True positive (TP): Variant in original golden VCF and heterozygous alternate in called VCF
-- False positive (FP): Invariant in original golden VCF and heterozygous alternate in called VCF
-- False negative (FN): Variant in original golden VCF and heterozygous reference in called VCF
-- True negative (TN): Invariant in original golden VCF and heterozygous reference in called VCF
+- True positive (TP): Variant in original golden VCF and homozygous alternate in called VCF
+- False positive (FP): Invariant in original golden VCF and homozygous alternate in called VCF
+- False negative (FN): Variant in original golden VCF and homozygous reference in called VCF
+- True negative (TN): Invariant in original golden VCF and homozygous reference in called VCF
 
 ```{r snp-props, out.width="50%", fig.align = "center", warning=FALSE}
 
