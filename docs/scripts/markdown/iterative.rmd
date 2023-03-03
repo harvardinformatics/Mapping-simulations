@@ -23,37 +23,65 @@ library(cowplot)
 library(here)
 library(reshape2)
 library(dplyr)
+library(kableExtra)
+library(viridis)
 source("../lib/design.r")
 ```
 
 [< Back ](index.html)
 
-# Iterative read mapping - Introduction
+# Introduction
 
 Reference genome: mm39
 
-NEAT > BWA > GATK
+NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK
 
-Chromosome 19 only
-chr18 length = 90720763
-chr19 length = 61420004
+- Chromosomes 18 and 19 only
+- chr18 length = 90720763
+- chr19 length = 61420004
 
-Divergence: 4%
-Coverage: 20X
+- Divergence: 0-10%
+- Heterozygosity: 0.05%
+- Coverage: 30X for both NEAT runs
 
-4 rounds of mapping
+3 rounds of mapping
 
 ```{r read, out.width="100%", fig.align = "center", warning=FALSE}
-summary_file = here("docs", "data", "mm39-iterative-20X-vcf-summary.csv")
+summary_file = here("data", "mm39-30X-0.005h-3i-vcf-summary.csv")
 sum_stats_chr = read.csv(summary_file, header=T)
+# Read the summary file from compare_vcfs
 
-sum_stats = sum_stats_chr %>% group_by(iteration) %>% summarize("golden.variants"=sum(golden.variants), "called.variants"=sum(called.variants), "tp"=sum(tp), "fp"=sum(fp), "fn"=sum(fn), "shared.pos"=sum(shared.pos), "no.info"=sum(no.info))
+sum_stats = sum_stats_chr %>% group_by(iteration, divergence) %>% summarize("golden.variants"=sum(golden.variants), "golden.invariant"=sum(golden.invariant), "called.variants"=sum(called.variants), "tp"=sum(tp), "fp"=sum(fp), "fn"=sum(fn), "tn"=sum(tn), "called.het.golden"=sum(called.het.golden), "called.het.non.golden"=sum(called.het.non.golden), "no.info"=sum(no.info))
+# Summarize counts by iteration levels (sums counts by chromosome)
 
-snp_file = here("docs", "data", "mm39-iterative-20X-vcf-snps.csv")
+sum_stats$het.rate.golden = sum_stats$called.het.golden / sum_stats$golden.variants
+sum_stats$het.rate.non.golden = sum_stats$called.het.non.golden / sum_stats$golden.invariant
+# Calculate the heterozygosity rate for sites that were simulated to have substitutions and sites that weren't
+
+len_18 = 90720763
+len_19 = 61420004
+total_len = len_18 + len_19
+## TODO: Use .fai file to do this automatically in the full sims
+
+sum_stats %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+# Display counts as a table
+
+####################
+
+snp_file = here("data", "mm39-30X-0.005h-3i-snps-header.csv.gz")
 snp_stats_chr = read.csv(snp_file, header=T, comment.char="#")
+#names(snp_stats_chr)[1] = "coverage"
+#snp_stats_chr = subset(snp_stats_chr, coverage != "# coverage")
+# Read the snp stats file
 
-mapping_file = here("docs", "data", "mm39-iterative-20X-bam-summary.csv")
+####################
+
+mapping_file = here("data", "mm39-30X-0.005h-3i-bam-summary.csv")
 bam_stats = read.csv(mapping_file, header=T)
+# Read the bam compare file
+
+####################
+
 ```
 
 # Iteration vs. simulated variants
