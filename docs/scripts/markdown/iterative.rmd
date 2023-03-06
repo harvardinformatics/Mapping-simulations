@@ -18,11 +18,9 @@ output:
 ```{r setup, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
-library(ggplot2)
-library(cowplot)
+library(tidyverse)
 library(here)
-library(reshape2)
-library(dplyr)
+#library(reshape2)
 library(kableExtra)
 library(viridis)
 source("../lib/design.r")
@@ -58,6 +56,8 @@ sum_stats$het.rate.golden = sum_stats$called.het.golden / sum_stats$golden.varia
 sum_stats$het.rate.non.golden = sum_stats$called.het.non.golden / sum_stats$golden.invariant
 # Calculate the heterozygosity rate for sites that were simulated to have substitutions and sites that weren't
 
+sum_stats$iteration = as.factor(sum_stats$iteration)
+
 len_18 = 90720763
 len_19 = 61420004
 total_len = len_18 + len_19
@@ -68,8 +68,8 @@ sum_stats %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condende
 
 ####################
 
-snp_file = here("data", "mm39-30X-0.005h-3i-snps-header.csv.gz")
-snp_stats_chr = read.csv(snp_file, header=T, comment.char="#")
+#snp_file = here("data", "mm39-30X-0.005h-3i-snps-header.csv.gz")
+#snp_stats_chr = read.csv(snp_file, header=T, comment.char="#")
 #names(snp_stats_chr)[1] = "coverage"
 #snp_stats_chr = subset(snp_stats_chr, coverage != "# coverage")
 # Read the snp stats file
@@ -88,7 +88,7 @@ bam_stats = read.csv(mapping_file, header=T)
 
 ```{r iter-v-sim, out.width="50%", fig.align = "center", warning=FALSE}
 
-div_sim_p = ggplot(sum_stats, aes(x=iteration, y=golden.variants)) +
+div_sim_p = ggplot(sum_stats, aes(x=divergence, y=golden.variants)) +
   geom_point(size=3, color="#666666") +
   geom_smooth(method="lm", se=F, linetype="dashed", color=corecol(pal="wilke", numcol=1)) +
   #scale_y_continuous(expand=c(0,0)) +
@@ -103,12 +103,12 @@ print(div_sim_p)
 
 ```{r iter-v-called, out.width="50%", fig.align = "center", warning=FALSE}
 
-div_called_p = ggplot(sum_stats, aes(x=iteration, y=called.variants)) +
-  geom_point(size=3, color="#666666") +
-  geom_smooth(method="lm", se=F, linetype="dashed", color=corecol(pal="wilke", numcol=1)) +
-  geom_hline(yintercept=sum_stats$golden.variants) +
+div_called_p = ggplot(sum_stats, aes(x=divergence, y=called.variants, color=iteration)) +
+  geom_point(size=3) +
+  #geom_smooth(method="lm", se=F, linetype="dashed", color=corecol(pal="wilke", numcol=1)) +
+  #geom_hline(yintercept=sum_stats$golden.variants) +
   #scale_y_continuous(expand=c(0,0)) +
-  xlab("Mapping iteration") +
+  xlab("Simulated divergence") +
   ylab("# of called variants") +
   bartheme()
 
@@ -121,13 +121,13 @@ print(div_called_p)
 
 ```{r sim-v-called, out.width="50%", fig.align = "center", warning=FALSE, eval=FALSE}
 
-one = data.frame("x"=c(0,1167969), "y"=c(0,1167969))
+#one = data.frame("x"=c(0,1167969), "y"=c(0,1167969))
 
-sim_called_p = ggplot(sum_stats, aes(x=golden.variants, y=called.variants)) +
-  geom_smooth(aes(color="Fit"), method="lm", se=F, linetype="dashed") +
-  geom_abline(aes(slope=1, intercept=0, color="1:1"), size=1, linetype="dashed", show.legend=F) +
-  geom_point(size=3, color="#666666") +
-  scale_color_manual(values=c("1:1"="#999999", "Fit"=corecol(pal="wilke", numcol=1))) +
+sim_called_p = ggplot(sum_stats, aes(x=golden.variants, y=called.variants, color=iteration)) +
+  #geom_smooth(aes(color="Fit"), method="lm", se=F, linetype="dashed") +
+  #geom_abline(aes(slope=1, intercept=0, color="1:1"), size=1, linetype="dashed", show.legend=F) +
+  geom_point(size=3) +
+  #scale_color_manual(values=c("1:1"="#999999", "Fit"=corecol(pal="wilke", numcol=1))) +
   #scale_y_continuous(expand=c(0,0)) +
   xlab("# of simulated variants") +
   ylab("# of called variants") +
@@ -138,42 +138,53 @@ print(sim_called_p)
 
 # SNP error rates by iteration
 
+SNP calls were classified as follows:
+
+- True positive (TP): Variant in original golden VCF and homozygous alternate in called VCF
+- False positive (FP): Invariant in original golden VCF and homozygous alternate in called VCF
+- False negative (FN): Variant in original golden VCF and homozygous reference in called VCF
+- True negative (TN): Invariant in original golden VCF and homozygous reference in called VCF
+
 ```{r snp-props, out.width="50%", fig.align = "center", warning=FALSE}
 
-sum_stats$total.snps = sum_stats$tp + sum_stats$shared.pos + sum_stats$fp + sum_stats$fn
+sum_stats = sum_stats %>% 
+  mutate(total.snps = tp + fp + fn, tp.prop = tp / total.snps, fp.prop = fp / total.snps, fn.prop = fn / total.snps)
 
-sum_stats$tp.prop = sum_stats$tp / sum_stats$total.snps
-sum_stats$shared.pos.prop = sum_stats$shared.pos / sum_stats$total.snps
-sum_stats$fp.prop = sum_stats$fp / sum_stats$total.snps
-sum_stats$fn.prop = sum_stats$fn / sum_stats$total.snps
+#sum_stats$total.snps = sum_stats$tp + sum_stats$fp + sum_stats$fn
 
-long_data = melt(sum_stats, id.vars=c("iteration", "golden.variants", "called.variants"))
-long_data = subset(long_data, variable != "no.info")
-long_data = subset(long_data, variable != "fp" & variable != "fn" & variable != "tp" & variable != "shared.pos")
+#sum_stats$tp.prop = sum_stats$tp / sum_stats$total.snps
+#sum_stats$fp.prop = sum_stats$fp / sum_stats$total.snps
+#sum_stats$fn.prop = sum_stats$fn / sum_stats$total.snps
 
-long_data$text = NA
+long_data = sum_stats %>% 
+  select(iteration, divergence, tp.prop, fp.prop, fn.prop) %>% 
+  pivot_longer(cols=c("tp.prop", "fp.prop", "fn.prop"))
 
-long_data[long_data$variable=="fp.prop",]$text = sum_stats$fp[sum_stats$iteration==long_data[long_data$variable=="fp.prop",]$iteration]
-long_data[long_data$variable=="tp.prop",]$text = sum_stats$tp[sum_stats$iteration==long_data[long_data$variable=="tp.prop",]$iteration]
-long_data[long_data$variable=="shared.pos.prop",]$text = NA
-long_data[long_data$variable=="fn.prop",]$text = sum_stats$fn[sum_stats$iteration==long_data[long_data$variable=="fn.prop",]$iteration]
+#long_data = melt(sum_stats, id.vars=c("iteration", "divergence"))
+#long_data = subset(long_data, variable != "no.info")
+#long_data = subset(long_data, variable != "fp" & variable != "fn" & variable != "tp" & variable != "shared.pos")
 
-long_data$variable = factor(long_data$variable, levels=c("fp.prop", "shared.pos.prop", "tp.prop", "fn.prop"))
+#long_data$text = NA
 
-cols = c(corecol(pal="wilke", numcol=2, offset=1), "#bda988", corecol(pal="wilke", numcol=1))
+#long_data[long_data$variable=="fp.prop",]$text = sum_stats$fp[sum_stats$iteration==long_data[long_data$variable=="fp.prop",]$iteration]
+#long_data[long_data$variable=="tp.prop",]$text = sum_stats$tp[sum_stats$iteration==long_data[long_data$variable=="tp.prop",]$iteration]
+#long_data[long_data$variable=="shared.pos.prop",]$text = NA
+#long_data[long_data$variable=="fn.prop",]$text = sum_stats$fn[sum_stats$iteration==long_data[long_data$variable=="fn.prop",]$iteration]
 
-overlaps_p = ggplot(long_data, aes(x=iteration, y=value, fill=variable, label=text)) +
+long_data$name = factor(long_data$name, levels=c("fp.prop", "tp.prop", "fn.prop"))
+
+cols = c(corecol(pal="wilke", numcol=1, offset=1), "#bda988", corecol(pal="wilke", numcol=1))
+
+overlaps_p = ggplot(long_data, aes(x=iteration, y=value, fill=name)) +
   geom_bar(stat="identity") +
-  geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
-  #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
-  #geom_text(aes(label=text3), size=2.3, color="#f2f2f2", nudge_y=-0.05) +
-  #geom_text(aes(label=text4), size=2.3, color="#f2f2f2", nudge_y=0.82) +
+  #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   xlab("Mapping iteration") +
   ylab("Proportion of variants") +
-  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
+  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
-  scale_x_continuous(breaks=unique(long_data$iteration)) +
-  scale_fill_manual(guide=guide_legend(reverse=T), labels=c("False positive", "Shared position", "True positive", "False negative"), values=cols) +
+  #scale_x_continuous(breaks=unique(long_data$iteration)) +
+  scale_fill_manual(guide=guide_legend(reverse=T), labels=c("False positive", "True positive", "False negative"), values=cols) +
+  facet_wrap(~divergence) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
   theme(legend.position="bottom") +
@@ -186,22 +197,25 @@ print(overlaps_p)
 
 cols = c(corecol(pal="wilke", numcol=1, offset=1), corecol(pal="wilke", numcol=1))
 
-snp_rates_p = ggplot(subset(long_data, variable != "tp.prop" & variable != "shared.pos.prop"), aes(x=iteration, y=value, color=variable)) +
-  geom_line(size=1.2) +
-  geom_point(size=3) +
-  xlab("Mapping iteration") +
-  ylab("Proportion of variants") +
-  scale_x_continuous(breaks=unique(long_data$iteration)) +
-  scale_color_manual(guide=guide_legend(reverse=T), labels=c("False positive", "False negative"), values=cols) +
-  bartheme() +
-  theme(legend.position="bottom")
+snp_rates_p = long_data %>%
+  filter(name != "tp.prop", divergence > 0) %>%
+  ggplot(aes(x=iteration, y=value, color=name)) +
+    geom_line(size=1.2) +
+    geom_point(size=3) +
+    xlab("Mapping iteration") +
+    ylab("Proportion of variants") +
+    #scale_x_continuous(breaks=unique(long_data$iteration)) +
+    scale_color_manual(guide=guide_legend(reverse=T), labels=c("False positive", "False negative"), values=cols) +
+    facet_wrap(~divergence) +
+    bartheme() +
+    theme(legend.position="bottom")
 print(snp_rates_p)
 
 ```
 
 # SNP errors and read depth
 
-```{r fp-fn-depth, out.width="50%", fig.align = "center", warning=FALSE}
+```{r fp-fn-depth, out.width="50%", fig.align = "center", warning=FALSE, eval=F}
 
 snp_stats_chr = subset(snp_stats_chr, !is.na(dp))
 snp_stats_chr$dp = as.numeric(snp_stats_chr$dp)
@@ -219,7 +233,7 @@ print(dp_p)
 
 # SNP errors and mapping quality
 
-```{r fp-fn-mq, out.width="50%", fig.align = "center", warning=FALSE}
+```{r fp-fn-mq, out.width="50%", fig.align = "center", warning=FALSE, eval=F}
 
 snp_stats_chr$mq = as.numeric(snp_stats_chr$mq)
 
@@ -238,44 +252,40 @@ print(mq_p)
 
 ```{r read-props, out.width="50%", fig.align = "center", warning=FALSE}
 
-bam_stats$total.reads = bam_stats$exact.map + bam_stats$close.map + bam_stats$mismapped + bam_stats$diff.chr + bam_stats$unmapped
+bam_stats = bam_stats %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped + missing.in.query) %>%
+  mutate(exact.map.prop = exact.map / total.reads, close.map.prop = close.map / total.reads, mismapped.prop = mismapped / total.reads, 
+         diff.chr.prop = diff.chr / total.reads, unmapped.prop = unmapped / total.reads, missing.prop = missing.in.query / total.reads)
 
-bam_stats$exact.map.prop = bam_stats$exact.map / bam_stats$total.reads
-bam_stats$close.map.prop = bam_stats$close.map / bam_stats$total.reads
-bam_stats$mismapped.prop = bam_stats$mismapped / bam_stats$total.reads
-bam_stats$diff.chr.prop = bam_stats$diff.chr / bam_stats$total.reads
-bam_stats$unmapped.prop = bam_stats$unmapped / bam_stats$total.reads
+long_bam_data = bam_stats %>% 
+  select(iteration, divergence, exact.map.prop, close.map.prop, mismapped.prop, diff.chr.prop, unmapped.prop, missing.prop) %>% 
+  pivot_longer(cols=c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop"))
 
-long_data = melt(bam_stats, id.vars=c("iteration", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"))
-long_data = subset(long_data, variable != "coverage")
-long_data = subset(long_data, variable != "divergence")
-long_data = subset(long_data, variable != "exact.map" & variable != "close.map" & variable != "mismapped" & variable != "diff.chr" & variable != "unmapped")
+#long_data$text = NA
 
-long_data$text = NA
+#long_data[long_data$variable=="exact.map.prop",]$text = bam_stats$exact.map[bam_stats$iteration==long_data[long_data$variable=="exact.map.prop",]$iteration]
+#long_data[long_data$variable=="close.map.prop",]$text = bam_stats$close.map[bam_stats$iteration==long_data[long_data$variable=="close.map.prop",]$iteration]
+#long_data[long_data$variable=="mismapped.prop",]$text = bam_stats$mismapped[bam_stats$iteration==long_data[long_data$variable=="mismapped.prop",]$iteration]
+#long_data[long_data$variable=="diff.chr.prop",]$text = bam_stats$diff.chr[bam_stats$iteration==long_data[long_data$variable=="diff.chr.prop",]$iteration]
+#long_data[long_data$variable=="unmapped.prop",]$text = bam_stats$unmapped[bam_stats$iteration==long_data[long_data$variable=="unmapped.prop",]$iteration]
 
-long_data[long_data$variable=="exact.map.prop",]$text = bam_stats$exact.map[bam_stats$iteration==long_data[long_data$variable=="exact.map.prop",]$iteration]
-long_data[long_data$variable=="close.map.prop",]$text = bam_stats$close.map[bam_stats$iteration==long_data[long_data$variable=="close.map.prop",]$iteration]
-long_data[long_data$variable=="mismapped.prop",]$text = bam_stats$mismapped[bam_stats$iteration==long_data[long_data$variable=="mismapped.prop",]$iteration]
-long_data[long_data$variable=="diff.chr.prop",]$text = bam_stats$diff.chr[bam_stats$iteration==long_data[long_data$variable=="diff.chr.prop",]$iteration]
-long_data[long_data$variable=="unmapped.prop",]$text = bam_stats$unmapped[bam_stats$iteration==long_data[long_data$variable=="unmapped.prop",]$iteration]
+read_classes = c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop")
+read_class_names = c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped", "Missing")
 
-long_data$variable = factor(long_data$variable, levels=c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop"))
+long_bam_data$name = factor(long_bam_data$name, levels=read_classes)
 
-cols = corecol(pal="wilke", numcol=5, offset=1)
+cols = corecol(pal="wilke", numcol=6, offset=1)
 
-overlaps_p = ggplot(long_data, aes(x=iteration, y=value, fill=variable, label=text)) +
+overlaps_p = ggplot(long_bam_data, aes(x=iteration, y=value, fill=name)) +
   geom_bar(stat="identity") +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
-  #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
-  #geom_text(aes(label=text3), size=2.3, color="#f2f2f2", nudge_y=-0.05) +
-  #geom_text(aes(label=text4), size=2.3, color="#f2f2f2", nudge_y=0.82) +
   xlab("Mapping iteration") +
   ylab("Proportion of reads") +
-  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
+  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
-  scale_x_continuous(breaks=unique(long_data$iteration)) +
-  scale_fill_manual(guide=guide_legend(reverse=T), labels=c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped"), values=cols) +
+  #scale_x_continuous(breaks=unique(long_data$iteration)) +
+  scale_fill_manual(labels=read_class_names, values=cols) +
   #scale_fill_discrete(, values=cols) +
+  facet_wrap(~divergence) +
   bartheme() +
   theme(legend.position="bottom") +
   coord_flip()
@@ -285,9 +295,9 @@ print(overlaps_p)
 
 ```{r read-rates, out.width="50%", fig.align = "center", warning=FALSE}
 
-cols = corecol(pal="wilke", numcol=4, offset=2)
+cols = corecol(pal="wilke", numcol=5, offset=2)
 
-read_rates_p = ggplot(subset(long_data, variable != "exact.map.prop"), aes(x=iteration, y=value, color=variable)) +
+read_rates_p = ggplot(subset(long_bam_data, name != "exact.map.prop"), aes(x=iteration, y=value, color=name)) +
   geom_line(size=1.2) +
   geom_point(size=3) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
@@ -298,8 +308,9 @@ read_rates_p = ggplot(subset(long_data, variable != "exact.map.prop"), aes(x=ite
   ylab("Proportion of reads") +
   #scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
-  scale_x_continuous(breaks=unique(long_data$iteration)) +
+  #scale_x_continuous(breaks=unique(long_data$iteration)) +
   scale_color_manual(guide=guide_legend(reverse=T), labels=c("Close map", "Mismapped", "Different chrome", "Unmapped"), values=cols) +
+  facet_wrap(~divergence) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
   theme(legend.position="bottom")
