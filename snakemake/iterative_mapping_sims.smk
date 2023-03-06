@@ -76,6 +76,9 @@ rule all:
         expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets),
         # Expected output from generate_consensus
 
+        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        # Expected output from align_to_vcf
+
         expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"), cov=covs, het=hets),
         expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"), cov=covs, het=hets),
         expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv"), cov=covs, het=hets),
@@ -729,7 +732,38 @@ rule index_consensus:
         samtools faidx {input} 2> {log}
         bwa index {input} 2>> {log}
         """   
-    
+
+#################
+
+rule align_consensus:
+    input:
+        ref = REF,
+        consensus = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"),
+        consensus_index = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa.fai")
+    output:
+        paf = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.paf")
+    log:
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-minimap.log")
+    resources:
+        cpus = 16
+    shell:
+        """
+        minimap2 -x asm20 --cs -t {resources.cpus} {input.ref} {input.consensus} -o {output.paf} > {log}
+        """
+
+#################
+
+rule paf_to_vcf:
+    input:
+        ref = REF,
+        paf = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.paf")
+    output:
+        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf")
+    shell:
+        """
+        sort -k6,6 -k8,8n {input.paf} | paftools.js call -f {input.ref} > {output}
+        """
+
 #################
 
 rule combine_summaries:
