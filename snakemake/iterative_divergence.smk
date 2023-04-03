@@ -113,7 +113,7 @@ rule intersect_ref:
     shell:
         """
         bedtools intersect -c -a {input.bed_windows} -b {input.sim_vcf} > {output.ref_intersect}
-        awk 'OFS="\\t" {{print $0, {params.cov}, {params.div}, "NA", 0}}' {output.ref_intersect} > {output.ref_intersect_ann}
+        awk 'OFS="\\t" {{print $0, {params.cov}, {params.div}, "NA", "golden"}}' {output.ref_intersect} > {output.ref_intersect_ann}
         """
 
 rule intersect_iters:
@@ -139,7 +139,7 @@ rule combine_intersects:
         ref_intersect_ann = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-golden-snps-" + window_str + "-intersect-annotated.tab"), cov=covs, div=divs),
         iter_intersect_ann = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-snps-" + window_str + "-intersect-annotated.tab"), cov=covs, div=divs, het=hets, n=iter_list)
     output:
-        combined_intersect = os.path.join(outdir, "{cov}X", "summary-files", "window-snps-{cov}X-summary.tab")
+        combined_intersect = os.path.join(outdir, "summary-files", "{cov}X", "window-snps-{cov}X-summary.tab")
     shell:
         """
         cat {input.ref_intersect_ann} {input.iter_intersect_ann} > {output}
