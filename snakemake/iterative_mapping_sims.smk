@@ -8,10 +8,10 @@ import re
 #############################################################################
 # Example cmd for mouse genome
 
-# snakemake -p -s mapping_sims.smk --configfile simulation-configs/mm39.yaml --profile profiles/slurm_profile/ --cluster-status scripts/slurm_status.py --dryrun
+# snakemake -p -s iterative_mapping_sims.smk --configfile ../simulation-configs/mm39-iterative.yaml --profile profiles/slurm_profile/
 
 # To generate rulegraph image:
-# snakemake -p -s mapping_sims.smk --configfile simulation-configs/mm39.yaml --profile profiles/slurm_profile/ --dryrun --rulegraph | dot -Tpng > dag.png
+# snakemake -p -s iterative_mapping_sims.smk --configfile ../simulation-configs/mm39-iterative.yaml --profile profiles/slurm_profile/ --rulegraph | dot -Tpng > iterative-mapping-dag.png
 
 #############################################################################
 # Reference file and path info
@@ -745,10 +745,11 @@ rule align_consensus:
     log:
         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-minimap.log")
     resources:
-        cpus = 16
+        cpus = 16,
+        mem = "100g"
     shell:
         """
-        minimap2 -x asm20 --cs -t {resources.cpus} {input.ref} {input.consensus} -o {output.paf} > {log}
+        minimap2 -x asm20 --cs -K 200M -I 20G -t {resources.cpus} {input.ref} {input.consensus} -o {output.paf} > {log}
         """
 
 #################
@@ -759,9 +760,11 @@ rule paf_to_vcf:
         paf = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.paf")
     output:
         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf")
+    resources:
+        time='96:00:00'
     shell:
         """
-        sort -k6,6 -k8,8n {input.paf} | paftools.js call -f {input.ref} > {output}
+        sort -k6,6 -k8,8n {input.paf} | paftools.js call -f {input.ref} - > {output}
         """
 
 #################
