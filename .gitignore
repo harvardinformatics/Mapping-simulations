@@ -5,6 +5,7 @@ scripts/slurm-logs/
 scripts/.snakemake/
 scripts/old/
 scripts/wub/
+scripts/test*
 .snakemake/
 slurm-logs/
 etc/

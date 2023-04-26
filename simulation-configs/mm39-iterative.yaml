@@ -34,7 +34,8 @@ hets: ["0.005"]
 
 iterations: 3
 
-filter: "\"MQ < 30.0 || FORMAT/DP < 5 || FORMAT/DP > 60\""
+#filter: "\"MQ < 30.0 || FORMAT/DP < 5 || FORMAT/DP > 60\""
+filter: "'MQ < 30.0 || FORMAT/DP < 5 || FORMAT/DP > 60 || ALT=\"*\"'"
 
 sim_outdir: /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/
 

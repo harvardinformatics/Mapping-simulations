@@ -72,6 +72,10 @@ def readVCF(vcffile):
             continue;
         # Skip comment lines
 
+        if line[6] != "PASS":
+            continue;
+        # Skip lines with variants that are filtered
+
         pos = ":".join([ line[0], line[1] ]);
         phase = line[7].replace("WP=", "");
         variant = ":".join([ line[0], line[1], line[3], line[4].replace(",", ";") ]);
@@ -170,6 +174,10 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
         if line[0][0] == "#":
             continue;
         # Skip comment lines
+
+        if line[6] != "PASS":
+            continue;
+        # Skip lines with variants that are filtered
 
         if line[1] in golden_dup_pos:
             num_golden_dup_pos += 1;
