@@ -1,0 +1,47 @@
+Testing graph mapping pipeline:
+https://github.com/vgteam/vg/wiki/Mapping-short-reads-with-Giraffe
+
+1. Bulding graph from chr 18 and 19 of the mm39 genome and a vcf file with 6% simulated divergence (0.06)
+
+    time -p vg-v1.47.0/vg autoindex --workflow giraffe -r mm39-18-19.fa -v mm39_golden.vcf.gz -p mm39-18-19-0.6d-graph
+
+    real 4104.83
+    user 3450.34
+    sys 140.18
+
+    Without giraffe option:
+    real 13979.35
+    user 13298.94
+    sys 889.89
+
+2. Mapping reads simulated from a genome with 6% divergence and 0.5% heterozygosity (0.005)
+
+    vg-v1.47.0/vg giraffe -Z mm39-18-19-0.6d-graph.giraffe.gbz -m mm39-18-19-0.6d-graph.min -d mm39-18-19-0.6d-graph.dist -f mm39_read1.fastp.fq.gz -f mm39_read2.fastp.fq.gz -p > output.gam
+
+    real 11637.91
+    user 13958.59
+    sys 9113.78
+
+3. Mapping stats
+
+    time -p vg-v1.47.0/vg stats -a output.gam
+
+    Total alignments: 28240610
+    Total primary: 28240610
+    Total secondary: 0
+    Total aligned: 28238436
+    Total perfect: 14847884
+    Total gapless (softclips allowed): 27108597
+    Total paired: 28240610
+    Total properly paired: 28238420
+    Alignment score: mean 155.336, median 160, stdev 6.89721, max 160 (14840812 reads)
+    Mapping quality: mean 59.9932, median 60, stdev 0.531036, max 60 (28232016 reads)
+    Insertions: 971906 bp in 350036 read events
+    Deletions: 2162430 bp in 1043787 read events
+    Substitutions: 24094680 bp in 24094680 read events
+    Softclips: 373102 bp in 53267 read events
+    Total time: 19074.8 seconds
+    Speed: 1480.52 reads/second
+    real 1029.44
+    user 1022.16
+    sys 5.07
