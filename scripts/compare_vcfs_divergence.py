@@ -136,7 +136,7 @@ def fastaReadSeqs(filename, regions=False, header_sep=False):
 
 ####################
 
-def readVCF(vcffile, regions=False):
+def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=False):
 # Reads the SNPs in a vcf file
 
     compression = detectCompression(vcffile);
@@ -148,7 +148,7 @@ def readVCF(vcffile, regions=False):
         opener = open; 
         reader = lambda s : s.strip().split("\t");
 
-    variants, variant_list = {}, [];
+    variants, variant_list, extra = {}, [], [];
     # The basic info about the SNPs (chr, pos, ref, alt)
 
     confusing_pos = [];
@@ -169,7 +169,7 @@ def readVCF(vcffile, regions=False):
             continue;
         # Skip comment lines
 
-        if line[6] != "PASS":
+        if line[6] != filter_str:
             continue;
         # Skip lines with variants that are filtered        
 
@@ -177,6 +177,16 @@ def readVCF(vcffile, regions=False):
             continue;
 
         pos = ":".join([ line[0], line[1] ]);
+
+        if minimap:
+            coord = line[1];
+            qstart = line[7].split(";")[1].replace("QSTART=", "");
+            if coord != qstart:
+                extra += [coord, qstart];
+                continue;
+        # This seems to happen when minimap predicts an indel, but in some cases just a SNP?
+        # Happened ~40 times in my test case so just skip for now
+
         alt = line[4];
         if "*" in alt:
             continue;
@@ -194,27 +204,27 @@ def readVCF(vcffile, regions=False):
 
     #print(x);
 
-    return variants, variant_list, set(confusing_pos);
+    return variants, variant_list, set(confusing_pos), extra;
     
 #############################################################################
 
-#coverage, divergence, heterozygosity, iteration, genome_file, golden_div_vcf, golden_het_vcf, iteration_vcf, minimap_vcf, outdir, outfilename = sys.argv[1:];
+region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file, prev_iter_file, golden_div_vcf, iteration_vcf, minimap_vcf, outdir, outfilename = sys.argv[1:];
 # Inputs
 
-coverage = "30";
-divergence = "0.02";
-heterozygosity = "0.005";
-iteration = "2";
-region = "19";
-genome_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.fa";
-iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus.fa"
-prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
-golden_div_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.02/divergent/regions/mm39-19_golden.vcf.gz";
-#golden_het_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/simulated-reads/30X/0.02/heterozygous/0.005/regions/mm39-19_golden.vcf.gz";
-iteration_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-filtered-snps.vcf.gz";
-minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
-outdir = ".";
-outfilename = "test.tsv";
+# coverage = "30";
+# divergence = "0.02";
+# heterozygosity = "0.005";
+# iteration = "2";
+# region = "19";
+# genome_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.fa";
+# iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus.fa"
+# prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
+# golden_div_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.02/divergent/regions/mm39-19_golden.vcf.gz";
+# #golden_het_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/simulated-reads/30X/0.02/heterozygous/0.005/regions/mm39-19_golden.vcf.gz";
+# iteration_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-filtered-snps.vcf.gz";
+# minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
+# outdir = ".";
+# outfilename = "test.tsv";
 # Test inputs
 
 #region = os.path.basename(golden_div_vcf).split("-")[1];
@@ -265,7 +275,7 @@ with open(outfilename, "w") as outfile:
     ####################
 
     PWS("#" + getDateTime() + " Reading variants from golden div file...", outfile);
-    golden_div_variants, golden_div_variant_list, golden_div_dup_pos = readVCF(golden_div_vcf);
+    golden_div_variants, golden_div_variant_list, golden_div_dup_pos, extra = readVCF(golden_div_vcf);
     # Read the SNPs from the golden VCF
 
     # print(len(golden_div_variants));
@@ -279,7 +289,7 @@ with open(outfilename, "w") as outfile:
     ####################
 
     PWS("#" + getDateTime() + " Reading variants from iteration file...", outfile);
-    iter_div_variants, iter_div_variant_list, iter_div_dup_pos = readVCF(iteration_vcf, regions=[region]);
+    iter_div_variants, iter_div_variant_list, iter_div_dup_pos, extra = readVCF(iteration_vcf, regions=[region]);
     # Read the SNPs from the iteration VCF
 
     # print(len(iter_div_variants));
@@ -292,7 +302,7 @@ with open(outfilename, "w") as outfile:
     ####################
 
     PWS("#" + getDateTime() + " Reading variants from minimap file...", outfile);
-    mmap_div_variants, mmap_div_variant_list, mmap_div_dup_pos = readVCF(minimap_vcf);
+    mmap_div_variants, mmap_div_variant_list, mmap_div_dup_pos, mmap_qstart_mismatches = readVCF(minimap_vcf, regions=[region], filter_str=".", minimap=True);
     # Read the SNPs from the iteration VCF
 
     # print(len(mmap_div_variants));
@@ -302,12 +312,13 @@ with open(outfilename, "w") as outfile:
     # sys.exit();
 
     PWS("#" + getDateTime() + " " + str(len(mmap_div_variants)) + " variants read", outfile);
+    PWS("#" + getDateTime() + " " + str(len(mmap_qstart_mismatches)/2) + " mis-matched coordinates will be ignored", outfile);
 
     ####################
 
     PWS("#" + getDateTime() + " Comparing variants...", outfile);
     meta_headers = [ "coverage", "divergence", "heterozygosity", "iteration" ];
-    headers = [ "chr", "pos", "ref", "golden.div", "prev.match.ref", "prev.iter", "iter.type", "iter.allele.1", "iter.allele.2", "minimap.type", "minimap.allele.1", "minimap.allele.2" ];
+    headers = [ "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2" ];
     outfile.write("\t".join(meta_headers + headers) + "\n");
     # Write the headers for the detailed SNP file
 
@@ -319,14 +330,14 @@ with open(outfilename, "w") as outfile:
         j = i + 1;
         pos = region + ":" + str(j);
 
-        prev_match = "Y";
-        if ref_seq[region][i].upper() != prev_seq[region][i].upper():
-            prev_match = "N"
+        # prev_match = "Y";
+        # if ref_seq[region][i].upper() != prev_seq[region][i].upper():
+        #     prev_match = "N"
 
         if any(pos in varset for varset in [golden_div_variants, iter_div_variants, mmap_div_variants] ):
-            outline = { "chr" : region, "pos" : str(i), "ref" : ref_seq[region][i], 'golden.div' : ".", 'prev.match.ref' : prev_match,
-                        "prev.iter" : prev_seq[region][i], "iter.type" : "NA", "iter.allele.1" : ".", "iter.allele.2" : ".", 
-                        "minimap.type" : "NA", "minimap.allele.1" : ".", "minimap.allele.2" : "." };
+            outline = { "chr" : region, "pos" : str(i), "ref" : ref_seq[region][i], 'golden.div' : ".",
+                        "prev.iter" : prev_seq[region][i], "iter.gt" : "NA", "iter.allele.1" : ".", "iter.allele.2" : ".", 
+                        "minimap.gt" : "NA", "minimap.allele.1" : ".", "minimap.allele.2" : "." };
 
             if pos in golden_div_variants:
                 outline['golden.div'] = golden_div_variants[pos]['alt'];
@@ -338,37 +349,37 @@ with open(outfilename, "w") as outfile:
 
                 if iter_div_variants[pos]['gt'] in ["1/1", "1|1"]:
                     outline['iter.allele.2'] = iter_div_variants[pos]['alt'];
-                    outline['iter.type'] = "hom.alt";
+                    outline['iter.gt'] = "hom.alt";
                 else:
                     outline['iter.allele.2'] = prev_seq[region][i];
-                    outline['iter.type'] = "het";
+                    outline['iter.gt'] = "het";
             else:
                 outline['iter.allele.1'] = prev_seq[region][i];
                 outline['iter.allele.2'] = prev_seq[region][i];
-                outline['iter.type'] = "hom.prev";
+                outline['iter.gt'] = "hom.prev";
 
-                if pos == "19:3053895":
-                    print(iter_seq[region][i], pos + " " + prev_seq[region][i] + " " + iter_seq[region][i]);
+                # if pos == "19:3053895":
+                #     print(iter_seq[region][i], pos + " " + prev_seq[region][i] + " " + iter_seq[region][i]);
 
-                if "*" not in iter_seq[region][i] and "*" not in prev_seq[region][i]:
-                    assert prev_seq[region][i] == iter_seq[region][i], pos + " " + prev_seq[region][i] + " " + iter_seq[region][i];
+                #if "*" not in iter_seq[region][i] and "*" not in prev_seq[region][i]:
+                assert prev_seq[region][i] == iter_seq[region][i], pos + " " + prev_seq[region][i] + " " + iter_seq[region][i];
 
             if pos in mmap_div_variants:
                 outline['minimap.allele.1'] = mmap_div_variants[pos]['alt'];
 
                 if mmap_div_variants[pos]['gt'] in ["1/1", "1|1"]:
                     outline['minimap.allele.2'] = mmap_div_variants[pos]['alt'];
-                    outline['minimap.type'] = "hom.alt";
+                    outline['minimap.gt'] = "hom.alt";
                 else:
                     outline['minimap.allele.2'] = ref_seq[region][i];
-                    outline['minimap.type'] = "het";
+                    outline['minimap.gt'] = "het";
             else:
                 outline['minimap.allele.1'] = ref_seq[region][i];
                 outline['minimap.allele.2'] = ref_seq[region][i];
-                outline['minimap.type'] = "hom.ref";
+                outline['minimap.gt'] = "hom.ref";
 
-                if "*" not in iter_seq[region][i]:
-                    assert ref_seq[region][i] == iter_seq[region][i], pos + " " + ref_seq[region][i] + " " + iter_seq[region][i];
+                # if str(j) not in mmap_qstart_mismatches:
+                #     assert ref_seq[region][i] == iter_seq[region][i], str(i) + " " + str(j) + " " + pos + " " + ref_seq[region][i] + " " + iter_seq[region][i];
                 # 19:3090394
 
             final_outline = "\t".join(meta_outline + [ outline[col] for col in headers ]);

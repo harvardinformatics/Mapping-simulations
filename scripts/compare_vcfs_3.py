@@ -48,10 +48,51 @@ def runTime(msg=False, writeout=False, printout=True):
 
 ####################
 
-def readVCF(vcffile):
+def detectCompression(filename):
+# Detect compression of a file by examining the first lines in the file
+
+    compression_type = "none";
+
+    magic_dict = {
+            b"\x1f\x8b\x08": "gz",
+            # b"\x1f\x8b\x08\x08": "gz",
+            b"\x42\x5a\x68": "bz2",
+            b"\x50\x4b\x03\x04": "zip"
+        }
+    # An encoded set of possible "magic strings" that start different types of compressed files
+    # From: https://www.garykessler.net/library/file_sigs.html
+    # \x is the escape code for hex values
+    # b converts strings to bytes
+
+    max_len = max(len(x) for x in magic_dict)
+    # The number of characters to read from the beginning of the file should be the length of
+    # the longest magic string
+
+    file_start = open(filename, "rb").read(max_len);
+    # Read the beginning of the file up to the length of the longest magic string
+
+    for magic_string in magic_dict:
+        if file_start.startswith(magic_string):
+            compression_type = magic_dict[magic_string];
+    # Check each magic string against the start of the file
+
+    return compression_type;
+
+####################
+
+def readVCF(vcffile, regions=False):
 # Reads the SNPs in a vcf file
 
-    variant_pos, variants = [], [];
+    compression = detectCompression(vcffile);
+
+    if compression == "gz":
+        opener = gzip.open;
+        reader = lambda s : s.decode().strip().split("\t");
+    elif compression == "none":
+        opener = open; 
+        reader = lambda s : s.strip().split("\t");
+
+    variants, variant_list = {}, [];
     # The basic info about the SNPs (chr, pos, ref, alt)
 
     confusing_pos = [];
@@ -63,9 +104,9 @@ def readVCF(vcffile):
     prev_pos = "";
     x = 1;
 
-    for line in gzip.open(vcffile):
+    for line in opener(vcffile):
     # Open the file with gzip and read each line
-        line = line.decode().strip().split("\t");
+        line = reader(line);
         # Read the current line
 
         if line[0][0] == "#":
@@ -74,29 +115,30 @@ def readVCF(vcffile):
 
         if line[6] != "PASS":
             continue;
-        # Skip lines with variants that are filtered
+        # Skip lines with variants that are filtered        
+
+        if regions and line[0] not in regions:
+            continue;
 
         pos = ":".join([ line[0], line[1] ]);
-        phase = line[7].replace("WP=", "");
-        variant = ":".join([ line[0], line[1], line[3], line[4].replace(",", ";") ]);
-        # Parse the basic infor of the SNP and join into a string for set comparisons and use as dict key later
+        alt = line[4];
+        if "*" in alt:
+            continue;
+        gt = line[-1].split(":")[0].replace("WP=", "");
 
         if pos == prev_pos:
             confusing_pos.append(pos);
-            #print(variant);
             x += 1;
-            # if x == 100:
-            #     sys.exit();
             continue;
 
-        variant_pos.append(pos);
-        variants.append(variant);
+        variant_list.append(pos);
+        variants[pos] = {'region' : line[0], 'pos' : line[1], 'alt' : alt, 'gt' : gt };
         prev_pos = pos;
     ## End file loop
 
     #print(x);
 
-    return variants, set(confusing_pos);
+    return variants, variant_list, set(confusing_pos);
     
 #############################################################################
 
@@ -140,22 +182,16 @@ with open(summary_outfilename, "w") as sumfile, open(snp_outfilename, "w") as sn
 
     ####################
 
-    PWS("#" + getDateTime() + " Reading variants from golden file...", sumfile);
-    golden_variants, golden_dup_pos = readVCF(golden_vcf_file);
+    PWS("#" + getDateTime() + " Reading variants from golden div file...", outfile);
+    golden_div_variants, golden_div_variant_list, golden_div_dup_pos = readVCF(golden_div_vcf);
+    PWS("#" + getDateTime() + " " + str(len(golden_div_variants)) + " variants read", outfile);
     # Read the SNPs from the golden VCF
-    # golden_details is an empty dict since it doesn't have any extra info
+    
+    ####################
 
-    golden_variants = set(golden_variants);
-    num_golden = str(len(golden_variants));
-    golden_variants_list = list(golden_variants);
-    golden_pos = set([ ":".join(v.split(":")[:2]) for v in golden_variants_list ]);
-    golden_pos_list = list(golden_pos);
-    golden_variants_dict = { golden_pos_list[i] : golden_variants_list[i] for i in range(len(golden_pos_list)) };
-    num_golden_pos = str(len(golden_pos));
-    PWS("#" + getDateTime() + " " + num_golden + " variants read at " + num_golden_pos + " positions.", sumfile);
-    #print(len(golden_variants_dict));
-    # Convert the list of SNPs to a set and count
-    # Some variants at same site but other haplotype
+    PWS("#" + getDateTime() + " Reading variants from iteration file...", outfile);
+    iter_div_variants, iter_div_variant_list, iter_div_dup_pos = readVCF(iteration_vcf, regions=[region]);
+    # Read the SNPs from the iteration VCF
 
     ####################
 
