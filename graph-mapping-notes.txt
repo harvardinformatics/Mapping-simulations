@@ -5,43 +5,103 @@ https://github.com/vgteam/vg/wiki/Mapping-short-reads-with-Giraffe
 
     time -p vg-v1.47.0/vg autoindex --workflow giraffe -r mm39-18-19.fa -v mm39_golden.vcf.gz -p mm39-18-19-0.6d-graph
 
-    real 4104.83
-    user 3450.34
-    sys 140.18
+        real 4104.83
+        user 3450.34
+        sys 140.18
 
-    Without giraffe option:
-    real 13979.35
-    user 13298.94
-    sys 889.89
+        Without giraffe option:
+        real 13979.35
+        user 13298.94
+        sys 889.89
 
 2. Mapping reads simulated from a genome with 6% divergence and 0.5% heterozygosity (0.005)
 
     vg-v1.47.0/vg giraffe -Z mm39-18-19-0.6d-graph.giraffe.gbz -m mm39-18-19-0.6d-graph.min -d mm39-18-19-0.6d-graph.dist -f mm39_read1.fastp.fq.gz -f mm39_read2.fastp.fq.gz -p > output.gam
 
-    real 11637.91
-    user 13958.59
-    sys 9113.78
+        real 11637.91
+        user 13958.59
+        sys 9113.78
+
+    vg-v1.47.0/vg giraffe -Z mm39-18-19-0.6d-graph.giraffe.gbz -m mm39-18-19-0.6d-graph.min -d mm39-18-19-0.6d-graph.dist -f mm39_read1.fastp.fq.gz -f mm39_read2.fastp.fq.gz -p -o bam -t 12 > output.bam
+
+        Guessing that mm39-18-19-0.6d-graph.xg is XG
+        Preparing Indexes
+        Loading Minimizer Index
+        Loading GBZ
+        Loading Distance Index v2
+        Paging in Distance Index v2
+        Loading XG Graph
+        Initializing MinimizerMapper
+        Loading and initialization: 70.3251 seconds
+        Of which Distance Index v2 paging: 8.64211 seconds
+        Mapping reads to "-" (BAM)
+        --watchdog-timeout 10
+        --max-multimaps 1
+        --hit-cap 10
+        --hard-hit-cap 500
+        --score-fraction 0.9
+        --max-min 500
+        --num-bp-per-min 1000
+        --distance-limit 200
+        --max-extensions 800
+        --max-alignments 8
+        --cluster-score 50
+        --pad-cluster-score 20
+        --cluster-coverage 0.3
+        --extension-score 1
+        --extension-set 20
+        --rescue-attempts 15
+        --max-fragment-length 2000
+        --paired-distance-limit 2
+        --rescue-subgraph-size 4
+        --rescue-seed-limit 100
+        --chaining-cluster-distance 100
+        --precluster-connection-coverage-threshold 0.3
+        --min-precluster-connections 10
+        --max-precluster-connections 50
+        --max-lookback-bases 100
+        --min-lookback-items 1
+        --lookback-item-hard-cap 15
+        --chain-score-threshold 100
+        --min-chains 1
+        --chain-min-score 100
+        --max-chain-connection 100
+        --max-tail-length 100
+        --max-dp-cells 16777216
+        --rescue-algorithm dozeu
+        warning:[vg::get_sequence_dictionary] No reference-sense paths available in the graph; falling back to generic paths.
+        Using fragment length estimate: 297.371 +/- 30.2945
+        Mapped 28240610 reads across 12 threads in 2126.2 seconds with 3.1616 additional single-threaded seconds.
+        Mapping speed: 1106.71 reads per second per thread
+        Used 27626.5 CPU-seconds (including output).
+        Achieved 1022.23 reads per CPU-second (including output)
+        Used 70797689453698 CPU instructions (not including output).
+        Mapping slowness: 2.50695 M instructions per read at 2562.67 M mapping instructions per inclusive CPU-second
+        Memory footprint: 7.83992 GB
+        real 2202.41
+        user 26283.72
+        sys 1372.02
 
 3. Mapping stats
 
     time -p vg-v1.47.0/vg stats -a output.gam
 
-    Total alignments: 28240610
-    Total primary: 28240610
-    Total secondary: 0
-    Total aligned: 28238436
-    Total perfect: 14847884
-    Total gapless (softclips allowed): 27108597
-    Total paired: 28240610
-    Total properly paired: 28238420
-    Alignment score: mean 155.336, median 160, stdev 6.89721, max 160 (14840812 reads)
-    Mapping quality: mean 59.9932, median 60, stdev 0.531036, max 60 (28232016 reads)
-    Insertions: 971906 bp in 350036 read events
-    Deletions: 2162430 bp in 1043787 read events
-    Substitutions: 24094680 bp in 24094680 read events
-    Softclips: 373102 bp in 53267 read events
-    Total time: 19074.8 seconds
-    Speed: 1480.52 reads/second
-    real 1029.44
-    user 1022.16
-    sys 5.07
+        Total alignments: 28240610
+        Total primary: 28240610
+        Total secondary: 0
+        Total aligned: 28238436
+        Total perfect: 14847884
+        Total gapless (softclips allowed): 27108597
+        Total paired: 28240610
+        Total properly paired: 28238420
+        Alignment score: mean 155.336, median 160, stdev 6.89721, max 160 (14840812 reads)
+        Mapping quality: mean 59.9932, median 60, stdev 0.531036, max 60 (28232016 reads)
+        Insertions: 971906 bp in 350036 read events
+        Deletions: 2162430 bp in 1043787 read events
+        Substitutions: 24094680 bp in 24094680 read events
+        Softclips: 373102 bp in 53267 read events
+        Total time: 19074.8 seconds
+        Speed: 1480.52 reads/second
+        real 1029.44
+        user 1022.16
+        sys 5.07

@@ -319,7 +319,7 @@ with open(outfilename, "w") as outfile:
     PWS("#" + getDateTime() + " Comparing variants...", outfile);
     meta_headers = [ "coverage", "divergence", "heterozygosity", "iteration" ];
     headers = [ "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2" ];
-    outfile.write("\t".join(meta_headers + headers) + "\n");
+    outfile.write( "# " + "\t".join(meta_headers + headers) + "\n");
     # Write the headers for the detailed SNP file
 
     ####################

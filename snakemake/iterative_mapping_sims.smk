@@ -76,14 +76,15 @@ rule all:
         expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets),
         # Expected output from generate_consensus
 
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
         # Expected output from align_to_vcf
 
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
 
         #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"), cov=covs, het=hets),
         #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"), cov=covs, het=hets),
         expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv"), cov=covs, het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-comparison.tsv.gz"), cov=covs, het=hets)
         # Expected output from combine summaries 
 
 ## The final expected outputs should be listed in this rule. Only necessary to list final output from final rule, but I found it useful to list them 
@@ -166,7 +167,7 @@ rule simulate_reads:
         vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz"),
     params:
         prefix = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}"),
-        div = "{div}",
+        het = "{het}",
         cov = "{cov}"
     log:
         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{region}.log")
@@ -176,7 +177,7 @@ rule simulate_reads:
     retries: 3
     shell:
         """
-        python ../pkgs/NEAT/gen_reads.py -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.div} &> {log}
+        python ../pkgs/NEAT/gen_reads.py -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.het} &> {log}
         """
 # Simulate reads per chromosome with varying levels of divergence (and possibly varying coverage) with NEAT
 # This generates read pairs, a golden VCF and a golden BAM for each chromosome
@@ -626,11 +627,11 @@ rule compare_vcfs:
     output:
         os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"),
     resources:
-        mem = "12g",
+        mem = "16g",
         time = "1:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.region} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_fa} {input.iter_fa} {input.prev_iter_fa} {input.golden_vcf} {input.iter_vcf} {input.mmap_vcf} {params.outdir} {output}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_divergence.py {params.region} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_fa} {input.iter_fa} {input.prev_iter_fa} {input.golden_vcf} {input.iter_vcf} {input.mmap_vcf} {params.outdir} {output}
         """
 
 #python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.region} {params.cov} {params.div} {params.het} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}
@@ -643,23 +644,25 @@ rule compare_vcfs:
 
 rule combine_summaries:
     input:
-        bam_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-summary.csv"), cov=covs, div=divs, het=hets, n=range(1, num_iters+1)) 
-        #vcf_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-summary.csv"), cov=covs, div=divs, region=regions, het=hets, n=range(1, num_iters+1)),
+        bam_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-summary.csv"), cov=covs, div=divs, het=hets, n=range(1, num_iters+1)),
+        vcf_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"), cov=covs, div=divs, region=regions, het=hets, n=range(1, num_iters+1)),
         #snp_summary = expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-snps.csv"), cov=covs, div=divs, region=regions, het=hets, n=range(1, num_iters+1)),
     output:
-        bam_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv")
-        #vcf_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"),
+        bam_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv"),
+        vcf_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-comparison.tsv.gz")
         #snp_out = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"),
     params:
         indir = os.path.join(outdir, "summary-files", "{cov}X"),
+        vcf_int = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-comparison.tsv")
         #snp_int = os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv")
     resources:
         mem = "4g",
         time = "1:00:00"
     shell:
         """
-
-        find {params.indir} -type f -name *-compare-bam-summary.csv -exec awk 1 {{}} \; | grep -v "#" | sort -r | uniq > {output.bam_out}
+        find {params.indir} -type f -name *-compare-bam-summary.csv -exec awk '/^[^#]/' {{}} \; | sort -r | uniq > {output.bam_out}
+        find {params.indir} -type f -name *-compare-vcf-full.tsv -exec awk '/^[^#]/' {{}} \; > {params.vcf_int}
+        gzip {params.vcf_int}
         """
 
 #find {params.indir} -type f -name *-compare-vcf-summary.csv -exec awk 1 {{}} \; | grep -v "#" | sort -r | uniq > {output.vcf_out}
