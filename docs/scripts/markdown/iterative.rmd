@@ -63,7 +63,7 @@ len_19 = 61420004
 total_len = len_18 + len_19
 ## TODO: Use .fai file to do this automatically in the full sims
 
-sum_stats %>% kable() %>% kable_styling(bootstrap_options=c("striped", "condended", "responsive"), full_width=F)
+#sum_stat q
 # Display counts as a table
 
 ####################
@@ -92,7 +92,7 @@ div_sim_p = ggplot(sum_stats, aes(x=divergence, y=golden.variants)) +
   geom_point(size=3, color="#666666") +
   geom_smooth(method="lm", se=F, linetype="dashed", color=corecol(pal="wilke", numcol=1)) +
   #scale_y_continuous(expand=c(0,0)) +
-  xlab("Mapping iteration") +
+  xlab("Simulated divergence") +
   ylab("# of simulated variants") +
   bartheme()
 
@@ -317,6 +317,46 @@ read_rates_p = ggplot(subset(long_bam_data, name != "exact.map.prop"), aes(x=ite
 print(read_rates_p)
 
 ```
+
+
+```{r iterative-div, out.width="50%", fig.align = "center", warning=FALSE}
+
+library(zoo)
+
+window_file = here("data", "window-snps-30X-summary.tab.gz")
+  
+windows = read_tsv(window_file, col_names=c("chr", "start", "end", "snps", "coverage", "divergence", "heterozygosity", "iteration"))
+windows = windows %>% filter(chr %in% c("18", "19")) %>% mutate(length=end-start) %>% mutate(est.div=snps/length)
+#windows$iteration = as.factor(windows$iteration)
+
+p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 10, na.pad = TRUE, align = "right"), color=iteration)) +
+  geom_line() +
+  facet_wrap(~divergence) +
+  scale_color_manual(values=corecol(pal="wilke", numcol=4)) +
+  bartheme()
+
+print(p)
+
+
+# window_summary = windows %>% 
+#   filter(iteration != "golden") %>%
+#   group_by(divergence, iteration) %>% 
+#   summarize(mean.snps=mean(snps, na.rm=T), mean.div=mean(snps/length, na.rm=T), total.snps=sum(snps)) %>% 
+#   mutate(length=total_len) %>% 
+#   mutate(est.div=total.snps/length)
+# 
+# #window_summary$divergence = as.factor(window_summary$divergence)
+# p2 = ggplot(window_summary, aes(x=divergence, y=est.div, color=iteration)) +
+#   geom_point(size=3) +
+#   bartheme()
+# 
+# print(p2)
+
+
+```
+
+
+
 
 [< Back ](index.html)
 

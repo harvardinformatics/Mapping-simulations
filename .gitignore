@@ -17,4 +17,5 @@ data/old/mm39-20X-vcf-snps.csv
 data/old/mm39-iterative-20X-vcf-snps.csv
 data/mm39-30X-0.005h-snps.csv.gz
 data/mm39-30X-0.005h-snps-genmap.csv.gz
-data/mm39-30X-0.005h-3i-snps-header.csv.gz
+data/mm39-30X-0.005h-3i-snps.csv.gz
+data/tmp-old/
