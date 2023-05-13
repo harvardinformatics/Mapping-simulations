@@ -408,7 +408,7 @@ rule build_graph:
         os.path.join(outdir, "graphs", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-autoindex.log")
     resources:
         cpus = 12,
-        mem = "24g"
+        mem = "64g"
     shell:
         """
         {params.vg_path} autoindex --workflow giraffe -t {resources.cpus} -r {input.ref} -v {input.vcf} -p {params.prefix}
