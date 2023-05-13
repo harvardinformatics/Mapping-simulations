@@ -45,6 +45,11 @@ NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK
 3 rounds of mapping
 
 ```{r read, out.width="100%", fig.align = "center", warning=FALSE}
+
+vcf_comp_file = here("data", "mm39-30X-0.005h-3i-vcf-comparison.tsv.gz")
+vcf_comp = read_tsv(vcf_comp_file, col_names=c("coverage", "divergence", "heterozygosity", "iteration", "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2"))
+
+
 summary_file = here("data", "mm39-30X-0.005h-3i-vcf-summary.csv")
 sum_stats_chr = read.csv(summary_file, header=T)
 # Read the summary file from compare_vcfs
@@ -60,7 +65,7 @@ sum_stats$iteration = as.factor(sum_stats$iteration)
 
 len_18 = 90720763
 len_19 = 61420004
-total_len = len_18 + len_19
+total_len = len_18# + len_19
 ## TODO: Use .fai file to do this automatically in the full sims
 
 #sum_stat q
@@ -295,9 +300,9 @@ print(overlaps_p)
 
 ```{r read-rates, out.width="50%", fig.align = "center", warning=FALSE}
 
-cols = corecol(pal="wilke", numcol=5, offset=2)
+cols = corecol(pal="wilke", numcol=6, offset=1)
 
-read_rates_p = ggplot(subset(long_bam_data, name != "exact.map.prop"), aes(x=iteration, y=value, color=name)) +
+read_rates_p = ggplot(long_bam_data, aes(x=iteration, y=value, color=name)) +
   geom_line(size=1.2) +
   geom_point(size=3) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
@@ -309,7 +314,7 @@ read_rates_p = ggplot(subset(long_bam_data, name != "exact.map.prop"), aes(x=ite
   #scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
   #scale_x_discrete(limits=unique(long_data$divergence)) +
   #scale_x_continuous(breaks=unique(long_data$iteration)) +
-  scale_color_manual(guide=guide_legend(reverse=T), labels=c("Close map", "Mismapped", "Different chrome", "Unmapped"), values=cols) +
+  scale_color_manual(guide=guide_legend(reverse=T), labels=c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped"), values=cols) +
   facet_wrap(~divergence) +
   #scale_fill_discrete(, values=cols) +
   bartheme() +
@@ -329,7 +334,7 @@ windows = read_tsv(window_file, col_names=c("chr", "start", "end", "snps", "cove
 windows = windows %>% filter(chr %in% c("18", "19")) %>% mutate(length=end-start) %>% mutate(est.div=snps/length)
 #windows$iteration = as.factor(windows$iteration)
 
-p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 10, na.pad = TRUE, align = "right"), color=iteration)) +
+p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 100, na.pad = TRUE, align = "right"), color=iteration)) +
   geom_line() +
   facet_wrap(~divergence) +
   scale_color_manual(values=corecol(pal="wilke", numcol=4)) +
