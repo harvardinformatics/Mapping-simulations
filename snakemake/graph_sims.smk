@@ -402,13 +402,13 @@ rule build_graph:
     output:
         os.path.join(outdir, "graphs", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h.giraffe.gbz")
     params:
-        prefix = ref_str + "-{cov}X-{div}d-{het}h",
+        prefix = os.path.join(outdir, "graphs", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h"),
         vg_path = VG_PATH
     log:
         os.path.join(outdir, "graphs", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-autoindex.log")
     resources:
         cpus = 12,
-        mem = "64g"
+        mem = "128g"
     shell:
         """
         {params.vg_path} autoindex --workflow giraffe -t {resources.cpus} -r {input.ref} -v {input.vcf} -p {params.prefix}
@@ -424,11 +424,11 @@ rule map_graph:
     output:
         os.path.join(outdir, "graphs", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h.bam")
     params:
-        prefix = ref_str + "-{cov}X-{div}d-{het}h",
+        prefix = os.path.join(outdir, "graphs", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h"),
         vg_path = VG_PATH
     resources:
         cpus = 12,
-        mem = "24g"
+        mem = "128g"
     shell:
         """
         {params.vg_path} giraffe -t {resources.cpus} -Z {input.graph} -f {input.read1} -f {input.read2} -o bam -p > {output}
