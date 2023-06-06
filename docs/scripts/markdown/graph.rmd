@@ -1,0 +1,125 @@
+---
+title: "Mapping simulations"
+author: "[gwct](https://gwct.github.io/)"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M:%S %Z')`"
+output:
+  #html_document:
+  rmdformats::robobook:
+    highlight: kate
+    includes:
+      in_header: '../html-chunks/rmd_header.html'
+    df_print: paged
+    code_folding: hide
+    number_sections: true
+    toc_depth: 3
+---
+
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(here)
+#library(reshape2)
+library(kableExtra)
+library(viridis)
+source("../lib/design.r")
+```
+
+[< Back ](index.html)
+
+# Introduction
+
+Reference genome: mm39
+
+NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK > vg > giraffe
+
+- Chromosomes 18 only
+- chr18 length = 90720763
+
+- Divergence: 0-10%
+- Heterozygosity: 0.05%
+- Coverage: 30X for both NEAT runs
+
+```{r read, out.width="100%", fig.align = "center", warning=FALSE}
+
+len_18 = 90720763
+len_19 = 61420004
+total_len = len_18# + len_19
+## TODO: Use .fai file to do this automatically in the full sims
+
+#sum_stat q
+# Display counts as a table
+
+####################
+
+mapping_file = here("data", "mm39-30X-0.005h-3i-bam-summary.csv")
+bam_stats = read.csv(mapping_file, header=T)
+# Read the bam compare file
+
+graph_file = here("data", "mm39-30X-0.005h-bam-graph-summary.csv")
+graph_stats = read.csv(graph_file, header=T)
+
+####################
+
+```
+
+
+```{r read-props, out.width="50%", fig.align = "center", warning=FALSE}
+
+
+
+bam_stats = bam_stats %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped + missing.in.query) %>%
+  mutate(exact.map.prop = exact.map / total.reads, close.map.prop = close.map / total.reads, mismapped.prop = mismapped / total.reads, 
+         diff.chr.prop = diff.chr / total.reads, unmapped.prop = unmapped / total.reads, missing.prop = missing.in.query / total.reads)
+
+long_bam_data = bam_stats %>% 
+  select(iteration, divergence, exact.map.prop, close.map.prop, mismapped.prop, diff.chr.prop, unmapped.prop, missing.prop) %>% 
+  pivot_longer(cols=c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop"))
+
+graph_stats$iteration = "graph"
+
+graph_stats = graph_stats %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped + missing.in.query) %>%
+  mutate(exact.map.prop = exact.map / total.reads, close.map.prop = close.map / total.reads, mismapped.prop = mismapped / total.reads, 
+         diff.chr.prop = diff.chr / total.reads, unmapped.prop = unmapped / total.reads, missing.prop = missing.in.query / total.reads)
+
+long_graph_data = graph_stats %>% 
+  select(iteration, divergence, exact.map.prop, close.map.prop, mismapped.prop, diff.chr.prop, unmapped.prop, missing.prop) %>% 
+  pivot_longer(cols=c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop"))
+
+
+full_data = rbind(long_bam_data, long_graph_data)
+#long_data$text = NA
+
+#long_data[long_data$variable=="exact.map.prop",]$text = bam_stats$exact.map[bam_stats$iteration==long_data[long_data$variable=="exact.map.prop",]$iteration]
+#long_data[long_data$variable=="close.map.prop",]$text = bam_stats$close.map[bam_stats$iteration==long_data[long_data$variable=="close.map.prop",]$iteration]
+#long_data[long_data$variable=="mismapped.prop",]$text = bam_stats$mismapped[bam_stats$iteration==long_data[long_data$variable=="mismapped.prop",]$iteration]
+#long_data[long_data$variable=="diff.chr.prop",]$text = bam_stats$diff.chr[bam_stats$iteration==long_data[long_data$variable=="diff.chr.prop",]$iteration]
+#long_data[long_data$variable=="unmapped.prop",]$text = bam_stats$unmapped[bam_stats$iteration==long_data[long_data$variable=="unmapped.prop",]$iteration]
+
+read_classes = c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop")
+read_class_names = c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped", "Missing")
+
+full_data$name = factor(full_data$name, levels=read_classes)
+
+cols = corecol(pal="wilke", numcol=6, offset=1)
+
+overlaps_p = ggplot(full_data, aes(x=iteration, y=value, fill=name)) +
+  geom_bar(stat="identity") +
+  #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
+  xlab("Mapping iteration") +
+  ylab("Proportion of reads") +
+  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
+  #scale_x_discrete(limits=unique(long_data$divergence)) +
+  #scale_x_continuous(breaks=unique(long_data$iteration)) +
+  scale_fill_manual(labels=read_class_names, values=cols) +
+  #scale_fill_discrete(, values=cols) +
+  facet_wrap(~divergence) +
+  bartheme() +
+  theme(legend.position="bottom") +
+  coord_flip()
+print(overlaps_p)
+
+```
+
+

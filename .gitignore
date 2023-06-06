@@ -20,3 +20,6 @@ data/mm39-30X-0.005h-snps-genmap.csv.gz
 data/mm39-30X-0.005h-3i-snps.csv.gz
 data/mm39-30X-0.005h-3i-vcf-comparison.tsv.gz
 data/tmp-old*
+data/window-snps-30X-summary.tab
+
+.here
