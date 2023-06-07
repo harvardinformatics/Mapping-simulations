@@ -33,7 +33,7 @@ html_template = """
 
             <ul>
 				<h3>
-					<a href="variants.html">Mapping simulation summary (mouse chr18 only)</a>
+					<a href="map_sim_summary.html">Mapping simulation summary (mouse chr18 only)</a>
 				</h3>            
 				<h6>
 					<a href="variants.html">Called variants with varying levels of divergence (mouse chr18 and chr19 only)</a>
