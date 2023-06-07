@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 library(tidyverse)
 library(here)
-#library(reshape2)
+library(cowplot)
 library(kableExtra)
 library(viridis)
 source("../lib/design.r")
@@ -70,22 +70,18 @@ Just to make sure the simulations are working
 
 ```{r sim-check, out.width="50%", fig.align = "center", warning=FALSE}
 
-vcf_comp_iter1 = vcf_comp %>% filter(iteration == 1)
-# Get only SNP sites from iteration 1
-
-sim_vars_iter1 = vcf_comp_iter1 %>% filter(ref != golden.div)
-# Get only sites where the reference allele does not match the golden allele (a simulated substitution)
-
-sim_vars_div_iter1 = sim_vars_iter1 %>% group_by(divergence) %>% summarize(n=n()) %>% mutate(perc.var.sites=n/total_len)
-# Group the SNPs and count them
+sim_vars_div_iter1 = vcf_comp %>% filter(iteration == 1 & ref != golden.div) %>%
+  group_by(divergence) %>%
+  summarize(n=n()) %>%
+  mutate(perc.var.sites=n/total_len)
 
 div_sim_p = ggplot(sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites)) +
-  geom_point(size=4, color="#666666") +
-  geom_abline(slope=1, intercept=0, size=1, linetype="dashed", color=corecol(numcol=1, pal="wilke")) +
-  scale_y_continuous(limits=c(0,0.10), breaks=seq(0,0.10,0.02)) +
-  xlab("Simulated divergence") +
-  ylab("% of sites simulated with SNPs") +
-  bartheme()
+    geom_point(size=4, color="#666666") +
+    geom_abline(slope=1, intercept=0, size=1, linetype="dashed", color=corecol(numcol=1, pal="wilke")) +
+    scale_y_continuous(limits=c(0,0.10), breaks=seq(0,0.10,0.02)) +
+    xlab("Simulated divergence") +
+    ylab("% of sites simulated with SNPs") +
+    bartheme()
 print(div_sim_p)
 
 ## Note that with increasing specified divergence, actual divergence is under-simulated
@@ -95,6 +91,8 @@ print(div_sim_p)
 # 1 iteration of mapping
 
 ## Read mapping errors
+
+"Missing" reads likely those filtered by BWA (option `-T` which defaults to 30: https://bio-bwa.sourceforge.net/bwa.shtml)
 
 ```{r read-props, out.width="50%", fig.align = "center", warning=FALSE}
 
@@ -121,9 +119,10 @@ cols = corecol(pal="wilke", numcol=6, offset=1)
 reads_p = ggplot(long_bam_data, aes(x=divergence, y=value, fill=name)) +
   geom_bar(stat="identity", position=position_fill(reverse = TRUE)) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
-  xlab("Mapping iteration") +
+  xlab("Simulated ivergence") +
   ylab("Proportion of reads") +
-  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
+  scale_x_continuous(breaks=seq(0, 0.1, by=0.02)) +
+  scale_y_continuous(expand=c(0,0)) +
   scale_fill_manual(labels=read_class_names, values=cols) +
   bartheme() +
   theme(legend.position="bottom") +
@@ -138,7 +137,7 @@ names(cols) = read_classes[-1]
 read_rates_p = ggplot(subset(long_bam_data, name != "exact.map.prop"), aes(x=divergence, y=value, color=name)) +
   geom_line(size=1.2) +
   geom_point(size=3) +
-  xlab("Divergence") +
+  xlab("Simulated divergence") +
   ylab("Proportion of reads") +
   scale_x_continuous(breaks=unique(long_bam_data$divergence)) +
   scale_color_manual(labels=read_class_names[-1], values=cols) +
@@ -156,7 +155,10 @@ cols = c(corecol(numcol=1), "#333333")
 names(cols) = c("Called", "Simulated")
 # Get some colors for the plot
 
-het_sites = vcf_comp_iter1 %>% filter(iter.gt == "het") %>% group_by(divergence) %>% summarize(n=n()) %>% mutate(perc.het.sites=n/total_len)
+het_sites = vcf_comp %>% filter(iteration == 1 & iter.gt == "het") %>% 
+  group_by(divergence) %>% 
+  summarize(n=n()) %>% 
+  mutate(perc.het.sites=n/total_len)
 # Get sites that were called heterozygous
 
 het_p = ggplot(het_sites, aes(x=divergence, y=perc.het.sites)) +
@@ -166,7 +168,7 @@ het_p = ggplot(het_sites, aes(x=divergence, y=perc.het.sites)) +
   geom_point(aes(color="Called"), size=3) +
   scale_color_manual(values=cols) +
   scale_y_continuous(limits=c(0,0.0055)) +
-  xlab("Divergence") +
+  xlab("Simulated divergence") +
   ylab("% of sites\ncalled heterozygous") +
   bartheme() +
   theme(legend.position="none")
@@ -184,15 +186,23 @@ Classified as follows:
 
 ```{r snp-props, out.width="50%", fig.align = "center", warning=FALSE}
 
-tp = vcf_comp_iter1 %>% filter(golden.div != ref & iter.gt == "hom.alt" & iter.allele.1 == golden.div) %>% group_by(divergence, iteration) %>% summarize(n=n(), class="tp")
-fp = vcf_comp_iter1 %>% filter(golden.div == ref & iter.gt == "hom.alt")  %>% group_by(divergence, iteration) %>% summarize(n=n(), class="fp")
-fn = vcf_comp_iter1 %>% filter(golden.div != ref & iter.gt == "hom.prev" & iter.allele.1 == ref)  %>% group_by(divergence, iteration) %>% summarize(n=n(), class="fn")
+tp = vcf_comp %>% filter(iteration == 1 & golden.div != ref & iter.gt == "hom.alt" & iter.allele.1 == golden.div) %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n(), class="tp")
+fp = vcf_comp %>% filter(iteration == 1 & golden.div == ref & iter.gt == "hom.alt")  %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n(), class="fp")
+fn = vcf_comp %>% filter(iteration == 1 & golden.div != ref & iter.gt == "hom.prev" & iter.allele.1 == ref) %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n(), class="fn")
 # Get sites of different classes from the iteration VCF (GATK)
 
 snp_classes = rbind(tp, fp, fn)
 # Combine the various snp classes
 
-snp_classes = snp_classes %>% group_by(divergence, iteration) %>% mutate(total.sites = sum(n)) %>% mutate(prop = n / total.sites)
+snp_classes = snp_classes %>% group_by(divergence, iteration) %>% 
+  mutate(total.sites = sum(n)) %>% 
+  mutate(prop = n / total.sites)
 # Calculate the proportion of each type of site
 
 snp_classes$class = factor(snp_classes$class, levels=c("fn", "tp", "fp"))
@@ -202,9 +212,10 @@ cols = c("fp"=corecol(pal="wilke", numcol=1, offset=1), "tp"="#bda988", "fn"=cor
 snps_p = ggplot(snp_classes, aes(x=divergence, y=prop, fill=class)) +
   geom_bar(stat="identity", position = position_fill(reverse = TRUE)) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
-  xlab("Mapping iteration") +
+  xlab("Simulated divergence") +
   ylab("Proportion of variants") +
-  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
+  scale_x_continuous(breaks=seq(0, 0.1, by=0.02)) +
+  scale_y_continuous(expand=c(0,0)) +
   scale_fill_manual(labels=c("False negative", "True positive", "False positive"), values=cols) +
   bartheme() +
   theme(legend.position="bottom") +
@@ -213,7 +224,7 @@ print(snps_p)
 
 ####################
 
-cols = c(corecol(pal="wilke", numcol=1, offset=1), corecol(pal="wilke", numcol=1))
+cols = c(corecol(pal="wilke", numcol=1), corecol(pal="wilke", numcol=1, offset=1))
 # Get some colors for this plot
 
 snp_rates_p = ggplot(subset(snp_classes, class != "tp" & divergence > 0), aes(x=divergence, y=prop, color=class)) +
@@ -222,7 +233,7 @@ snp_rates_p = ggplot(subset(snp_classes, class != "tp" & divergence > 0), aes(x=
   xlab("Simulated divergence") +
   ylab("Proportion of variants") +
   scale_x_continuous(breaks=unique(snp_classes$divergence)) +
-  scale_color_manual(guide=guide_legend(reverse=T), labels=c("False negative", "False positive"), values=cols) +
+  scale_color_manual(labels=c("False negative", "False positive"), values=cols) +
   bartheme() +
   theme(legend.position="bottom")
 print(snp_rates_p)
@@ -231,9 +242,13 @@ print(snp_rates_p)
 
 # 3 iterations of mapping
 
+NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > [BWA > GATK > bcftools consensus] x 3
+
 ## Read mapping errors
 
-```{r read-props, out.width="50%", fig.align = "center", warning=FALSE}
+"Missing" reads likely those filtered by BWA (option `-T` which defaults to 30: https://bio-bwa.sourceforge.net/bwa.shtml)
+
+```{r read-props-iter, out.width="50%", fig.align = "center", warning=FALSE}
 
 read_classes = c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop", "missing.prop")
 read_class_names = c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped", "Missing")
@@ -260,6 +275,7 @@ overlaps_p = ggplot(long_bam_data, aes(x=iteration, y=value, fill=name)) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   xlab("Mapping iteration") +
   ylab("Proportion of reads") +
+  ggtitle("By divergence") +
   scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
   scale_fill_manual(labels=read_class_names, values=cols) +
   facet_wrap(~divergence) +
@@ -288,7 +304,7 @@ print(read_rates_p)
 
 ```
 
-# Iteration vs. total called variants
+## Substitutions called per iteration
 
 ```{r iter-v-called, out.width="50%", fig.align = "center", warning=FALSE}
 
@@ -303,29 +319,50 @@ print(read_rates_p)
 # print(div_called_p)
 # This is the same plot but compared to the previous iteration consensus
 
-minimap_vars = vcf_comp %>% filter(minimap.gt == "hom.alt")
-minmap_vars_iter = minimap_vars %>% group_by(divergence, iteration) %>% summarize(n=n()) %>% mutate(perc.called.sites=n/total_len)
-minmap_vars_iter$iteration = as.character(minmap_vars_iter$iteration)
+minimap_vars_iter = vcf_comp %>% filter(minimap.gt == "hom.alt" & minimap.allele.1 == golden.div) %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n()) %>% 
+  mutate(perc.called.sites=n/total_len)
+minimap_vars_iter$iteration = as.character(minimap_vars_iter$iteration)
 
 cols = corecol(numcol=3, pal="wilke")
 
-div_called_p = ggplot(minmap_vars_iter, aes(x=divergence, y=perc.called.sites, color=iteration)) +
+div_called_p = ggplot(minimap_vars_iter, aes(x=divergence, y=perc.called.sites, color=iteration)) +
   geom_point(size=4, alpha=0.5) +
-  geom_abline(slope=1, intercept=0, size=2, linetype="dashed", color="#999999") +
+  geom_abline(slope=1, intercept=0, size=1, linetype="dashed", color="#999999") +
+  geom_line(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), color="#000000") +
+  geom_point(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), size=4, color="#000000") +
   scale_x_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
   scale_y_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
   xlab("Simulated divergence") +
-  ylab("% of sites with homozygous alt variant called") +
+  ylab("% of sites with homozygous alt variant correctly called") +
   scale_color_manual(name="Iteration", values=cols) +
   bartheme() +
   theme(legend.title = element_text(size=12))
 
 print(div_called_p)
 
+####################
+
+minimap_vars_iter$ratio = NA
+for(div in levels(as.factor(sim_vars_div_iter1$divergence))){
+  minimap_vars_iter[minimap_vars_iter$divergence==div,]$ratio = minimap_vars_iter[minimap_vars_iter$divergence==div,]$perc.called.sites / sim_vars_div_iter1[sim_vars_div_iter1$divergence==div,]$perc.var.sites
+}
+
+ratio_called_p = ggplot(minimap_vars_iter, aes(x=divergence, y=ratio, color=iteration)) +
+  geom_point(size=4, alpha=0.5) +
+  geom_hline(yintercept=1, size=1, linetype="dashed", color="#999999") + 
+  scale_x_continuous(limits=c(0.02,0.1), breaks=seq(0, 0.1, by=0.02)) +
+  scale_y_continuous(limits=c(0,1)) +
+  xlab("Simulated divergence") +
+  ylab("Ratio of correctly called variants to simulated variants") +
+  scale_color_manual(name="Iteration", values=cols) +
+  bartheme() +
+  theme(legend.title = element_text(size=12))
+
+print(ratio_called_p)
 
 ```
-
-# Simulated variants vs. called variants
 
 ```{r sim-v-called, out.width="50%", fig.align = "center", warning=FALSE, eval=FALSE}
 
@@ -337,7 +374,7 @@ golden_mm_comp_iter$iteration = as.character(golden_mm_comp_iter$iteration)
 
 sim_called_p = ggplot(golden_mm_comp_iter, aes(x=divergence, y=perc.called.sites, color=iteration)) +
   geom_point(size=4, alpha=0.5) +
-  geom_abline(slope=1, intercept=0, size=2, linetype="dashed", color="#999999") +
+  geom_abline(slope=1, intercept=0, size=1.5, linetype="dashed", color="#999999") +
   scale_x_continuous(limits=c(0.02,0.1), breaks=seq(0, 0.1, by=0.02)) +
   scale_y_continuous(limits=c(0.01,0.1), breaks=seq(0, 0.1, by=0.02)) +
   xlab("Simulated divergence") +
@@ -349,20 +386,26 @@ sim_called_p = ggplot(golden_mm_comp_iter, aes(x=divergence, y=perc.called.sites
 print(sim_called_p)
 ```
 
-# SNP error rates by iteration
+## Substitution error rates
 
-SNP calls were classified as follows:
+Substitutions (homozygous alternate alleles) were classified as follows:
 
 - True positive (TP): Variant in original golden VCF and homozygous alternate in called VCF
 - False positive (FP): Invariant in original golden VCF and homozygous alternate in called VCF
 - False negative (FN): Variant in original golden VCF and homozygous reference in called VCF
-- True negative (TN): Invariant in original golden VCF and homozygous reference in called VCF
+- True negative (TN): Invariant in original golden VCF and homozygous reference in called VCF (not shown)
 
-```{r snp-props, out.width="50%", fig.align = "center", warning=FALSE}
+```{r snp-props-iter, out.width="50%", fig.align = "center", warning=FALSE}
 
-tp = vcf_comp %>% filter(golden.div != ref & minimap.gt == "hom.alt" & minimap.allele.1 == golden.div) %>% group_by(divergence, iteration) %>% summarize(n=n(), class="tp")
-fp = vcf_comp %>% filter(golden.div == ref & minimap.gt == "hom.alt")  %>% group_by(divergence, iteration) %>% summarize(n=n(), class="fp")
-fn = vcf_comp %>% filter(golden.div != ref & minimap.gt == "hom.ref" & minimap.allele.1 == ref)  %>% group_by(divergence, iteration) %>% summarize(n=n(), class="fn")
+tp = vcf_comp %>% filter(golden.div != ref & minimap.gt == "hom.alt" & minimap.allele.1 == golden.div) %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n(), class="tp")
+fp = vcf_comp %>% filter(golden.div == ref & minimap.gt == "hom.alt") %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n(), class="fp")
+fn = vcf_comp %>% filter(golden.div != ref & minimap.gt == "hom.ref" & minimap.allele.1 == ref) %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n(), class="fn")
 
 snp_classes = rbind(tp, fp, fn)
 snp_classes = snp_classes %>% group_by(divergence, iteration) %>% mutate(total.sites = sum(n)) %>% mutate(prop = n / total.sites)
@@ -375,6 +418,7 @@ overlaps_p = ggplot(snp_classes, aes(x=iteration, y=prop, fill=class)) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   xlab("Mapping iteration") +
   ylab("Proportion of variants") +
+  ggtitle("By divergence") +
   scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
   scale_fill_manual(labels=c("False negative", "True positive", "False positive"), values=cols) +
   facet_wrap(~divergence) +
@@ -383,12 +427,11 @@ overlaps_p = ggplot(snp_classes, aes(x=iteration, y=prop, fill=class)) +
   coord_flip()
 print(overlaps_p)
 
-
 ```
 
-```{r snp-rates, out.width="50%", fig.align = "center", warning=FALSE}
+```{r snp-rates-iter, out.width="50%", fig.align = "center", warning=FALSE}
 
-cols = c(corecol(pal="wilke", numcol=1, offset=1), corecol(pal="wilke", numcol=1))
+cols = c(corecol(pal="wilke", numcol=1), corecol(pal="wilke", numcol=1, offset=1))
 
 snp_rates_p = snp_classes %>%
   filter(class != "tp", divergence > 0) %>%
@@ -398,7 +441,7 @@ snp_rates_p = snp_classes %>%
     xlab("Mapping iteration") +
     ylab("Proportion of variants") +
     #scale_x_continuous(breaks=unique(long_data$iteration)) +
-    scale_color_manual(guide=guide_legend(reverse=T), labels=c("False positive", "False negative"), values=cols) +
+    scale_color_manual(labels=c("False negative", "False positive"), values=cols) +
     facet_wrap(~divergence) +
     bartheme() +
     theme(legend.position="bottom")
@@ -406,78 +449,27 @@ print(snp_rates_p)
 
 ```
 
-# SNP errors and read depth
+## Estimated divergence across the genome
 
-```{r fp-fn-depth, out.width="50%", fig.align = "center", warning=FALSE, eval=F}
-
-snp_stats_chr = subset(snp_stats_chr, !is.na(dp))
-snp_stats_chr$dp = as.numeric(snp_stats_chr$dp)
-
-dp_p = ggplot(snp_stats_chr, aes(x=type, y=dp)) +
-  geom_boxplot() +
-  xlab("SNP classification") +
-  ylab("Depth") +
-  facet_wrap(~iteration) +
-  bartheme()
-print(dp_p)
-
-
-```
-
-# SNP errors and mapping quality
-
-```{r fp-fn-mq, out.width="50%", fig.align = "center", warning=FALSE, eval=F}
-
-snp_stats_chr$mq = as.numeric(snp_stats_chr$mq)
-
-mq_p = ggplot(snp_stats_chr, aes(x=type, y=mq)) +
-  geom_boxplot() +
-  xlab("SNP classification") +
-  ylab("Mapping Quality") +
-  facet_wrap(~iteration) +
-  bartheme()
-print(mq_p)
-
-
-```
-
-
-
-```{r read-rates, out.width="50%", fig.align = "center", warning=FALSE}
-
-cols = corecol(pal="wilke", numcol=6, offset=1)
-
-read_rates_p = ggplot(long_bam_data, aes(x=iteration, y=value, color=name)) +
-  geom_line(size=1.2) +
-  geom_point(size=3) +
-  #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
-  #geom_text(aes(label=text2), size=2.3, color="#f2f2f2", nudge_y=0.05) +
-  #geom_text(aes(label=text3), size=2.3, color="#f2f2f2", nudge_y=-0.05) +
-  #geom_text(aes(label=text4), size=2.3, color="#f2f2f2", nudge_y=0.82) +
-  xlab("Mapping iteration") +
-  ylab("Proportion of reads") +
-  #scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.1)) +
-  #scale_x_discrete(limits=unique(long_data$divergence)) +
-  #scale_x_continuous(breaks=unique(long_data$iteration)) +
-  scale_color_manual(guide=guide_legend(reverse=T), labels=c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped"), values=cols) +
-  facet_wrap(~divergence) +
-  #scale_fill_discrete(, values=cols) +
-  bartheme() +
-  theme(legend.position="bottom")
-print(read_rates_p)
-
-```
-
+I think this is wrong because bedtools is counting heterozyous and/or filtered sites ... ?
 
 ```{r iterative-div, out.width="50%", fig.align = "center", warning=FALSE}
 
 library(zoo)
+# For the rolling mean function
 
 window_file = here("data", "window-snps-30X-summary.tab.gz")
   
 windows = read_tsv(window_file, col_names=c("chr", "start", "end", "snps", "coverage", "divergence", "heterozygosity", "iteration"))
 windows = windows %>% filter(chr %in% c("18")) %>% mutate(length=end-start) %>% mutate(est.div=snps/length)
 #windows$iteration = as.factor(windows$iteration)
+
+#x = subset(windows, divergence == 0.06 & iteration == 1)
+#sum(x$snps)
+# 7527312
+#nrow(vcf_comp %>% filter(divergence == 0.06 & iteration == 1 & minimap.gt == "hom.alt"))
+# 4309775
+## Why so many more SNPs from bedtools? Counting het sites??
 
 p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 100, na.pad = TRUE, align = "right"), color=iteration)) +
   geom_line() +
@@ -488,25 +480,133 @@ p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 100, na.pad = TRUE, ali
 print(p)
 
 
-# window_summary = windows %>% 
-#   filter(iteration != "golden") %>%
-#   group_by(divergence, iteration) %>% 
-#   summarize(mean.snps=mean(snps, na.rm=T), mean.div=mean(snps/length, na.rm=T), total.snps=sum(snps)) %>% 
-#   mutate(length=total_len) %>% 
-#   mutate(est.div=total.snps/length)
-# 
-# #window_summary$divergence = as.factor(window_summary$divergence)
-# p2 = ggplot(window_summary, aes(x=divergence, y=est.div, color=iteration)) +
-#   geom_point(size=3) +
-#   bartheme()
-# 
-# print(p2)
+```
+# 1 iteration of mapping + mapping to a genome graph
 
+NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK > vg autoindex > vg giraffe
+
+## Read mapping errors
+
+Since the graph pipeline resulted in no "Missing" reads, I removed the "Missing" reads from all BWA mappings for more accurate comparisons...
+
+```{r read-props-graph, out.width="50%", fig.align = "center", warning=FALSE}
+
+graph_file = here("data", "mm39-30X-0.005h-bam-graph-summary.csv")
+graph_stats = read.csv(graph_file, header=T)
+# Read the graph mapping stats
+
+####################
+
+read_classes = c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop")
+read_class_names = c("Exact map", "Close map", "Mismapped", "Different chrome", "Unmapped")
+# The various classes of reads
+
+bam_stats = bam_stats %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped) %>%
+  mutate(exact.map.prop = exact.map / total.reads, close.map.prop = close.map / total.reads, mismapped.prop = mismapped / total.reads, 
+         diff.chr.prop = diff.chr / total.reads, unmapped.prop = unmapped / total.reads)
+# Calculate the proportion of each read type for the BWA runs
+
+long_bam_data = bam_stats %>% 
+  select(iteration, divergence, exact.map.prop, close.map.prop, mismapped.prop, diff.chr.prop, unmapped.prop) %>% 
+  pivot_longer(cols=c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop"))
+# Convert to long format
+
+####################
+
+graph_stats$iteration = "1+graph"
+# Add a label to the graph stats
+
+graph_stats = graph_stats %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped) %>%
+  mutate(exact.map.prop = exact.map / total.reads, close.map.prop = close.map / total.reads, mismapped.prop = mismapped / total.reads, 
+         diff.chr.prop = diff.chr / total.reads, unmapped.prop = unmapped / total.reads)
+# Calculate the proportion of each read type for the graph run
+
+long_graph_data = graph_stats %>% 
+  select(iteration, divergence, exact.map.prop, close.map.prop, mismapped.prop, diff.chr.prop, unmapped.prop) %>% 
+  pivot_longer(cols=c("exact.map.prop", "close.map.prop", "mismapped.prop", "diff.chr.prop", "unmapped.prop"))
+# Convert to long format
+
+####################
+
+full_data = rbind(long_bam_data, long_graph_data)
+# Combine the BWA and graph data
+
+full_data$name = factor(full_data$name, levels=read_classes)
+# Factorize the read classes
+
+cols = corecol(pal="wilke", numcol=6, offset=1)
+# Get some colors
+
+overlaps_p = ggplot(full_data, aes(x=iteration, y=value, fill=name)) +
+  geom_bar(stat="identity") +
+  #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
+  xlab("Mapping iteration") +
+  ylab("Proportion of reads") +
+  scale_y_continuous(expand=c(0,0), limits=c(0,1), breaks=seq(0, 1, by=0.2)) +
+  scale_fill_manual(labels=read_class_names, values=cols) +
+  facet_wrap(~divergence) +
+  bartheme() +
+  theme(legend.position="bottom") +
+  coord_flip()
+print(overlaps_p)
 
 ```
 
 
+```{r read-lines-graph, out.width="75%", fig.align = "center", warning=FALSE, fig.height=3}
 
+cols = c(corecol(numcol=1, pal="wilke"), corecol(numcol=1, pal="wilke", offset=5), corecol(numcol=3, pal="wilke", offset=1))
+
+exact_p = ggplot(subset(full_data, name == "exact.map.prop"), aes(x=divergence, y=value, color=iteration)) +
+  geom_line(size=1) +
+  geom_point(size=3, alpha=0.5) +
+  xlab("") +
+  ylab("Proportion of reads") +
+  scale_x_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
+  scale_color_manual(name="Iteration", values=cols) +
+  bartheme() +
+  theme(legend.position="bottom",
+        legend.title = element_text(size=12))
+#print(read_rates_p)
+
+####################
+
+unmapped_p = ggplot(subset(full_data, name == "unmapped.prop"), aes(x=divergence, y=value, color=iteration)) +
+  geom_line(size=1) +
+  geom_point(size=3, alpha=0.5) +
+  xlab("") +
+  ylab("") +
+  scale_x_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
+  scale_color_manual(name="Iteration", values=cols) +
+  bartheme() +
+  theme(legend.position="bottom",
+        legend.title = element_text(size=12))
+#print(read_rates_p)
+
+####################
+
+close_p = ggplot(subset(full_data, name == "close.map.prop"), aes(x=divergence, y=value, color=iteration)) +
+  geom_line(size=1) +
+  geom_point(size=3, alpha=0.5) +
+  xlab("Divergence") +
+  ylab("") +
+  scale_x_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
+  scale_color_manual(name="Iteration", values=cols) +
+  bartheme() +
+  theme(legend.position="bottom",
+        legend.title = element_text(size=12))
+
+####################
+
+leg = get_legend(exact_p)
+top = plot_grid(exact_p + theme(legend.position="none"), 
+                close_p + theme(legend.position="none"), 
+                unmapped_p + theme(legend.position="none"), 
+                ncol=3, labels=c("Exact map", "Close map", "Unmapped"))
+read_lines_p = plot_grid(top, leg, nrow=2, ncol=1, rel_heights=c(1,0.1))
+print(read_lines_p)
+
+```
 
 [< Back ](index.html)
 
