@@ -64,9 +64,9 @@ total_len = len_18# + len_19
 
 ```
 
-# Sanity check: simulated divergence vs. % of sites simulated with SNPs for iteration 1
+# Sanity check
 
-Just to make sure the simulations are working
+Simulated divergence vs. % of sites simulated with SNPs for iteration 1, just to make sure the simulations are working
 
 ```{r sim-check, out.width="50%", fig.align = "center", warning=FALSE}
 
@@ -147,7 +147,7 @@ print(read_rates_p)
 
 ```
 
-# Heterozygous sites
+## Heterozygous sites
 
 ```{r hets, out.width="50%", fig.align = "center", warning=FALSE}
 
@@ -481,6 +481,7 @@ print(p)
 
 
 ```
+
 # 1 iteration of mapping + mapping to a genome graph
 
 NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK > vg autoindex > vg giraffe
