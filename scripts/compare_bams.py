@@ -54,13 +54,15 @@ regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_
 regions = regions.split(",");
 # Inputs
 
-#divergence = "0.02";
-#coverage = "20";
-#golden_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/20X/0.02/mm39_golden.bam";
-#query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39/mapped-reads/20X/0.02/mm39-20X-0.02.bam";
-#query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/mapped-reads/20X/0.02/mm39-20X-0.02.bam";
-#ref_index = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai";
-#summary_outfilename = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/mm39-20X-0.02-compare-bam-summary.csv";
+# divergence = "0.04";
+# heterozygosity = "0.005";
+# iteration = "1";
+# coverage = "30";
+# regions = ["18"];
+# golden_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.04/heterozygous/0.005/mm39_golden.bam";
+# query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.04/0.005/iter1/mm39-30X-0.04d-0.005h-crossmap.sorted.bam";
+# ref_index = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai";
+# summary_outfilename = "test.csv";
 #tracefilename = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/mm39-20X-0.02-compare-bam-trace.txt";
 # I/O options
 
@@ -230,7 +232,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
                         #     tracefile.write("\t".join(match_info) + "\n");
                         #     tracefile.write(str(match) + "\n");
                         #     tracefile.write("--------------------------\n");
-                        # Random writing for manual checking.
+                        # Random writing for manual checking.                      
             ## End matches loop
 
             if matches_found == 0:
