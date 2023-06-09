@@ -189,7 +189,7 @@ Classified as follows:
 tp = vcf_comp %>% filter(iteration == 1 & golden.div != ref & iter.gt == "hom.alt" & iter.allele.1 == golden.div) %>% 
   group_by(divergence, iteration) %>% 
   summarize(n=n(), class="tp")
-fp = vcf_comp %>% filter(iteration == 1 & golden.div == ref & iter.gt == "hom.alt")  %>% 
+fp = vcf_comp %>% filter(iteration == 1 & golden.div == ref & iter.gt == "hom.alt") %>% 
   group_by(divergence, iteration) %>% 
   summarize(n=n(), class="fp")
 fn = vcf_comp %>% filter(iteration == 1 & golden.div != ref & iter.gt == "hom.prev" & iter.allele.1 == ref) %>% 
@@ -471,7 +471,7 @@ windows = windows %>% filter(chr %in% c("18")) %>% mutate(length=end-start) %>% 
 # 4309775
 ## Why so many more SNPs from bedtools? Counting het sites??
 
-p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 100, na.pad = TRUE, align = "right"), color=iteration)) +
+p =  windows %>% ggplot(aes(x=start, y=rollmean(est.div, 75, na.pad = TRUE, align = "right"), color=iteration)) +
   geom_line() +
   facet_wrap(~divergence) +
   scale_color_manual(values=corecol(pal="wilke", numcol=4)) +

@@ -343,6 +343,8 @@ with open(outfilename, "w") as outfile:
                 outline['golden.div'] = golden_div_variants[pos]['alt'];
             else:
                 outline['golden.div'] = ref_seq[region][i];
+            
+            ##########
 
             if pos in iter_div_variants:
                 outline['iter.allele.1'] = iter_div_variants[pos]['alt'];
@@ -364,6 +366,8 @@ with open(outfilename, "w") as outfile:
                 #if "*" not in iter_seq[region][i] and "*" not in prev_seq[region][i]:
                 assert prev_seq[region][i] == iter_seq[region][i], pos + " " + prev_seq[region][i] + " " + iter_seq[region][i];
 
+            ##########
+
             if pos in mmap_div_variants:
                 outline['minimap.allele.1'] = mmap_div_variants[pos]['alt'];
 
@@ -382,8 +386,11 @@ with open(outfilename, "w") as outfile:
                 #     assert ref_seq[region][i] == iter_seq[region][i], str(i) + " " + str(j) + " " + pos + " " + ref_seq[region][i] + " " + iter_seq[region][i];
                 # 19:3090394
 
+            ##########
+
             final_outline = "\t".join(meta_outline + [ outline[col] for col in headers ]);
             outfile.write(final_outline + "\n");
+        ## End variant block
     ## End site loop
 ## End file block and close files
 
