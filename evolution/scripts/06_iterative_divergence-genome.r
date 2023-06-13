@@ -53,7 +53,7 @@ print(div_p)
 ############################################################
 
 if(save_fig){
-  outfilename = here("evolution", "figs", "06-iterative-divergence.png")
+  outfilename = here("evolution", "figs", "07-iterative-divergence-genome.png")
   ggsave(filename=outfilename, div_p, width=8, height=5, units="in")
 }
 
