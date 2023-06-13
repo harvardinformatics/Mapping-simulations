@@ -25,11 +25,15 @@ total_len = 90720763
 
 ############################################################
 
-vcf_comp_file = here("data", "mm39-30X-0.005h-3i-vcf-comparison.tsv.gz")
+#vcf_comp_file = here("data", "mm39-30X-0.005h-3i-vcf-comparison.tsv.gz")
+vcf_comp_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/summary-files/30X/mm39-30X-0.005h-3i-vcf-comparison.tsv.gz"
 vcf_comp = read_tsv(vcf_comp_file, col_names=c("coverage", "divergence", "heterozygosity", "iteration", "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2"))
 # Load the SNP data (~15gb, takes time)
 
 vcf_comp = vcf_comp %>% filter(divergence != 0)
+# Remove sim at divergence 0
+
+##########
 
 tp = vcf_comp %>% filter(golden.div != ref & minimap.gt == "hom.alt" & minimap.allele.1 == golden.div) %>% 
   group_by(divergence, iteration) %>% 
@@ -42,12 +46,29 @@ fn = vcf_comp %>% filter(golden.div != ref & minimap.gt == "hom.ref" & minimap.a
   summarize(n=n(), class="fn")
 # Get the different error classes in separate dfs
 
+##########
+
+minimap_vars_iter = vcf_comp %>% filter(minimap.gt == "hom.alt" & minimap.allele.1 == golden.div) %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n()) %>% 
+  mutate(perc.called.sites=n/total_len)
+minimap_vars_iter$iteration = as.character(minimap_vars_iter$iteration)
+# For the dot plot, get the number of sites where a SNP was called correctly where one was simulated
+
+##########
+
+sim_vars_div_iter1 = vcf_comp %>% filter(iteration == 1 & ref != golden.div) %>%
+  group_by(divergence) %>%
+  summarize(n=n()) %>%
+  mutate(perc.var.sites=n/total_len)
+# Summarize the actual number of simulated SNPs per divergence for the dot plot below
+
 ############################################################
 
 ```
 
 
-```{r plot, include=FALSE}
+```{r plot-props, include=FALSE}
 
 snp_classes = rbind(tp, fp, fn)
 snp_classes = snp_classes %>% group_by(divergence, iteration) %>% mutate(total.sites = sum(n)) %>% mutate(prop = n / total.sites)
@@ -72,14 +93,60 @@ snps_p = ggplot(snp_classes, aes(x=iteration, y=prop, fill=class)) +
         #strip.background=element_blank(),
         strip.text=element_text(size=14)) +
   coord_flip()
+
 print(snps_p)
 
 ############################################################
 
 ```
 
-```{r save, include=FALSE}
+```{r save-props, include=FALSE}
   outfilename = here("evolution", "figs", "05-iterative-snp-accuracy.png")
-  ggsave(filename=outfilename, reads_p, width=8, height=5, units="in")
+  ggsave(filename=outfilename, snps_p, width=8, height=5, units="in")
 ```
+
+```{r plot-dots, out.width="50%", fig.align = "center", warning=FALSE}
+
+cols = corecol(numcol=3, pal="wilke")
+# Get some colors
+
+div_called_p = ggplot(minimap_vars_iter, aes(x=divergence, y=perc.called.sites, color=iteration)) +
+  geom_point(size=4, alpha=0.5) +
+  geom_abline(slope=1, intercept=0, size=1, linetype="dashed", color="#999999") +
+  geom_line(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), color="#000000") +
+  geom_point(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), size=4, color="#000000") +
+  scale_x_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
+  scale_y_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
+  xlab("Simulated divergence") +
+  ylab("% of sites with variant correctly called") +
+  scale_color_manual(name="Iteration", values=cols) +
+  bartheme() +
+  theme(legend.title=element_text(size=12),
+        axis.text=element_text(size=12), 
+        axis.title=element_text(size=14))
+
+print(div_called_p)
+
+```
+
+
+```{r save-dots, include=FALSE}
+  outfilename = here("evolution", "figs", "06-iterative-divergence.png")
+  ggsave(filename=outfilename, div_called_p, width=6, height=5, units="in")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
