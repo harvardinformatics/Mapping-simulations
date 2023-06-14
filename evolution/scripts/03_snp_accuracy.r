@@ -14,7 +14,7 @@ source(here("evolution/scripts/lib/design.r"))
 
 ############################################################
 
-read_data = T
+read_data = F
 
 save_fig = T
 
@@ -65,7 +65,8 @@ snps_p = ggplot(snp_classes, aes(x=divergence, y=prop, fill=class)) +
   scale_y_continuous(expand=c(0,0)) +
   scale_fill_manual(labels=c("False negative", "True positive", "False positive"), values=cols) +
   bartheme() +
-  theme(legend.position="bottom") +
+  theme(legend.position="bottom",
+        plot.margin = unit(c(1,0.5,0.25,0.25), "cm")) +
   coord_flip()
 print(snps_p)
 

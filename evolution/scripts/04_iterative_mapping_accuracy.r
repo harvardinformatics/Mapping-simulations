@@ -16,7 +16,7 @@ source(here("evolution/scripts/lib/design.r"))
 
 read_data = T
 
-save_fig = T
+save_fig = F
 
 total_len = 90720763
 

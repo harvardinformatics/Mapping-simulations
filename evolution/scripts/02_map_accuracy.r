@@ -24,7 +24,7 @@ total_len = 90720763
 
 if(read_data){
   mapping_file = here("data", "mm39-30X-0.005h-3i-bam-summary.csv")
-  bam_stats_iter1 = read.csv(mapping_file, header=T) %>% filter(iteration == 1) %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped + missing.in.query) %>%
+  bam_stats_iter1 = read.csv(mapping_file, header=T) %>% filter(iteration == 1 & divergence != 0.00) %>% mutate(total.reads = exact.map + close.map + mismapped + diff.chr + unmapped + missing.in.query) %>%
     mutate(exact.map.prop = exact.map / total.reads, close.map.prop = close.map / total.reads, mismapped.prop = mismapped / total.reads, 
            diff.chr.prop = diff.chr / total.reads, unmapped.prop = unmapped / total.reads, missing.prop = missing.in.query / total.reads)
   # Read the bam compare file and calculate the percent of each type of read from the first iteration of mappping
@@ -50,7 +50,7 @@ cols = corecol(pal="wilke", numcol=6, offset=1)
 reads_p = ggplot(long_bam_data, aes(x=divergence, y=value, fill=name)) +
   geom_bar(stat="identity", position=position_fill(reverse = TRUE)) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
-  xlab("Simulated ivergence") +
+  xlab("Simulated divergence") +
   ylab("Proportion of reads") +
   scale_x_continuous(breaks=seq(0, 0.1, by=0.02)) +
   scale_y_continuous(expand=c(0,0)) +
