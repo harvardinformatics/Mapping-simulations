@@ -18,7 +18,7 @@ library(zoo)
 
 read_data = T
 
-save_fig = T
+save_fig = F
 
 ############################################################
 
@@ -29,6 +29,8 @@ windows = windows %>% filter(divergence != 0.00 & chr %in% c("18")) %>%
   mutate(est.div=snps/length) %>% 
   mutate(iteration = replace(iteration, iteration == "golden", "Golden"))
 # Read the data and calculate divergence
+
+avg_div = windows %>% group_by(divergence, iteration) %>% summarize(avg.div=mean(est.div)) %>% mutate(perc.actual=avg.div/divergence)
 
 ############################################################
 
