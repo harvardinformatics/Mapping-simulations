@@ -29,41 +29,58 @@ if(read_data){
                                             "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2")) %>%
     filter(divergence != 0.00)
   # Load the SNP data from first iteration
+  
+  total_sim_snps = vcf_comp_iter1 %>% filter(golden.div != ref) %>% 
+    group_by(divergence, iteration) %>% 
+    summarize(sim.snps=n(), class="tp") %>%
+    #mutate(sim.div=n/total_len) %>%
+    select(divergence, sim.snps)
+  # Count the number of sites where a snp was simulated
+  
+  tp = vcf_comp_iter1 %>% filter(golden.div != ref & iter.gt == "hom.alt" & iter.allele.1 == golden.div) %>% 
+    group_by(divergence, iteration) %>% 
+    summarize(n=n(), class="tp")
+  fp = vcf_comp_iter1 %>% filter(golden.div == ref & iter.gt == "hom.alt") %>% 
+    group_by(divergence, iteration) %>% 
+    summarize(n=n(), class="fp")
+  fn = vcf_comp_iter1 %>% filter(golden.div != ref & iter.gt == "hom.prev" & iter.allele.1 == ref) %>% 
+    group_by(divergence, iteration) %>% 
+    summarize(n=n(), class="fn")
+  # Get sites of different classes from the iteration VCF (GATK)
 }
 
 ############################################################
 
-tp = vcf_comp_iter1 %>% filter(golden.div != ref & iter.gt == "hom.alt" & iter.allele.1 == golden.div) %>% 
-  group_by(divergence, iteration) %>% 
-  summarize(n=n(), class="tp")
-fp = vcf_comp_iter1 %>% filter(golden.div == ref & iter.gt == "hom.alt") %>% 
-  group_by(divergence, iteration) %>% 
-  summarize(n=n(), class="fp")
-fn = vcf_comp_iter1 %>% filter(golden.div != ref & iter.gt == "hom.prev" & iter.allele.1 == ref) %>% 
-  group_by(divergence, iteration) %>% 
-  summarize(n=n(), class="fn")
-# Get sites of different classes from the iteration VCF (GATK)
-
-snp_classes = rbind(tp, fp, fn)
+snp_classes = rbind(tp, fn)
 # Combine the various snp classes
 
-snp_classes = snp_classes %>% group_by(divergence, iteration) %>% 
-  mutate(total.sites = sum(n)) %>% 
-  mutate(prop = n / total.sites)
+snp_classes = snp_classes %>% group_by(divergence, iteration) %>%
+  mutate(total.sites = which(total_sim_snps$divergence == divergence))
+
+snp_classes = full_join(snp_classes, total_sim_snps, by="divergence")
+
+# snp_classes = snp_classes %>% group_by(divergence, iteration) %>% 
+#   mutate(total.sites = sum(n)) %>% 
+#   mutate(prop = n / total.sites)
 # Calculate the proportion of each type of site
 
-snp_classes$class = factor(snp_classes$class, levels=c("fn", "tp", "fp"))
-cols = c("fp"=corecol(pal="wilke", numcol=1, offset=1), "tp"="#bda988", "fn"=corecol(pal="wilke", numcol=1))
+snp_classes = snp_classes %>% mutate(prop = n / sim.snps)
+
+# snp_classes$class = factor(snp_classes$class, levels=c("fn", "tp", "fp"))
+# cols = c("fp"=corecol(pal="wilke", numcol=1, offset=1), "tp"="#bda988", "fn"=corecol(pal="wilke", numcol=1))
+
+snp_classes$class = factor(snp_classes$class, levels=c("fn", "tp"))
+cols = c("tp"="#bda988", "fn"=corecol(pal="wilke", numcol=1))
 # Factorize the classes and get some colors
 
 snps_p = ggplot(snp_classes, aes(x=divergence, y=prop, fill=class)) +
   geom_bar(stat="identity", position = position_fill(reverse = TRUE)) +
   #geom_text(size=2.3, position=position_stack(vjust=0.5), color="#f2f2f2") +
   xlab("Simulated divergence") +
-  ylab("Proportion of variants") +
+  ylab("Proportion of simulated variants") +
   scale_x_continuous(breaks=seq(0, 0.1, by=0.02)) +
   scale_y_continuous(expand=c(0,0)) +
-  scale_fill_manual(labels=c("False negative", "True positive", "False positive"), values=cols) +
+  scale_fill_manual(labels=c("False negative", "True positive"), values=cols) +
   bartheme() +
   theme(legend.position="bottom",
         plot.margin = unit(c(1,0.5,0.25,0.25), "cm")) +
