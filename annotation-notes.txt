@@ -1,0 +1,25 @@
+Get unmapped reads:
+
+1. 
+
+GFF:
+1.  downloaded from ensembl on 06.15.2023:
+        
+        source: http://ftp.ensembl.org/pub/release-109/gff3/mus_musculus/Mus_musculus.GRCm39.109.chr.gff3.gz
+
+        local : /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.109.chr.gff3.gz
+
+2.  subset to genes on chr18 only:
+
+        source: gzip -dc Mus_musculus.GRCm39.109.chr.gff3.gz | awk '$1==18 && $3 == "gene"{print}' > Mus_musculus.GRCm39.109.chr18.gff3.gz
+
+        local : /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.109.chr18.gff3.gz
+
+3. overlaps
+
+Repeats:
+- downloaded from ucsc on 06.15.2023
+
+        source: https://genome.ucsc.edu/cgi-bin/hgTables
+
+        local : /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-repeatmasker-ucsc.tsv.gz
