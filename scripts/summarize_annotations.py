@@ -73,7 +73,7 @@ with open(config_file, "r") as stream:
 
 #sim_name = config['ref_str'] + "-" + "-".join(config['regions']) + "-iterative";
 
-headers = ["type", "coverage", "divergence", "heterozygosity", "iteration", "total", "num.repeat.overlap", "num.gene.overlap", "num.both.overlap", "num.no.overlap" ];
+headers = ["type", "region", "coverage", "divergence", "heterozygosity", "iteration", "total", "num.repeat.overlap", "num.gene.overlap", "num.both.overlap", "num.no.overlap" ];
 # Headers for the output file
 
 with open(outfilename, "w") as outfile:
@@ -107,7 +107,7 @@ with open(outfilename, "w") as outfile:
                         both, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
                         # Parse the overlaps
 
-                        outline = [ "fn", cov, div, het, n, region, total, repeat_ol_counts[region]['overlap'], gene_ol_counts[region]['overlap'], both, none ];
+                        outline = [ "fn", region, cov, div, het, n, total, repeat_ol_counts[region]['overlap'], gene_ol_counts[region]['overlap'], both, none ];
                         outline = [ str(o) for o in outline ];
                         outfile.write("\t".join(outline) + "\n");
                         # Compile and write the output line for this set of params
@@ -135,7 +135,7 @@ with open(outfilename, "w") as outfile:
                         both, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
                         # Parse the overlaps
 
-                        outline = [ "unmapped", cov, div, het, n, region, total, repeat_ol_counts[region]['overlap'], gene_ol_counts[region]['overlap'], both, none ];
+                        outline = [ "unmapped", region, cov, div, het, n, total, repeat_ol_counts[region]['overlap'], gene_ol_counts[region]['overlap'], both, none ];
                         outline = [ str(o) for o in outline ];
                         outfile.write("\t".join(outline) + "\n");
                         # Compile and write the output line for this set of params
