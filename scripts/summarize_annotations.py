@@ -41,7 +41,7 @@ def parseOverlaps(repeat_ols, gene_ols, total_features):
     gene_ols = set(gene_ols);
     # Convert overlap lists to sets for easy comparisons
 
-    both = len(repeat_ols.intersection(gene_ols));
+    shared = len(repeat_ols.intersection(gene_ols));
     # Count the total number of FNs that overlap with a gene AND a repeat                        
 
     repeat_uniq = len(repeat_ols - gene_ols);
@@ -53,10 +53,10 @@ def parseOverlaps(repeat_ols, gene_ols, total_features):
     none = total_features - len(repeat_ols.union(gene_ols));
     # Count the number of FNs that overlap with NEITHER a gene or a repeat
 
-    assert both+repeat_uniq+gene_uniq+none == total_features;
+    assert shared+repeat_uniq+gene_uniq+none == total_features;
     # Make sure that the numbers match up
 
-    return both, none;
+    return repeat_uniq, gene_uniq, shared, none;
 
 #############################################################################
 
@@ -73,7 +73,7 @@ with open(config_file, "r") as stream:
 
 #sim_name = config['ref_str'] + "-" + "-".join(config['regions']) + "-iterative";
 
-headers = ["type", "region", "coverage", "divergence", "heterozygosity", "iteration", "total", "num.repeat.overlap", "num.gene.overlap", "num.both.overlap", "num.no.overlap" ];
+headers = ["type", "region", "coverage", "divergence", "heterozygosity", "iteration", "total", "num.repeat.uniq", "num.gene.uniq", "num.shared", "num.none" ];
 # Headers for the output file
 
 with open(outfilename, "w") as outfile:
@@ -104,10 +104,10 @@ with open(outfilename, "w") as outfile:
                         assert total == gene_ol_counts[region]['overlap'] + gene_ol_counts[region]['no-overlap'];
                         # Count the total number of FNs and make sure they are consistent in both bed files
 
-                        both, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
+                        repeat_uniq, gene_uniq, shared, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
                         # Parse the overlaps
 
-                        outline = [ "fn", region, cov, div, het, n, total, repeat_ol_counts[region]['overlap'], gene_ol_counts[region]['overlap'], both, none ];
+                        outline = [ "fn", region, cov, div, het, n, total, repeat_uniq, gene_uniq, shared, none ];
                         outline = [ str(o) for o in outline ];
                         outfile.write("\t".join(outline) + "\n");
                         # Compile and write the output line for this set of params
@@ -132,10 +132,10 @@ with open(outfilename, "w") as outfile:
                         assert total == gene_ol_counts[region]['overlap'] + gene_ol_counts[region]['no-overlap'];
                         # Count the total number of FNs and make sure they are consistent in both bed files
 
-                        both, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
+                        repeat_uniq, gene_uniq, shared, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
                         # Parse the overlaps
 
-                        outline = [ "unmapped", region, cov, div, het, n, total, repeat_ol_counts[region]['overlap'], gene_ol_counts[region]['overlap'], both, none ];
+                        outline = [ "unmapped", region, cov, div, het, n, total, repeat_uniq, gene_uniq, shared, none ];
                         outline = [ str(o) for o in outline ];
                         outfile.write("\t".join(outline) + "\n");
                         # Compile and write the output line for this set of params
