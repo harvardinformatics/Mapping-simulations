@@ -50,7 +50,7 @@ def runTime(msg=False, writeout=False, printout=True):
 
 #############################################################################
 
-regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename, unmapped_outfilename = sys.argv[1:];
+regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename, exact_outfilename, unmapped_outfilename = sys.argv[1:];
 regions = regions.split(",");
 # Inputs
 
@@ -63,6 +63,7 @@ regions = regions.split(",");
 # query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.08/0.005/iter1/mm39-30X-0.08d-0.005h-crossmap.sorted.bam";
 # ref_index = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai";
 # summary_outfilename = "test.csv";
+# exact_outfilename = "test-exact.bam";
 # unmapped_outfilename = "test-unmapped.bam";
 #tracefilename = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/mm39-20X-0.02-compare-bam-trace.txt";
 # I/O options
@@ -109,7 +110,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
 
     PWS("# " + getDateTime() + " Finding reads...", outfile);
 
-    with pysam.AlignmentFile(unmapped_outfilename, "wb", header=golden_bam.header) as unmapped_out:
+    with pysam.AlignmentFile(unmapped_outfilename, "wb", header=golden_bam.header) as unmapped_out, pysam.AlignmentFile(exact_outfilename, "wb", header=golden_bam.header) as exact_out:
         for chrome in chr_lens:
         # Go through the reads by chromosome
 
@@ -210,6 +211,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
                                     classification = "EXACT MAP"
                                     outdict['exact-map'] += 1;
                                     matches_found += 1;
+                                    exact_out.write(read);
                                 # An exact match
 
                                 elif abs(query_pos - golden_pos) <= 150:

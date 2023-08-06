@@ -208,7 +208,7 @@ def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=Fals
     
 #############################################################################
 
-region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file, prev_iter_file, golden_div_vcf, iteration_vcf, minimap_vcf, outdir, outfilename, bedoutfilename = sys.argv[1:];
+region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file, prev_iter_file, golden_div_vcf, iteration_vcf, minimap_vcf, outdir, outfilename, tp_outfilename, fn_outfilename = sys.argv[1:];
 # Inputs a change
 
 # coverage = "30";
@@ -225,7 +225,8 @@ region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file,
 # minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
 # outdir = ".";
 # outfilename = "test.tsv";
-# bedoutfilename = "test-fn.bed";
+# tp_outfilename = "test-tp.bed";
+# fn_outfilename = "test-fn.bed";
 
 # Test inputs
 
@@ -238,7 +239,7 @@ region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file,
 ####################
 
 pad = 30;
-with open(outfilename, "w") as outfile, open(bedoutfilename, "w") as bedfile:
+with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, open(fn_outfilename, "w") as fn_file:
 # Open summary file and output file for writing
 
     runTime("# Compare VCFs", outfile);
@@ -397,9 +398,13 @@ with open(outfilename, "w") as outfile, open(bedoutfilename, "w") as bedfile:
 
             ##########
 
+            if golden_snp and called_snp:
+                tp_outline = [region, str(i), str(j)];
+                tp_file.write("\t".join(tp_outline) + "\n");
+
             if golden_snp and not called_snp:
-                bed_outline = [region, str(i), str(j)];
-                bedfile.write("\t".join(bed_outline) + "\n");
+                fn_outline = [region, str(i), str(j)];
+                fn_file.write("\t".join(fn_outline) + "\n");
 
 
             final_outline = "\t".join(meta_outline + [ outline[col] for col in headers ]);

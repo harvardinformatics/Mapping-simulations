@@ -80,7 +80,12 @@ rule all:
         # Expected output from align_to_vcf
 
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-tps.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+
+
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped.bam"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-exact.bam"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
 
         #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"), cov=covs, het=hets),
         #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"), cov=covs, het=hets),
@@ -455,13 +460,14 @@ rule compare_bams:
        iteration = "{n}"
     output:
         summary = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-summary.csv"),
+        exact = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-exact.bam"),
         unmapped = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped.bam")
     resources:
         mem = "24g",
         time = "8:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.reg} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_index} {input.golden} {input.query} {output.summary} {output.unmapped}
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_bams.py {params.reg} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_index} {input.golden} {input.query} {output.summary} {output.exact} {output.unmapped}
         """
 # Run the compare_vcfs script to get number of variants compared to golden file
 # Use to combine files:
@@ -628,13 +634,14 @@ rule compare_vcfs:
         iteration = "{n}"
     output:
         tsv = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"),
-        bed = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns.bed")
+        tp_bed = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-tps.bed"),
+        fn_bed = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns.bed")
     resources:
         mem = "16g",
         time = "1:00:00"
     shell:
         """
-        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_divergence.py {params.region} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_fa} {input.iter_fa} {input.prev_iter_fa} {input.golden_vcf} {input.iter_vcf} {input.mmap_vcf} {params.outdir} {output.tsv} {output.bed} 
+        python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_divergence.py {params.region} {params.cov} {params.div} {params.het} {params.iteration} {input.ref_fa} {input.iter_fa} {input.prev_iter_fa} {input.golden_vcf} {input.iter_vcf} {input.mmap_vcf} {params.outdir} {output.tsv} {output.tp_bed} {output.fn_bed} 
         """
 
 #python /n/home07/gthomas/projects/Mapping-simulations/scripts/compare_vcfs_2.py {params.region} {params.cov} {params.div} {params.het} {params.iteration} {input.golden} {input.query} {params.outdir} {output.summary} {output.snps}

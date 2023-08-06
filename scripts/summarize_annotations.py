@@ -64,6 +64,9 @@ config_file = "../simulation-configs/mm39-iterative.yaml";
 outfilename = "../data/mm39-30X-0.005h-annotations.tsv";
 # Input and output files
 
+var_types = ["tps", "fns"];
+map_types = ["exact", "unmapped"];
+
 with open(config_file, "r") as stream:
     try:
         config = yaml.safe_load(stream);
@@ -88,60 +91,64 @@ with open(outfilename, "w") as outfile:
             for het in config['hets']:
                 for n in range(1,config['iterations']+1):
                     for region in config['regions']:
-                        repeat_fn_name = [ config['ref_str'], "iter" + str(n), region, cov + "X", div + "d", het + "h", "compare-vcf-fns-repeats.bed" ];
-                        repeat_fn_name = "-".join(repeat_fn_name);
-                        repeat_fn_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", repeat_fn_name);
-                        repeat_ol_counts, repeat_ols = overlapCount(repeat_fn_path);
-                        # Read the FN repeat overlaps
+                        for var_type in var_types:
+                            repeat_name = [ config['ref_str'], "iter" + str(n), region, cov + "X", div + "d", het + "h", "compare-vcf-" + var_type + "-repeats.bed" ];
+                            repeat_name = "-".join(repeat_name);
+                            repeat_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", repeat_name);
+                            repeat_ol_counts, repeat_ols = overlapCount(repeat_path);
+                            # Read the FN repeat overlaps
 
-                        gene_fn_name = [ config['ref_str'], "iter" + str(n), region, cov + "X", div + "d", het + "h", "compare-vcf-fns-genes.bed" ];
-                        gene_fn_name = "-".join(gene_fn_name);
-                        gene_fn_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", gene_fn_name);
-                        gene_ol_counts, gene_ols = overlapCount(gene_fn_path);
-                        # Read the FN gene overlaps
+                            gene_name = [ config['ref_str'], "iter" + str(n), region, cov + "X", div + "d", het + "h", "compare-vcf-" + var_type + "-genes.bed" ];
+                            gene_name = "-".join(gene_name);
+                            gene_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", gene_name);
+                            gene_ol_counts, gene_ols = overlapCount(gene_path);
+                            # Read the FN gene overlaps
 
-                        total = repeat_ol_counts[region]['overlap'] + repeat_ol_counts[region]['no-overlap'];
-                        assert total == gene_ol_counts[region]['overlap'] + gene_ol_counts[region]['no-overlap'];
-                        # Count the total number of FNs and make sure they are consistent in both bed files
+                            total = repeat_ol_counts[region]['overlap'] + repeat_ol_counts[region]['no-overlap'];
+                            assert total == gene_ol_counts[region]['overlap'] + gene_ol_counts[region]['no-overlap'];
+                            # Count the total number of FNs and make sure they are consistent in both bed files
 
-                        repeat_uniq, gene_uniq, shared, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
-                        # Parse the overlaps
+                            repeat_uniq, gene_uniq, shared, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
+                            # Parse the overlaps
 
-                        outline = [ "fn", region, cov, div, het, n, total, repeat_uniq, gene_uniq, shared, none ];
-                        outline = [ str(o) for o in outline ];
-                        outfile.write("\t".join(outline) + "\n");
-                        # Compile and write the output line for this set of params
-                    ## End region loop for FNs
+                            outline = [ var_type, region, cov, div, het, n, total, repeat_uniq, gene_uniq, shared, none ];
+                            outline = [ str(o) for o in outline ];
+                            outfile.write("\t".join(outline) + "\n");
+                            # Compile and write the output line for this set of params
+                        ## End var type loop
+                    ## End region loop for variants
 
                     #####################
 
-                    repeat_unmapped_name = [ config['ref_str'], cov + "X", div + "d", het + "h", "iter" + str(n), "compare-bam-unmapped-repeats.bed" ]
-                    repeat_unmapped_name = "-".join(repeat_unmapped_name);
-                    repeat_unmapped_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), repeat_unmapped_name);
-                    repeat_ol_counts, repeat_ols = overlapCount(repeat_unmapped_path);
-                    # Read the unmapped repeat overlaps                             
+                    for map_type in map_types:
+                        repeat_name = [ config['ref_str'], cov + "X", div + "d", het + "h", "iter" + str(n), "compare-bam-" + map_type + "-repeats.bed" ]
+                        repeat_name = "-".join(repeat_name);
+                        repeat_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), repeat_name);
+                        repeat_ol_counts, repeat_ols = overlapCount(repeat_path);
+                        # Read the bam repeat overlaps                             
 
-                    gene_unmapped_name = [ config['ref_str'], cov + "X", div + "d", het + "h", "iter" + str(n), "compare-bam-unmapped-genes.bed" ]
-                    gene_unmapped_name = "-".join(gene_unmapped_name);
-                    gene_unmapped_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), gene_unmapped_name);                        
-                    gene_ol_counts, gene_ols = overlapCount(gene_unmapped_path);
-                    # Read the unmapped gene overlaps
+                        gene_name = [ config['ref_str'], cov + "X", div + "d", het + "h", "iter" + str(n), "compare-bam-" + map_type + "-genes.bed" ]
+                        gene_name = "-".join(gene_name);
+                        gene_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), gene_name);                        
+                        gene_ol_counts, gene_ols = overlapCount(gene_path);
+                        # Read the bam gene overlaps
 
-                    for region in config['regions']:
-                        total = repeat_ol_counts[region]['overlap'] + repeat_ol_counts[region]['no-overlap'];
-                        assert total == gene_ol_counts[region]['overlap'] + gene_ol_counts[region]['no-overlap'];
-                        # Count the total number of FNs and make sure they are consistent in both bed files
+                        for region in config['regions']:
+                            total = repeat_ol_counts[region]['overlap'] + repeat_ol_counts[region]['no-overlap'];
+                            assert total == gene_ol_counts[region]['overlap'] + gene_ol_counts[region]['no-overlap'];
+                            # Count the total number of FNs and make sure they are consistent in both bed files
 
-                        repeat_uniq, gene_uniq, shared, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
-                        # Parse the overlaps
+                            repeat_uniq, gene_uniq, shared, none = parseOverlaps(repeat_ols[region], gene_ols[region], total);
+                            # Parse the overlaps
 
-                        outline = [ "unmapped", region, cov, div, het, n, total, repeat_uniq, gene_uniq, shared, none ];
-                        outline = [ str(o) for o in outline ];
-                        outfile.write("\t".join(outline) + "\n");
-                        # Compile and write the output line for this set of params
+                            outline = [ map_type, region, cov, div, het, n, total, repeat_uniq, gene_uniq, shared, none ];
+                            outline = [ str(o) for o in outline ];
+                            outfile.write("\t".join(outline) + "\n");
+                            # Compile and write the output line for this set of params
 
-                        #sys.exit();
-                    ## End region loop for unmapped
+                            #sys.exit();
+                        ## End region loop for reads
+                    ## End map type loop
                 ## End iteration loop
             ## End het loop
         ## End div loop

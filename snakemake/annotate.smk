@@ -51,6 +51,9 @@ divs = config["divs"];
 hets = config["hets"];
 # Average heterozygosity to simulate
 
+var_types = ["tps", "fns"];
+map_types = ["exact", "unmapped"];
+
 #############################################################################
 # Python checks
 
@@ -75,43 +78,43 @@ localrules: all
 
 rule all:
     input:
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns-repeats.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns-genes.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-repeats.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets, var_type=var_types),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-genes.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets, var_type=var_types),
         
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped-repeats.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped-genes.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets)
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-repeats.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-genes.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types)
 
 #############################################################################
 # Pipeline functions
 
-rule fn_overlaps:
+rule variant_overlaps:
     input:
-        fn_file = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns.bed"),
+        variant_file = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}.bed"),
         repeat_bed = REF_REPEAT_BED,
         gff = REF_GFF
     output:
-        repeat_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns-repeats.bed"),
-        gene_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns-genes.bed")
+        repeat_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-repeats.bed"),
+        gene_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-genes.bed")
     shell:
         """
-        bedtools intersect -a {input.fn_file} -b {input.repeat_bed} -c > {output.repeat_overlaps}
-        bedtools intersect -a {input.fn_file} -b {input.gff} -c > {output.gene_overlaps}
+        bedtools intersect -a {input.variant_file} -b {input.repeat_bed} -c > {output.repeat_overlaps}
+        bedtools intersect -a {input.variant_file} -b {input.gff} -c > {output.gene_overlaps}
         """
 
 #################
 
-rule unmapped_overlaps:
+rule read_overlaps:
     input:
-        unmapped_file = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped.bam"),
+        bam_file = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}.bam"),
         repeat_bed = REF_REPEAT_BED,
         gff = REF_GFF
     output:
-        repeat_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped-repeats.bed"),
-        gene_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped-genes.bed")
+        repeat_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-repeats.bed"),
+        gene_overlaps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-genes.bed")
     shell:
         """
-        bedtools intersect -a {input.unmapped_file} -b {input.repeat_bed} -c -bed > {output.repeat_overlaps}
-        bedtools intersect -a {input.unmapped_file} -b {input.gff} -c -bed > {output.gene_overlaps}
+        bedtools intersect -a {input.bam_file} -b {input.repeat_bed} -c -bed > {output.repeat_overlaps}
+        bedtools intersect -a {input.bam_file} -b {input.gff} -c -bed > {output.gene_overlaps}
         """
 
 #############################################################################
