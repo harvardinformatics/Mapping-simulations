@@ -50,19 +50,20 @@ def runTime(msg=False, writeout=False, printout=True):
 
 #############################################################################
 
-regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename = sys.argv[1:];
+regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename, unmapped_outfilename = sys.argv[1:];
 regions = regions.split(",");
 # Inputs
 
-# divergence = "0.04";
+# divergence = "0.08";
 # heterozygosity = "0.005";
 # iteration = "1";
 # coverage = "30";
 # regions = ["18"];
-# golden_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.04/heterozygous/0.005/mm39_golden.bam";
-# query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.04/0.005/iter1/mm39-30X-0.04d-0.005h-crossmap.sorted.bam";
+# golden_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.08/heterozygous/0.005/mm39_golden.bam";
+# query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.08/0.005/iter1/mm39-30X-0.08d-0.005h-crossmap.sorted.bam";
 # ref_index = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai";
 # summary_outfilename = "test.csv";
+# unmapped_outfilename = "test-unmapped.bam";
 #tracefilename = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/mm39-20X-0.02-compare-bam-trace.txt";
 # I/O options
 
@@ -107,159 +108,167 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
     #query_reads = query_bam.fetch();
 
     PWS("# " + getDateTime() + " Finding reads...", outfile);
-    for chrome in chr_lens:
-    # Go through the reads by chromosome
 
-        if chrome not in regions:
-            continue;
-        # For debugging/testing
+    with pysam.AlignmentFile(unmapped_outfilename, "wb", header=golden_bam.header) as unmapped_out:
+        for chrome in chr_lens:
+        # Go through the reads by chromosome
 
-        PWS("# " + getDateTime() + " Finding reads in " + chrome + "...", outfile);
-
-        num_reads = 0;
-        num_reads_missing = 0;
-
-        for read in golden_bam.fetch(chrome):
-        # Find every golden read in the current chromosome
-
-            if num_reads % 1000 == 0:
-                print(getDateTime() + " " + str(num_reads));
-            num_reads += 1;
-            # print(read);
-            # print(read.query_name);
-            # print(read.is_read1);
-            # print(read.is_secondary);
-            # print("----");
-
-            if read.is_secondary:
+            if chrome not in regions:
                 continue;
-            # Only concerned with primary mappings
+            # For debugging/testing
 
-            if read.is_read1:
-                read_pair = "1";
-            else:
-                read_pair = "2";
-            # Since NEAT doesn't make it easy to determine which read is which in a pair, get it here
+            PWS("# " + getDateTime() + " Finding reads in " + chrome + "...", outfile);
 
-            golden_chr = read.reference_name;
-            golden_pos = read.get_reference_positions()[0];
-            # Get the chromosome and position where this read should map
+            num_reads = 0;
+            num_reads_missing = 0;
 
-            # print(golden_chr);
-            # print(golden_pos);
+            for read in golden_bam.fetch(chrome):
+            # Find every golden read in the current chromosome
 
-            try:
-                matches = name_indexed_query.find(read.query_name);
-            except:
-                outdict['missing'] += 1;
-                continue;
-            # Find all mappings for the current read in the query bam file
+                # if r  ead.query_name != "mm39-18-18-17842383":
+                #     continue;
 
-            matches_found = 0;
-            # Keeps track of how many matches we categorize - should only be one primary match
+                if num_reads % 1000 == 0:
+                    print(getDateTime() + " " + str(num_reads));
+                num_reads += 1;
+                # print(read);
+                # print(read.query_name);
+                # print(read.is_read1);
+                # print(read.is_secondary);
+                # print("----");
 
-            for match in matches:
-            # Go through every matching read in the query file for the current read
-
-                if match.is_secondary:
+                if read.is_secondary:
                     continue;
                 # Only concerned with primary mappings
 
-                if (match.is_read1 and read_pair == "1") or (match.is_read2 and read_pair == "2"):
-                # Make sure they are the same read in the pair
+                if read.is_read1:
+                    read_pair = "1";
+                else:
+                    read_pair = "2";
+                # Since NEAT doesn't make it easy to determine which read is which in a pair, get it here
 
-                    classification = "NONE";
-                    # if read.query_name == "mm39-19-19-1369":
-                    #     print(read)
-                    #     print(read.reference_name, read.reference_id, read.is_read1, read.query_name);
-                    #     print(match);
-                    #     print(match.reference_name, match.reference_id, match.is_read1, match.query_name);
-                    #     print("-------")                      
-                    #print(match);
-                    # mm39-19-19-1613719
-                    query_chr = match.reference_name;
-                    #print(query_chr);
-                    query_pos_list = match.get_reference_positions();
-                    #print(query_pos_list);
-                    if query_pos_list:                     
-                        query_pos = query_pos_list[0];
-                        #print(query_pos);
-                        #print("------");
-                        # Get the chromosome and position of where the read actually mapped
+                golden_chr = read.reference_name;
+                golden_pos = read.get_reference_positions()[0];
+                # Get the chromosome and position where this read should map
 
-                        if golden_chr != query_chr:
-                            classification = "DIFF CHR";
-                            outdict['diff-chr'] += 1;
-                            matches_found += 1;
+                # print(golden_chr);
+                # print(golden_pos);
 
-                            # print(read)
-                            # print(read.reference_name, read.reference_id, read.is_read1, read.query_name);
-                            # print(match);
-                            # print(match.reference_name, match.reference_id, match.is_read1, match.query_name);
-                            # sys.exit();
-                        # If it mapped to a different chromosome completely
+                try:
+                    matches = name_indexed_query.find(read.query_name);
+                except:
+                    outdict['missing'] += 1;
+                    continue;
+                # Find all mappings for the current read in the query bam file
 
-                        elif golden_chr == query_chr:
-                            if golden_pos == query_pos:
-                                classification = "EXACT MAP"
-                                outdict['exact-map'] += 1;
+                matches_found = 0;
+                # Keeps track of how many matches we categorize - should only be one primary match
+
+                for match in matches:
+                # Go through every matching read in the query file for the current read
+
+                    if match.is_secondary:
+                        continue;
+                    # Only concerned with primary mappings
+
+                    if (match.is_read1 and read_pair == "1") or (match.is_read2 and read_pair == "2"):
+                    # Make sure they are the same read in the pair
+
+                        classification = "NONE";
+                        # if read.query_name == "mm39-19-19-1369":
+                        #     print(read)
+                        #     print(read.reference_name, read.reference_id, read.is_read1, read.query_name);
+                        #     print(match);
+                        #     print(match.reference_name, match.reference_id, match.is_read1, match.query_name);
+                        #     print("-------")                      
+                        #print(match);
+                        # mm39-19-19-1613719
+                        query_chr = match.reference_name;
+                        #print(query_chr);
+                        query_pos_list = match.get_reference_positions();
+                        #print(query_pos_list);
+                        if query_pos_list:                     
+                            query_pos = query_pos_list[0];
+                            #print(query_pos);
+                            #print("------");
+                            # Get the chromosome and position of where the read actually mapped
+
+                            if golden_chr != query_chr:
+                                classification = "DIFF CHR";
+                                outdict['diff-chr'] += 1;
                                 matches_found += 1;
-                            # An exact match
 
-                            elif abs(query_pos - golden_pos) <= 150:
-                                classification = "CLOSE MAP"
-                                outdict['close-map'] += 1;
-                                matches_found += 1;
-                            # A mapping within one read length of the true mapping
+                                # print(read)
+                                # print(read.reference_name, read.reference_id, read.is_read1, read.query_name);
+                                # print(match);
+                                # print(match.reference_name, match.reference_id, match.is_read1, match.query_name);
+                                # sys.exit();
+                            # If it mapped to a different chromosome completely
 
-                            else:
-                                classification = "MISMAPPED"
-                                outdict['mismapped'] += 1;
-                                matches_found += 1;
-                        # A mapping on the same chromosome, but a different position
+                            elif golden_chr == query_chr:
+                                if golden_pos == query_pos:
+                                    classification = "EXACT MAP"
+                                    outdict['exact-map'] += 1;
+                                    matches_found += 1;
+                                # An exact match
 
-                        # if random.uniform(0,1) < 0.01:
-                        #     tracefile.write(getDateTime() + "\n");
-                        #     tracefile.write("MATCH CLASS: " + classification + "\n");
-                        #     tracefile.write("READ\n");
-                        #     read_info = [read.query_name, read.is_read1, read.reference_name, read.reference_id];
-                        #     read_info = [ str(r) for r in read_info ];
-                        #     tracefile.write("\t".join(read_info) + "\n");
-                        #     tracefile.write(str(read) + "\n");
-                        #     tracefile.write("MATCH\n");
-                        #     match_info = [match.query_name, match.is_read1, match.reference_name, match.reference_id];
-                        #     match_info = [ str(r) for r in match_info ];
-                        #     tracefile.write("\t".join(match_info) + "\n");
-                        #     tracefile.write(str(match) + "\n");
-                        #     tracefile.write("--------------------------\n");
-                        # Random writing for manual checking.                      
-            ## End matches loop
+                                elif abs(query_pos - golden_pos) <= 150:
+                                    classification = "CLOSE MAP"
+                                    outdict['close-map'] += 1;
+                                    matches_found += 1;
+                                # A mapping within one read length of the true mapping
 
-            if matches_found == 0:
-                outdict['unmapped'] += 1;
-            # If there are no primary matches found, increment as unmapped
+                                else:
+                                    classification = "MISMAPPED"
+                                    outdict['mismapped'] += 1;
+                                    matches_found += 1;
+                            # A mapping on the same chromosome, but a different position
 
-            # elif matches_found > 1:
-            #     print(read)
-            #     print(matches);
-            # For testing
+                            # if random.uniform(0,1) < 0.01:
+                            #     tracefile.write(getDateTime() + "\n");
+                            #     tracefile.write("MATCH CLASS: " + classification + "\n");
+                            #     tracefile.write("READ\n");
+                            #     read_info = [read.query_name, read.is_read1, read.reference_name, read.reference_id];
+                            #     read_info = [ str(r) for r in read_info ];
+                            #     tracefile.write("\t".join(read_info) + "\n");
+                            #     tracefile.write(str(read) + "\n");
+                            #     tracefile.write("MATCH\n");
+                            #     match_info = [match.query_name, match.is_read1, match.reference_name, match.reference_id];
+                            #     match_info = [ str(r) for r in match_info ];
+                            #     tracefile.write("\t".join(match_info) + "\n");
+                            #     tracefile.write(str(match) + "\n");
+                            #     tracefile.write("--------------------------\n");
+                            # Random writing for manual checking.                      
+                ## End matches loop
 
-            # if num_reads > 2000000:
-            #     break;
-        ## End golden read loop
-    ## End chromosome loop
-        
-    # print(num_reads);
-    # print(outdict);
+                if matches_found == 0:
+                    outdict['unmapped'] += 1;
+                    unmapped_out.write(read);
+                # If there are no primary matches found, increment as unmapped
 
-    #outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0 };
+                # elif matches_found > 1:
+                #     print(read)
+                #     print(matches);
+                # For testing
 
-    headers = ["coverage", "divergence", "heterozygosity", "iteration", "missing.in.query", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
-    PWS(",".join(headers), outfile);
+                # if num_reads > 2000000:
+                #     break;
+            ## End golden read loop
+        ## End chromosome loop
+            
+        # print(num_reads);
+        # print(outdict);
 
-    outline = [coverage, divergence, heterozygosity, iteration, outdict['missing'], outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
-    outline = [str(col) for col in outline];
-    PWS(",".join(outline), outfile, newline=False);
+        #outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0 };
+
+        headers = ["coverage", "divergence", "heterozygosity", "iteration", "missing.in.query", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
+        PWS(",".join(headers), outfile);
+
+        outline = [coverage, divergence, heterozygosity, iteration, outdict['missing'], outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
+        outline = [str(col) for col in outline];
+        PWS(",".join(outline), outfile, newline=False);
+    ## Close unmapped file
+## Close summary file
 
 ####################
 

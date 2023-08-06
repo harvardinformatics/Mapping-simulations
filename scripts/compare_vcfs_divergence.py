@@ -208,23 +208,25 @@ def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=Fals
     
 #############################################################################
 
-region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file, prev_iter_file, golden_div_vcf, iteration_vcf, minimap_vcf, outdir, outfilename = sys.argv[1:];
-# Inputs
+region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file, prev_iter_file, golden_div_vcf, iteration_vcf, minimap_vcf, outdir, outfilename, bedoutfilename = sys.argv[1:];
+# Inputs a change
 
 # coverage = "30";
 # divergence = "0.02";
 # heterozygosity = "0.005";
 # iteration = "2";
-# region = "19";
+# region = "18";
 # genome_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.fa";
-# iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus.fa"
-# prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
-# golden_div_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.02/divergent/regions/mm39-19_golden.vcf.gz";
-# #golden_het_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/simulated-reads/30X/0.02/heterozygous/0.005/regions/mm39-19_golden.vcf.gz";
-# iteration_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/called-variants/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-filtered-snps.vcf.gz";
-# minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
+# iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus.fa"
+# prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
+# golden_div_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.02/divergent/regions/mm39-18_golden.vcf.gz";
+# #golden_het_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/simulated-reads/30X/0.02/heterozygous/0.005/regions/mm39-18_golden.vcf.gz";
+# iteration_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/called-variants/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-filtered-snps.vcf.gz";
+# minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
 # outdir = ".";
 # outfilename = "test.tsv";
+# bedoutfilename = "test-fn.bed";
+
 # Test inputs
 
 #region = os.path.basename(golden_div_vcf).split("-")[1];
@@ -236,7 +238,7 @@ region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file,
 ####################
 
 pad = 30;
-with open(outfilename, "w") as outfile:
+with open(outfilename, "w") as outfile, open(bedoutfilename, "w") as bedfile:
 # Open summary file and output file for writing
 
     runTime("# Compare VCFs", outfile);
@@ -339,8 +341,12 @@ with open(outfilename, "w") as outfile:
                         "prev.iter" : prev_seq[region][i], "iter.gt" : "NA", "iter.allele.1" : ".", "iter.allele.2" : ".", 
                         "minimap.gt" : "NA", "minimap.allele.1" : ".", "minimap.allele.2" : "." };
 
+            golden_snp = False;
+            called_snp = False;
+
             if pos in golden_div_variants:
                 outline['golden.div'] = golden_div_variants[pos]['alt'];
+                golden_snp = True;
             else:
                 outline['golden.div'] = ref_seq[region][i];
             
@@ -377,16 +383,24 @@ with open(outfilename, "w") as outfile:
                 else:
                     outline['minimap.allele.2'] = ref_seq[region][i];
                     outline['minimap.gt'] = "het";
+
+                called_snp = True;
             else:
                 outline['minimap.allele.1'] = ref_seq[region][i];
                 outline['minimap.allele.2'] = ref_seq[region][i];
                 outline['minimap.gt'] = "hom.ref";
+                called_snp = False;
 
                 # if str(j) not in mmap_qstart_mismatches:
                 #     assert ref_seq[region][i] == iter_seq[region][i], str(i) + " " + str(j) + " " + pos + " " + ref_seq[region][i] + " " + iter_seq[region][i];
                 # 19:3090394
 
             ##########
+
+            if golden_snp and not called_snp:
+                bed_outline = [region, str(i), str(j)];
+                bedfile.write("\t".join(bed_outline) + "\n");
+
 
             final_outline = "\t".join(meta_outline + [ outline[col] for col in headers ]);
             outfile.write(final_outline + "\n");

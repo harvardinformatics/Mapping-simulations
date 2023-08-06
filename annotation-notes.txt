@@ -18,8 +18,15 @@ GFF:
 3. overlaps
 
 Repeats:
-- downloaded from ucsc on 06.15.2023
+1.  downloaded from ucsc on 06.15.2023
 
         source: https://genome.ucsc.edu/cgi-bin/hgTables
 
-        local : /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-repeatmasker-ucsc.tsv.gz
+        local : /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-repeatmasker-ucsc.bed.gz
+
+2. subset to chr18 only and remove 'chr' string:
+
+        zcat mm39-repeatmasker-ucsc.bed.gz | awk '$1=="chr18"{print}' | sed 's/^chr//g' > mm39-repeatmasker-ucsc.chr18.bed
+
+        local : /n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-repeatmasker-ucsc.chr18.bed
+
