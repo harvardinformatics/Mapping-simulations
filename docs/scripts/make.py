@@ -11,6 +11,7 @@ parser.add_argument("--index", dest="index", help="Without --all: build index.ht
 parser.add_argument("--variants", dest="variants", help="Without --all: build variants.html. With --all: exlude variants.html", action="store_true", default=False);
 parser.add_argument("--iterative", dest="iterative", help="Without --all: build iterative.html. With --all: exlude iterative.html", action="store_true", default=False);
 parser.add_argument("--summary", dest="summary", help="Without --all: build map_sim_summary.html. With --all: exlude map_sim_summary.html", action="store_true", default=False);
+parser.add_argument("--annotations", dest="annotations", help="Without --all: build annotations.html. With --all: exlude annotations.html", action="store_true", default=False);
 parser.add_argument("--people", dest="people", help="Without --all: build people.html. With --all: exlude people.html", action="store_true", default=False);
 parser.add_argument("--links", dest="links", help="Without --all: build links.html. With --all: exlude links.html", action="store_true", default=False);
 args = parser.parse_args();
@@ -24,6 +25,7 @@ pages = {
     'variants' : args.variants,
     'iterative' : args.iterative,
     'summary' : args.summary,
+    'annotations' : args.annotations,
     'people' : args.people,
     'links' : args.links
 }
@@ -42,6 +44,9 @@ if pages['iterative']:
 
 if pages['summary']:
     os.system("Rscript map_sim_summary_generator.r");
+
+if pages['annotations']:
+    os.system("Rscript annotations_generator.r");
 
 if pages['people']:
     os.system("python people_generator.py");
