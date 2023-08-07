@@ -82,7 +82,10 @@ rule all:
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-genes.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets, var_type=var_types),
         
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-repeats.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-genes.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types)
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-genes.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types),
+
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-tracker.bed"), cov=covs, region=regions, div=divs, het=hets, var_type=var_types),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-{map_type}-tracker.bed"), cov=covs, div=divs, het=hets, map_type=map_types)
 
 #############################################################################
 # Pipeline functions
@@ -115,6 +118,37 @@ rule read_overlaps:
         """
         bedtools intersect -a {input.bam_file} -b {input.repeat_bed} -c -bed > {output.repeat_overlaps}
         bedtools intersect -a {input.bam_file} -b {input.gff} -c -bed > {output.gene_overlaps}
+        """
+
+#############################################################################
+
+rule track_snps:
+    input:
+        iter1_snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter1-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}.bed"),
+        iter2_snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter2-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}.bed"),
+        iter3_snps = os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter3-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}.bed")
+    output:
+        os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-tracker.bed")
+    shell:
+        """
+        bedtools intersect -a {input.iter1_snps} -b {input.iter2_snps} {input.iter3_snps} -wao -bed -f 1.0 -names iter2 iter3 > {output}
+        """
+
+#############################################################################
+
+rule track_reads:
+    input:
+        iter1_bam = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter1-compare-bam-{map_type}.bam"),
+        iter2_bam = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter2-compare-bam-{map_type}.bam"),
+        iter3_bam = os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter3-compare-bam-{map_type}.bam")
+    output:
+        os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-{map_type}-tracker.bed")
+    resources:
+        partition = "holy-cow",
+        mem = "48g"
+    shell:
+        """
+        bedtools intersect -a {input.iter1_bam} -b {input.iter2_bam} {input.iter3_bam} -wao -bed -f 1.0 -names iter2 iter3 > {output}
         """
 
 #############################################################################

@@ -7,6 +7,68 @@ from collections import defaultdict
 
 #############################################################################
 
+def trackerCount(trackerfile, data_type):
+    tracker_counts = {};
+    tracker = {};
+    # Init vars to count tracks
+
+    for line in open(trackerfile):
+        line = line.strip().split("\t");
+        # Parse the current line in the file
+
+        region = line[0];
+        overlap = line[-1];
+        # Read the region and the number of overlaps
+        ## CHECK
+
+        if region not in tracker:
+            tracker[region] = { };
+        # Initialize the dict if the region hasn't been seen before     
+
+        if overlap != "0":
+            if data_type == "var":
+                name = "-".join([ line[0], line[1], line[2] ]);
+                iteration = int(line[3][-1]);
+            elif data_type == "read":
+                name = line[3] ## CHECK
+                iteration = int(line[12][-1]);
+            # The bed files for reads and snps are slightly different, so get name of feature and iteration here depending
+
+            if name not in tracker[region]:
+                tracker[region][name] = 0;
+            # Initialize classification for this feature as 0
+
+            tracker[region][name] += iteration;
+            # Add the iteration number to the tracker for this feature
+            # Tracker codes:
+            # 0: feature not found in iter2 or 3
+            # 2: feature found in iter2 only
+            # 3: feature found in iter3 only
+            # 5: feature found in both iters 2 and 3
+    ## End tracker file line loop
+
+    for region in tracker:
+        tracker_counts[region] = { 'num.none' : 0, 'num.iter2.uniq' : 0, 'num.iter3.uniq' : 0, 'num.shared' : 0 };
+        # Init the tracker counts for this region
+
+        for name in tracker[region]:
+            if tracker[region][name] == 0:
+                tracker_counts[region]['num.none'] += 1;
+            elif tracker[region][name] == 2:
+                tracker_counts[region]['num.iter2.uniq'] += 1;
+            elif tracker[region][name] == 3:
+                tracker_counts[region]['num.iter3.uniq'] += 1;
+            elif tracker[region][name] == 5:
+                tracker_counts[region]['num.shared'] += 1;
+            # Count the number of iterations this feature is found in according to the code above
+
+        ## End name loop for tracker counts
+    ## End region loop for tracker counts
+
+    return tracker_counts;
+
+#####################
+
 def overlapCount(bedfilename):
     overlap_counts = {};
     overlaps = {};
@@ -62,6 +124,7 @@ def parseOverlaps(repeat_ols, gene_ols, total_features):
 
 config_file = "../simulation-configs/mm39-iterative.yaml";
 outfilename = "../data/mm39-30X-0.005h-annotations.tsv";
+trackeroutfile = "../data/mm39-30X-0.005h-tracker.tsv";
 # Input and output files
 
 var_types = ["tps", "fns"];
@@ -77,10 +140,12 @@ with open(config_file, "r") as stream:
 #sim_name = config['ref_str'] + "-" + "-".join(config['regions']) + "-iterative";
 
 headers = ["type", "region", "coverage", "divergence", "heterozygosity", "iteration", "total", "num.repeat.uniq", "num.gene.uniq", "num.shared", "num.none" ];
+tracker_headers = ["type", "region", "coverage", "divergence", "heterozygosity", "total", "num.lost", "num.iter2.uniq", "num.iter3.uniq", "num.shared" ];
 # Headers for the output file
 
-with open(outfilename, "w") as outfile:
+with open(outfilename, "w") as outfile, open(trackeroutfile, "w") as tracker:
     outfile.write("\t".join(headers) + "\n");
+    tracker.write("\t".join(tracker_headers) + "\n");
     # Write the headers to the output file
 
     for cov in config['covs']:
@@ -92,6 +157,23 @@ with open(outfilename, "w") as outfile:
                 for n in range(1,config['iterations']+1):
                     for region in config['regions']:
                         for var_type in var_types:
+
+                            if n == 1:
+                                tracker_name = [ config['ref_str'], region, cov + "X", div + "d", het + "h", "compare-vcf-" + var_type + "-tracker.bed" ];
+                                tracker_name = "-".join(tracker_name);
+                                tracker_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", tracker_name);
+
+                                tracker_counts = trackerCount(tracker_path, "var");
+
+                                total = tracker_counts[region]['num.none'] + tracker_counts[region]['num.iter2.uniq'] + tracker_counts[region]['num.iter3.uniq'] + tracker_counts[region]['num.shared'];
+
+                                tracker_outline = [ var_type, region, cov, div, het, total, tracker_counts[region]['num.none'], tracker_counts[region]['num.iter2.uniq'], tracker_counts[region]['num.iter3.uniq'], tracker_counts[region]['num.shared'] ];
+                                tracker_outline = [ str(o) for o in tracker_outline ];
+                                tracker.write("\t".join(tracker_outline) + "\n");
+                            ## Do tracker stuff on first iteration
+
+                            ##########
+
                             repeat_name = [ config['ref_str'], "iter" + str(n), region, cov + "X", div + "d", het + "h", "compare-vcf-" + var_type + "-repeats.bed" ];
                             repeat_name = "-".join(repeat_name);
                             repeat_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", repeat_name);
@@ -121,6 +203,27 @@ with open(outfilename, "w") as outfile:
                     #####################
 
                     for map_type in map_types:
+
+                        if n == 1:
+                            tracker_name = [ config['ref_str'], cov + "X", div + "d", het + "h", "compare-bam-" + map_type + "-tracker.bed" ];
+                            tracker_name = "-".join(tracker_name);
+                            tracker_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), tracker_name);
+                            # Get tracker file name
+
+                            tracker_counts = trackerCount(tracker_path, "read");
+                            # Count the tracks
+
+                            for region in config['regions']:
+                                total = tracker_counts[region]['num.none'] + tracker_counts[region]['num.iter2.uniq'] + tracker_counts[region]['num.iter3.uniq'] + tracker_counts[region]['num.shared'];
+
+                                tracker_outline = [ var_type, region, cov, div, het, total, tracker_counts[region]['num.none'], tracker_counts[region]['num.iter2.uniq'], tracker_counts[region]['num.iter3.uniq'], tracker_counts[region]['num.shared'] ];
+                                tracker_outline = [ str(o) for o in tracker_outline ];
+                                tracker.write("\t".join(tracker_outline) + "\n");
+                            ## Output by region
+                        ## Do tracker stuff on first iteration
+
+                        ##########
+
                         repeat_name = [ config['ref_str'], cov + "X", div + "d", het + "h", "iter" + str(n), "compare-bam-" + map_type + "-repeats.bed" ]
                         repeat_name = "-".join(repeat_name);
                         repeat_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), repeat_name);
@@ -156,3 +259,5 @@ with open(outfilename, "w") as outfile:
 ## Close output file                
 
 #############################################################################                    
+
+
