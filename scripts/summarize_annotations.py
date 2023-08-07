@@ -162,14 +162,18 @@ with open(outfilename, "w") as outfile, open(trackeroutfile, "w") as tracker:
                                 tracker_name = [ config['ref_str'], region, cov + "X", div + "d", het + "h", "compare-vcf-" + var_type + "-tracker.bed" ];
                                 tracker_name = "-".join(tracker_name);
                                 tracker_path = os.path.join(config['sim_outdir'], "summary-files", str(cov) + "X", str(div), "regions", tracker_name);
+                                # Read the tracker bed file
 
                                 tracker_counts = trackerCount(tracker_path, "var");
+                                # Count the overlaps between iterations
 
                                 total = tracker_counts[region]['num.none'] + tracker_counts[region]['num.iter2.uniq'] + tracker_counts[region]['num.iter3.uniq'] + tracker_counts[region]['num.shared'];
+                                # Count the total number of SNPs
 
                                 tracker_outline = [ var_type, region, cov, div, het, total, tracker_counts[region]['num.none'], tracker_counts[region]['num.iter2.uniq'], tracker_counts[region]['num.iter3.uniq'], tracker_counts[region]['num.shared'] ];
                                 tracker_outline = [ str(o) for o in tracker_outline ];
                                 tracker.write("\t".join(tracker_outline) + "\n");
+                                # Output tracker info to file
                             ## Do tracker stuff on first iteration
 
                             ##########
@@ -216,7 +220,7 @@ with open(outfilename, "w") as outfile, open(trackeroutfile, "w") as tracker:
                             for region in config['regions']:
                                 total = tracker_counts[region]['num.none'] + tracker_counts[region]['num.iter2.uniq'] + tracker_counts[region]['num.iter3.uniq'] + tracker_counts[region]['num.shared'];
 
-                                tracker_outline = [ var_type, region, cov, div, het, total, tracker_counts[region]['num.none'], tracker_counts[region]['num.iter2.uniq'], tracker_counts[region]['num.iter3.uniq'], tracker_counts[region]['num.shared'] ];
+                                tracker_outline = [ map_type, region, cov, div, het, total, tracker_counts[region]['num.none'], tracker_counts[region]['num.iter2.uniq'], tracker_counts[region]['num.iter3.uniq'], tracker_counts[region]['num.shared'] ];
                                 tracker_outline = [ str(o) for o in tracker_outline ];
                                 tracker.write("\t".join(tracker_outline) + "\n");
                             ## Output by region
