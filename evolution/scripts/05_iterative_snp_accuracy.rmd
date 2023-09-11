@@ -110,11 +110,14 @@ print(snps_p)
 cols = corecol(numcol=3, pal="wilke")
 # Get some colors
 
+cols=c("white", "white", "white")
+minimap_vars_iter = minimap_vars_iter %>% filter(iteration==1)
+
 div_called_p = ggplot(minimap_vars_iter, aes(x=divergence, y=perc.called.sites, color=iteration)) +
   geom_point(size=4, alpha=0.5) +
   geom_abline(slope=1, intercept=0, size=1, linetype="dashed", color="#999999") +
-  geom_line(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), color="#000000") +
-  geom_point(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), size=4, color="#000000") +
+  geom_line(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), color="#920000") +
+  geom_point(data=sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites), size=4, color="#920000") +
   scale_x_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
   scale_y_continuous(limits=c(0,0.1), breaks=seq(0, 0.1, by=0.02)) +
   xlab("Simulated divergence") +
@@ -131,7 +134,7 @@ print(div_called_p)
 
 
 ```{r save-dots, include=FALSE}
-  outfilename = here("evolution", "figs", "06-iterative-divergence.png")
+  outfilename = here("evolution", "figs", "06-iterative-divergence-1.png")
   ggsave(filename=outfilename, div_called_p, width=6, height=5, units="in")
 ```
 

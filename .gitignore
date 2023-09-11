@@ -1,17 +1,24 @@
 old/
 pkgs/
+.snakemake/
+slurm-logs/
+etc/
+*.RHistory*
+.here
 *.code-workspace
+*blah*
+
 scripts/slurm-logs/
 scripts/.snakemake/
 scripts/old/
 scripts/wub/
 scripts/test*
-.snakemake/
-slurm-logs/
-etc/
+
 snakemake/.snakemake/
+snakemake/test*
+
 docs/scripts/lib/__pycache__/
-*.RHistory*
+
 
 data/old/mm39-20X-vcf-snps.csv
 data/old/mm39-iterative-20X-vcf-snps.csv
@@ -23,4 +30,3 @@ data/mm39-30X-0.005h-3i-vcf-comparison-iter1.tsv.gz
 data/tmp-old*
 data/window-snps-30X-summary.tab
 
-.here

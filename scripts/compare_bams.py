@@ -50,23 +50,23 @@ def runTime(msg=False, writeout=False, printout=True):
 
 #############################################################################
 
-# regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename, exact_outfilename, unmapped_outfilename = sys.argv[1:];
-# regions = regions.split(",");
+regions, coverage, divergence, heterozygosity, iteration, ref_index, golden_bam_file, query_bam_file, summary_outfilename, exact_outfilename, unmapped_outfilename = sys.argv[1:];
+regions = regions.split(",");
 # Inputs
 
-divergence = "0.08";
-heterozygosity = "0.005";
-iteration = "1";
-coverage = "30";
-regions = ["18"];
-golden_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.08/heterozygous/0.005/mm39_golden.bam";
-query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.08/0.005/iter1/mm39-30X-0.08d-0.005h-crossmap.sorted.bam";
-ref_index = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai";
-summary_outfilename = "test.csv";
-exact_outfilename = "test-exact.bam";
-unmapped_outfilename = "test-unmapped.bam";
+# divergence = "0.02";
+# heterozygosity = "0.005";
+# iteration = "1";
+# coverage = "30";
+# regions = ["18"];
+# golden_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/simulated-reads/30X/0.02/heterozygous/0.005/mm39_golden.bam";
+# query_bam_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.02/0.005/iter2/mm39-30X-0.02d-0.005h-crossmap.sorted.bam";
+# ref_index = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai";
+# summary_outfilename = "test.csv";
+# exact_outfilename = "test-exact.bam";
+# unmapped_outfilename = "test-unmapped.bam";
 #tracefilename = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/summary-files/20X/0.02/mm39-20X-0.02-compare-bam-trace.txt";
-# I/O options
+# Test inputs
 
 pad = 20;
 with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tracefile:
@@ -75,6 +75,7 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
     PWS(spacedOut("# Query BAM:", pad) + query_bam_file, outfile);
     PWS(spacedOut("# Output file:", pad) + summary_outfilename, outfile);
     PWS("# ----------------", outfile);
+    # Runtime info
 
     ####################
 
@@ -101,7 +102,8 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
 
     ####################
 
-    outdict = {"exact-map" : 0, "close-map" : 0, "mismapped" : 0, "diff-chr" : 0, "unmapped" : 0, "no.primary" : 0, "missing" : 0 };
+    outdict = { "has.match" : 0, "reads.w.primary.only" : 0, "reads.w.secondary.only" : 0, "reads.w.both" : 0, "primary.err" : 0,
+                 "exact.map" : 0, "close.map" : 0, "mismapped" : 0, "diff.chr" : 0, "unmapped" : 0, "multi.match" : 0, "pair.err" : 0, "pos.err" : 0, "chr.err" : 0, "missing" : 0 };
     # Just doing counts for now. Could do full distributions of distance between golden and mapped positions, but
     # would have to deal with the memory issues
 
@@ -150,47 +152,65 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
                 # Find all mappings for the current read in the query bam file
 
                 matches_found = 0;
-                primary_found = False;
+
+                has_primary = False;
+                has_secondary = False;
+
+                primary_err = False;
+                pair_err = False;
+                pos_err = False;
+                chr_err = False;
                 # Keeps track of how many matches we categorize - should only be one primary match
+
+                if matches:
+                    outdict['has.match'] += 1;
 
                 for match in matches:
                 # Go through every matching read in the query file for the current read
-
-                    if match.is_secondary:
-                        continue;
-                    # Only concerned with primary mappings
 
                     if (match.is_read1 and read_pair == "1") or (match.is_read2 and read_pair == "2"):
                     # Make sure they are the same read in the pair
 
                         classification = "NONE";
-                        primary_found = True;
+                        pair_err = False;
+
+                        if match.is_secondary:
+                            has_secondary = True;
+                            continue;
+                        else:
+                            has_primary = True;
+                        # Only concerned with primary mappings
 
                         query_chr = match.reference_name;
                         query_pos_list = match.get_reference_positions();
                         # Get the info for the matching query
 
-                        if query_pos_list:                     
-                            query_pos = query_pos_list[0];
-                            # Get the chromosome and position of where the read actually mapped
+                        if golden_chr != query_chr:
+                            chr_err = False;
+                            classification = "DIFF CHR";
+                            outdict['diff.chr'] += 1;
+                            matches_found += 1;
+                        # If it mapped to a different chromosome completely
 
-                            if golden_chr != query_chr:
-                                classification = "DIFF CHR";
-                                outdict['diff-chr'] += 1;
-                                matches_found += 1;
-                            # If it mapped to a different chromosome completely
+                        elif golden_chr == query_chr:
+                            chr_err = False;
 
-                            elif golden_chr == query_chr:
+                            if query_pos_list:
+                                pos_err = False;
+
+                                query_pos = query_pos_list[0];
+                                # Get the chromosome and position of where the read actually mapped
+
                                 if golden_pos == query_pos:
                                     classification = "EXACT MAP"
-                                    outdict['exact-map'] += 1;
+                                    outdict['exact.map'] += 1;
                                     matches_found += 1;
                                     exact_out.write(read);
                                 # An exact match
 
                                 elif abs(query_pos - golden_pos) <= 150:
                                     classification = "CLOSE MAP"
-                                    outdict['close-map'] += 1;
+                                    outdict['close.map'] += 1;
                                     matches_found += 1;
                                 # A mapping within one read length of the true mapping
 
@@ -198,24 +218,63 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
                                     classification = "MISMAPPED"
                                     outdict['mismapped'] += 1;
                                     matches_found += 1;
-                            # A mapping on the same chromosome, but a different position
-                        ## End query block
-                    ## End matches block
+                                # A mapping on the same chromosome, but a different position
+
+                            elif matches_found == 0:
+                                pos_err = True;
+                            ## End position check block
+
+                        elif matches_found == 0:
+                            chr_err = True;
+                        ## End chrome check block
+
+                    else:
+                        continue;
+                    ## End pair check block
                 ## End matches loop
 
-                if matches_found == 0 and not primary_found:
-                    outdict['no.primary'] += 1;
-                    unmapped_out.write(read);
+                if has_secondary and has_primary:
+                    outdict['reads.w.both'] += 1;
+                elif has_secondary:
+                    outdict['reads.w.secondary.only'] += 1;
+                elif has_primary:
+                    outdict['reads.w.primary.only'] += 1;
                 else:
-                    outdict['unmapped'] += 1;
-                # If there are no primary matches found, increment as unmapped
+                    outdict['primary.err'] += 1;
+
+                if matches_found != 1:
+                    if matches_found > 1:
+                        outdict['multi.match'] += 1;
+                    # Check if multiple matches were found
+
+                    elif matches_found == 0:
+                        if pair_err:
+                            outdict['pair.err'] += 1;
+                        elif pos_err:
+                            outdict['pos.err'] += 1;
+                        
+                        elif chr_err:
+                            outdict['chr.err'] += 1;
+                        else:
+                            outdict['unmapped'] += 1;
+                            unmapped_out.write(read);
+                    # Check various cases where no match was found
+                ## End matches loop
             ## End golden bam read loop
         ## End chrome loop
 
-        headers = ["coverage", "divergence", "heterozygosity", "iteration", "missing.in.query", "no.primary", "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
+        headers = ["coverage", "divergence", "heterozygosity", "iteration", 
+                    "total.reads", "has.match", "multi.match", 
+                    "primary.match.only", "secondary.match.only", "both.matches", "no.matches",
+                    "missing.in.query", "primary.err", "pair.err", "pos.err", "chr.err", 
+                    "exact.map", "close.map", "mismapped", "diff.chr", "unmapped"];
         PWS(",".join(headers), outfile);
 
-        outline = [coverage, divergence, heterozygosity, iteration, outdict['missing'], outdict['no.primary'], outdict['exact-map'], outdict['close-map'], outdict['mismapped'], outdict['diff-chr'], outdict['unmapped']];
+        outline = [coverage, divergence, heterozygosity, iteration, 
+                    num_reads, outdict['has.match'], outdict['multi.match'],
+                    outdict['reads.w.primary.only'], outdict['reads.w.secondary.only'], outdict['reads.w.both'], outdict['primary.err'],
+                    outdict['missing'], outdict['primary.err'], outdict['pair.err'], outdict['pos.err'], outdict['chr.err'], 
+                    outdict['exact.map'], outdict['close.map'], outdict['mismapped'], outdict['diff.chr'], outdict['unmapped']];
         outline = [str(col) for col in outline];
         PWS(",".join(outline), outfile, newline=False);
     ## Close unmapped file

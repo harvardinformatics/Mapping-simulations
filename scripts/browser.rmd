@@ -1,0 +1,57 @@
+---
+title: ''
+output: html_document
+date: "2023-09-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(JBrowseR)
+```
+
+
+```{r}
+
+# ref = "https://rcood.rc.fas.harvard.edu/pun/sys/dashboard/files/fs/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-18.fa"
+# bam = "https://rcood.rc.fas.harvard.edu/pun/sys/dashboard/files/fs/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.10/0.005/iter1/mm39-30X-0.10d-0.005h.bam"
+
+#JBrowseR("View", assembly = ref, tracks = tracks(bam))
+
+#, location="18:3000459..3000469"
+
+#JBrowseR("ViewHg19", location = "10:29,838,737..29,838,819")
+
+ref = assembly("https://rcood.rc.fas.harvard.edu/pun/sys/dashboard/files/fs/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-18.fa")
+bam = track_alignments("https://rcood.rc.fas.harvard.edu/pun/sys/dashboard/files/fs/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.10/0.005/iter1/mm39-30X-0.10d-0.005h-crossmap.sorted.bam", assembly=ref)
+
+JBrowseR("View", assembly = ref, tracks = tracks(bam), location="18:3000459..3000469")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
