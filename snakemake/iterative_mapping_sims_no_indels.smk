@@ -8,10 +8,10 @@ import re
 #############################################################################
 # Example cmd for mouse genome
 
-# snakemake -p -s iterative_mapping_sims.smk --configfile ../simulation-configs/mm39-iterative.yaml --profile profiles/slurm_profile/ --dryrun
+# snakemake -p -s iterative_mapping_sims_no_indels.smk --configfile ../simulation-configs/mm39-iterative-no-indels.yaml --profile profiles/slurm_profile/ --dryrun
 
 # To generate rulegraph image:
-# snakemake -p -s iterative_mapping_sims.smk --configfile ../simulation-configs/mm39-iterative.yaml --profile profiles/slurm_profile/ --rulegraph | dot -Tpng > iterative-mapping-dag.png
+# snakemake -p -s iterative_mapping_sims_no_indels.smk --configfile ../simulation-configs/mm39-iterative-no-indels.yaml --profile profiles/slurm_profile/ --rulegraph | dot -Tpng > iterative-mapping-dag.png
 
 #############################################################################
 # Reference file and path info
@@ -394,6 +394,7 @@ rule gatk_haplotypecaller:
     resources:
         cpus = 4,
         mem="12g",
+        partition = "intermediate",
         time = lambda wc, attempt: getRuntime(wc, attempt, max_time=168, base_time=160, multiplier=200)
     retries: 3
     shell:
@@ -416,6 +417,7 @@ rule gatk_genotypegvcfs:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-genotypegvcfs-{region}-{cov}X-{div}d-{het}h-iter{n}.log"),
     resources:
         mem="4g",
+        partition = "intermediate",
         time = lambda wc, attempt: getRuntime(wc, attempt, max_time=168, base_time=6, multiplier=100)
     retries: 3
     shell:
@@ -481,24 +483,24 @@ rule index_vcfs_merged:
 
 #################
 
-rule liftover_bams:
-    input:
-        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
-        chain = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.chain")
-    output:
-        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam"),
-        bam_sorted = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
-        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai")
-    params:
-        out_prefix = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap"),
-    log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", "logs", ref_str + "-{cov}X-{div}d-{het}h-crossmap.log")
-    resources:
-        mem = "24g"
-    shell:
-        """
-        CrossMap.py bam -a {input.chain} {input.bam} {params.out_prefix} &> {log}
-        """
+# rule liftover_bams:
+#     input:
+#         bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+#         chain = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.chain")
+#     output:
+#         bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.bam"),
+#         bam_sorted = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
+#         bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai")
+#     params:
+#         out_prefix = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap"),
+#     log:
+#         os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", "logs", ref_str + "-{cov}X-{div}d-{het}h-crossmap.log")
+#     resources:
+#         mem = "24g"
+#     shell:
+#         """
+#         CrossMap.py bam -a {input.chain} {input.bam} {params.out_prefix} &> {log}
+#         """
 # Liftover the coordinates of the mapped reads from the mouse reference to the simulated divergent genome (same as golden bam here)
 # https://crossmap.sourceforge.net/#convert-bam-cram-sam-format-files 
 
@@ -508,8 +510,8 @@ rule compare_bams:
     input:
         golden = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
         golden_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai"),
-        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam"),
-        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-crossmap.sorted.bam.bai"),
+        query = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+        query_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}","{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai"),
         ref_index = REF_INDEX
     params:
        div = "{div}",
@@ -666,7 +668,8 @@ rule paf_to_vcf:
     output:
         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf")
     resources:
-        time='96:00:00'
+        time = '96:00:00',
+        partition = "intermediate",
     shell:
         """
         sort -k6,6 -k8,8n {input.paf} | paftools.js call -f {input.ref} - > {output}

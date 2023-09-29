@@ -156,7 +156,6 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
                 has_primary = False;
                 has_secondary = False;
 
-                primary_err = False;
                 pair_err = False;
                 pos_err = False;
                 chr_err = False;
@@ -236,6 +235,10 @@ with open(summary_outfilename, "w") as outfile:#, open(tracefilename, "w") as tr
                 if has_secondary and has_primary:
                     outdict['reads.w.both'] += 1;
                 elif has_secondary:
+                    print(read.query_name);
+                    mate = golden_bam.mate(read);
+                    print(mate.query_name);
+                    sys.exit();
                     outdict['reads.w.secondary.only'] += 1;
                 elif has_primary:
                     outdict['reads.w.primary.only'] += 1;

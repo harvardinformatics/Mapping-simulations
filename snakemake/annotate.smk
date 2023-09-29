@@ -80,12 +80,24 @@ rule all:
     input:
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-repeats.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets, var_type=var_types),
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-genes.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets, var_type=var_types),
-        
+        # variant_overlaps
+
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-repeats.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types),
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-{map_type}-genes.bed"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets, map_type=map_types),
+        # read overlaps
 
         expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h-compare-vcf-{var_type}-tracker.bed"), cov=covs, region=regions, div=divs, het=hets, var_type=var_types),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-{map_type}-tracker.bed"), cov=covs, div=divs, het=hets, map_type=map_types)
+        # track_snps
+
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-compare-bam-{map_type}-tracker.bed"), cov=covs, div=divs, het=hets, map_type=map_types),
+        # track_reads
+
+        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-golden-hets-per-read.bed"), cov=covs, div=divs, het=hets),
+        # hets_per_read
+
+        expand(os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.crossmap.vcf.gz"), cov=covs, div=divs),
+        expand(os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.crossmap.vcf.gz.tbi"), cov=covs, div=divs)
+        # liftover_snp_vcfs
 
 #############################################################################
 # Pipeline functions
@@ -152,3 +164,36 @@ rule track_reads:
         """
 
 #############################################################################
+
+rule hets_per_read:
+    input:
+        golden_bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
+        golden_het_vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz")
+    output:
+        os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-golden-hets-per-read.bed")
+    shell:
+        """
+        bedtools intersect -a {input.golden_bam} -b {input.golden_het_vcf} -c -bed > {output}
+        """        
+
+#############################################################################
+
+rule liftover_snp_vcfs:
+    input:
+        golden_snp_vcf = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz"),
+        golden_snp_vcf_index = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz.tbi"),
+        snp_chain_file = os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", ref_str + "-consensus.chain"),
+        ref_fa = REF
+    output:
+        liftover_vcf = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.crossmap.vcf.gz"),
+        liftover_vcf_index = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.crossmap.vcf.gz.tbi")
+    params:
+        liftover_vcf_uncompressed = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.crossmap.vcf")
+    log:
+        os.path.join(indir, "simulated-genomes", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-crossmap.log")
+    shell:
+        """
+        CrossMap.py vcf {input.snp_chain_file} {input.golden_snp_vcf} {input.ref_fa} {params.liftover_vcf_uncompressed} &> {log}
+        bgzip {params.liftover_vcf_uncompressed}
+        tabix {output.liftover_vcf}
+        """
