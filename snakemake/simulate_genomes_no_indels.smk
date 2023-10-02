@@ -201,15 +201,48 @@ rule index_divergent_golden_vcfs_region:
         tabix {input} &> {log}
         """
 # Index the golden VCFs, otherwise bcftools concat errors
+#################
+
+rule select_snps_golden_region:
+    input:
+        vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz"),
+        vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz.tbi")
+    output:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz")
+    log:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "logs", ref_str + "-{region}-{cov}X-{div}d-select-snps.log")
+    shell:
+        """
+        gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
+        """
+# Select SNPs only
+
+#################
+
+rule index_vcfs_snps_golden_region:
+    input:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz")
+    output:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz.tbi")
+    log:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "logs", ref_str + "-{region}-{cov}X-{div}d-snps-tabix.log")
+    resources:
+        mem = "2g",
+        time = "2:00:00"
+    shell:
+        """
+        tabix {input} &> {log}
+        """
+# Index the SNP VCFs
 
 #################
 
 rule merge_divergent_golden_vcfs:
     input:
-        vcf = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz"), region=regions),
-        index = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), region=regions)
+        vcf = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz"), region=regions),
+        index = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz.tbi"), region=regions)
     output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz"),
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden-snps.vcf.gz"),
     log:
         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "logs", ref_str + "_golden-vcf-merge.log"),
     resources:
@@ -226,9 +259,9 @@ rule merge_divergent_golden_vcfs:
 
 rule index_divergent_golden_vcfs_merged:
     input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz"),
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden-snps.vcf.gz"),
     output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz.tbi"),
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden-snps.vcf.gz.tbi"),
     log:
         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "logs", ref_str + "tabix.log")
     resources:
@@ -239,40 +272,6 @@ rule index_divergent_golden_vcfs_merged:
         tabix {input} &> {log}
         """
 # Index the merged golden VCFs
-
-#################
-
-rule select_snps:
-    input:
-        vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz"),
-        vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden.vcf.gz.tbi")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden-snps.vcf.gz")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "logs", ref_str + "-{cov}X-{div}d-select-snps.log")
-    shell:
-        """
-        gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
-        """
-# Select SNPs only
-
-#################
-
-rule index_vcfs_snps:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden-snps.vcf.gz")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", ref_str + "_golden-snps.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "divergent", "logs", ref_str + "-{cov}X-{div}d-snps-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the SNP VCFs
 
 #################
 

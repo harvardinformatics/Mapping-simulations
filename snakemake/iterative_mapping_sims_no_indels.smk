@@ -312,6 +312,39 @@ rule index_golden_vcfs_merged:
 
 #################
 
+rule select_snps_golden:
+    input:
+        vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz"),
+        vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi")
+    output:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz")
+    log:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}d-select-snps.log")
+    shell:
+        """
+        gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
+        """
+# Select SNPs only
+
+#################
+
+rule index_vcfs_snps_golden:
+    input:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz")
+    output:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz.tbi")
+    log:
+        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}d-snps-tabix.log")
+    resources:
+        mem = "2g",
+        time = "2:00:00"
+    shell:
+        """
+        tabix {input} &> {log}
+        """
+
+#################
+
 rule trim_simulated_reads:
     input:
         read1 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_read1.fq.gz"),
@@ -680,8 +713,8 @@ rule paf_to_vcf:
 rule compare_vcfs:
     input:
         ref_fa = REF,
-        golden_vcf = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz"),
-        golden_index = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), 
+        golden_vcf = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz"),
+        golden_index = os.path.join(indir, "simulated-reads", "{cov}X", "{div}", "divergent", "regions", ref_str + "-{region}_golden-snps.vcf.gz.tbi"), 
         iter_fa = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"),
         prev_iter_fa = getRef,
         iter_vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz"),
