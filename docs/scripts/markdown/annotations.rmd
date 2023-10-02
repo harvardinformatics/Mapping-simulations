@@ -50,6 +50,9 @@ ann_file = here("data", "mm39-30X-0.005h-annotations.tsv")
 ann_data = read_tsv(ann_file)
 # Load the annotation summaries
 
+tracker_file = here("data", "mm39-30X-0.005h-tracker.tsv")
+tracker_data = read_tsv(tracker_file)
+
 ####################
 
 len_18 = 90720763
@@ -102,6 +105,7 @@ for(div in levels(as.factor(iter1_data$divergence))){
   
   read_repeat_data = iter1_data %>% filter(divergence == div, type %in% c("exact", "unmapped")) %>% select(num.repeat.all, num.not.repeat)
   read_repeat_chi = chisq.test(read_repeat_data)
+  print(read_repeat_data)
   
   read_gene_data = iter1_data %>% filter(divergence == div, type %in% c("exact", "unmapped")) %>% select(num.gene.all, num.not.gene)
   read_gene_chi = chisq.test(read_gene_data)

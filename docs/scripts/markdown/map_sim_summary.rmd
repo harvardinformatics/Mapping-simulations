@@ -43,14 +43,14 @@ NEAT (divergence) > bcftools consensus > NEAT (heterozygosity) > BWA > GATK > [3
 
 ```{r read, out.width="100%", fig.align = "center", warning=FALSE}
 
-vcf_comp_file = here("data", "mm39-30X-0.005h-3i-vcf-comparison.tsv.gz")
+vcf_comp_file = here("data", "no-indels", "mm39-30X-0.005h-3i-vcf-comparison.tsv.gz")
 vcf_comp = read_tsv(vcf_comp_file, col_names=c("coverage", "divergence", "heterozygosity", "iteration", "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2"))
 # Load the SNP data (~15gb, takes time)
 
 ####################
 
-mapping_file = here("data", "mm39-30X-0.005h-3i-bam-summary.csv")
-bam_stats = read.csv(mapping_file, header=T)
+mapping_file = here("data", "no-indels", "mm39-30X-0.005h-3i-bam-summary.csv")
+bam_stats = read_csv(mapping_file)
 # Read the bam compare file
 
 ####################
@@ -78,7 +78,7 @@ sim_vars_div_iter1 = vcf_comp %>% filter(iteration == 1 & ref != golden.div) %>%
 div_sim_p = ggplot(sim_vars_div_iter1, aes(x=divergence, y=perc.var.sites)) +
     geom_point(size=4, color="#666666") +
     geom_abline(slope=1, intercept=0, size=1, linetype="dashed", color=corecol(numcol=1, pal="wilke")) +
-    scale_y_continuous(limits=c(0,0.10), breaks=seq(0,0.10,0.02)) +
+    #scale_y_continuous(limits=c(0,0.10), breaks=seq(0,0.10,0.02)) +
     xlab("Simulated divergence") +
     ylab("% of sites simulated with SNPs") +
     bartheme()
