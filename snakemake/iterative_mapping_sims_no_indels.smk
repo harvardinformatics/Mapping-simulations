@@ -8,10 +8,7 @@ import re
 #############################################################################
 # Example cmd for mouse genome
 
-# snakemake -p -s iterative_mapping_sims_no_indels.smk --configfile ../simulation-configs/mm39-iterative-no-indels.yaml --profile profiles/slurm_profile/ --dryrun
-
-# To generate rulegraph image:
-# snakemake -p -s iterative_mapping_sims_no_indels.smk --configfile ../simulation-configs/mm39-iterative-no-indels.yaml --profile profiles/slurm_profile/ --rulegraph | dot -Tpng > iterative-mapping-dag.png
+# snakemake -p -s iterative_mapping_sims_no_indels.smk --configfile ../simulation-configs/mm39-iterative-no-indels.yaml --profile profiles/slurm_profile/ --dryrun --rulegraph | dot -Tpng > dags/iterative-mapping-no-indels-dag.png
 
 #############################################################################
 # Reference file and path info
@@ -72,29 +69,31 @@ localrules: all
 
 rule all:
     input:
-        expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi"), cov=covs, div=divs, het=hets),
-        # Expected output from index_golden_vcfs_merged
+        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv"), cov=covs, het=hets),
+        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-comparison.tsv.gz"), cov=covs, het=hets)
+        # Expected output from combine summaries 
 
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), cov=covs, div=divs, het=hets),
-        expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets),
+        #expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), cov=covs, div=divs, het=hets),
+        #expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter" + str(num_iters), ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"), cov=covs, div=divs, het=hets),
         # Expected output from generate_consensus
 
         #expand(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus-to-ref.vcf"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
         # Expected output from align_to_vcf
 
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-tps.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-full.tsv"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-tps.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", "regions", ref_str + "-iter{n}-{region}-{cov}X-{div}d-{het}h-compare-vcf-fns.bed"), cov=covs, region=regions, div=divs, n=list(range(1,num_iters+1)), het=hets),
 
 
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped.bam"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-exact.bam"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-unmapped.bam"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
+        #expand(os.path.join(outdir, "summary-files", "{cov}X", "{div}", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-compare-bam-exact.bam"), cov=covs, div=divs, n=list(range(1,num_iters+1)), het=hets),
 
         #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-summary.csv"), cov=covs, het=hets),
         #expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-snps.csv.gz"), cov=covs, het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-bam-summary.csv"), cov=covs, het=hets),
-        expand(os.path.join(outdir, "summary-files", "{cov}X", ref_str + "-{cov}X-{het}h-" + str(num_iters) + "i-vcf-comparison.tsv.gz"), cov=covs, het=hets)
-        # Expected output from combine summaries 
+
+
+        #expand(os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi"), cov=covs, div=divs, het=hets),
+        # Expected output from index_golden_vcfs_merged
 
 ## The final expected outputs should be listed in this rule. Only necessary to list final output from final rule, but I found it useful to list them 
 ## for all rules for debugging (can comment out outputs for rules you don't want to run), though there's also probably a better way to do this
@@ -174,6 +173,7 @@ rule simulate_reads:
         read2 = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_read2.fq.gz"),
         bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.bam"),
         vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz"),
+        vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi")
     params:
         prefix = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}"),
         het = "{het}",
@@ -186,7 +186,8 @@ rule simulate_reads:
     retries: 3
     shell:
         """
-        python ../pkgs/NEAT/gen_reads.py -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.het} &> {log}
+        python ../pkgs/NEAT/gen_reads.py -m /n/home07/gthomas/projects/Mapping-simulations/pkgs/NEAT/models/MutModel_NA12878_noIndel.pickle.gz -r {input} -o {params.prefix} --bam --vcf -R 150 --pe 300 30 -c {params.cov} -M {params.het} &> {log}
+        tabix {output.vcf} &>> {log}
         """
 # Simulate reads per chromosome with varying levels of divergence (and possibly varying coverage) with NEAT
 # This generates read pairs, a golden VCF and a golden BAM for each chromosome
@@ -223,7 +224,8 @@ rule merge_golden_bams:
     input:
         expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_golden.bam"), region=regions)
     output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
+        merged_bam = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam"),
+        merged_bam_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai")
     log:
         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "_golden-bam-merge.log"),
     resources:
@@ -232,116 +234,10 @@ rule merge_golden_bams:
         mem = "4g"
     shell:
         """
-        samtools merge -@ {resources.cpus} -o {output} {input} &> {log}
+        samtools merge -@ {resources.cpus} -o {output.merged_bam} {input} &> {log}
+        samtools index {output.merged_bam} 2>> {log}
         """
 # Merge simulated BAM files for all chromosomes
-
-#################
-
-rule index_golden_bams:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.bam.bai")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}-index.log")
-    resources:
-        time = "4:00:00",
-        mem = "4g"
-    shell:
-        """
-        samtools index {input} 2> {log}
-        """
-# Index the mapped reads
-
-#################
-
-rule index_golden_vcfs_region:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{region}-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the golden VCFs, otherwise bcftools concat errors
-
-#################
-
-rule merge_golden_vcfs:
-    input:
-        vcf = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_golden.vcf.gz"), region=regions),
-        index = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), region=regions)
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz"),
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "_golden-vcf-merge.log"),
-    resources:
-        cpus = 8,
-        time = "2:00:00",
-        mem = "4g"
-    shell:
-        """
-        bcftools concat --threads {resources.cpus} -Oz -o {output} {input.vcf} &> {log}
-        """
-# Merge simulated VCF files for all chromosomes
-
-#################
-
-rule index_golden_vcfs_merged:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz"),
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi"),
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the merged golden VCFs
-
-#################
-
-rule select_snps_golden:
-    input:
-        vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz"),
-        vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}d-select-snps.log")
-    shell:
-        """
-        gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
-        """
-# Select SNPs only
-
-#################
-
-rule index_vcfs_snps_golden:
-    input:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz")
-    output:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}d-snps-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
 
 #################
 
@@ -374,7 +270,8 @@ rule map_simulated_reads:
         ref = getRef,
         ref_index = getRefInd
     output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
+        bam = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam"),
+        bam_index = os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai")
     params:
         read_group = "@RG\\tID:" + ref_str + "-{cov}X-{div}d-{het}h\\tLB:NEAT\\tPL:ILLUMINA" + "\\tSM:" + ref_str + "-{cov}X-{div}d-{het}h"
     log:
@@ -387,27 +284,10 @@ rule map_simulated_reads:
         time = "16:00:00"
     shell:
         """
-        bwa mem -t {resources.cpus} -R '{params.read_group}' {input.ref} {input.read1} {input.read2} 2> {log} | samtools view -b - 2>> {log} | samtools sort - -o {output} 2>> {log}
+        bwa mem -t {resources.cpus} -R '{params.read_group}' {input.ref} {input.read1} {input.read2} 2> {log} | samtools view -b - 2>> {log} | samtools sort - -o {output.bam} 2>> {log}
+        samtools index {output.bam} 2>> {log}
         """
 # Map the simulated reads with BWA to the full reference genome
-
-#################
-
-rule index_bams:
-    input:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam")
-    output:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.bam.bai")
-    log:
-        os.path.join(outdir, "mapped-reads", "{cov}X", "{div}", "{het}", "iter{n}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-index.log")
-    resources:
-        time = "4:00:00",
-        mem = "4g"
-    shell:
-        """
-        samtools index {input} 2> {log}
-        """
-# Index the mapped reads
 
 #################
 
@@ -443,7 +323,8 @@ rule gatk_genotypegvcfs:
         gvcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.gvcf.gz"),
         ref = getRef
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz")
+        vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz"),
+        vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     params:
         region = "{region}"
     log:
@@ -455,26 +336,10 @@ rule gatk_genotypegvcfs:
     retries: 3
     shell:
         """
-        gatk GenotypeGVCFs -R {input.ref} -V {input.gvcf} -O {output} --include-non-variant-sites &> {log}
+        gatk GenotypeGVCFs -R {input.ref} -V {input.gvcf} -O {output.vcf} --include-non-variant-sites &> {log}
+        tabix -f {output.vcf} &>> {log}
         """
 # Genotype all sites with GATK GenotypeGVCF by input region
-
-#################
-
-rule index_vcfs_regions:
-    input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz")
-    output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", "regions", ref_str + "-{region}-{cov}X-{div}d-{het}h.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{region}-{cov}X-{div}d-{het}h-iter{n}-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
 
 #################
 
@@ -483,7 +348,8 @@ rule merge_vcfs:
         vcf = expand(os.path.join(outdir, "called-variants", "gatk", "{{cov}}X", "{{div}}", "iter{{n}}", "regions", ref_str + "-{region}-{{cov}}X-{{div}}d-{{het}}h.vcf.gz"), region=regions),
         index = expand(os.path.join(outdir, "called-variants", "gatk", "{{cov}}X", "{{div}}", "iter{{n}}", "regions", ref_str + "-{region}-{{cov}}X-{{div}}d-{{het}}h.vcf.gz.tbi"), region=regions)
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz")
+        merged_vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz"),
+        merged_vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     log:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-vcf-merge.log"),
     resources:
@@ -492,27 +358,10 @@ rule merge_vcfs:
         mem = "4g"
     shell:
         """
-        bcftools concat --threads {resources.cpus} -Oz -o {output} {input.vcf} &> {log}
+        bcftools concat --threads {resources.cpus} -Oz -o {output.merged_vcf} {input.vcf} &> {log}
+        tabix -f {output.merged_vcf} &> {log}
         """
 # Merge called VCF files for all chromosomes
-
-#################
-
-rule index_vcfs_merged:
-    input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz")
-    output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-{cov}X-{div}d-{het}h-iter{n}-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the merged VCFs
 
 #################
 
@@ -574,35 +423,19 @@ rule filter_vcf:
         vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz"),
         vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h.vcf.gz.tbi")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz")
+        filtered_vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz"),
+        filtered_vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz.tbi")
     params:
         filt = FILTER_STR
     log:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-vcf-filter.log")
     shell:
         """
-        bcftools filter -m+ -e {params.filt} -s pseudoit --IndelGap 5 -Oz -o {output} {input.vcf} &> {log}
+        bcftools filter -m+ -e {params.filt} -s pseudoit --IndelGap 5 -Oz -o {output.filtered_vcf} {input.vcf} &> {log}
+        tabix -f {output.filtered_vcf} &>> {log}
         """
 #rule filter_snps
 # NOTE: bcftools leaves an empty file if it errors, but snakemake thinks this has completed when it tries again....
-
-#################
-
-rule index_vcfs_filtered:
-    input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz")
-    output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-filter-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the merged VCFs
 
 #################
 
@@ -611,32 +444,16 @@ rule select_snps:
         vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz"),
         vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered.vcf.gz.tbi")
     output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz"),
+        snp_vcf = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz"),
+        snp_vcf_index = os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz.tbi")
     log:
         os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-vcf-select-snps.log")
     shell:
         """
-        gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
+        gatk SelectVariants -V {input.vcf} -O {output.snp_vcf} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
+        tabix -f {output.snp_vcf} &> {log}
         """
 # Select SNPs only
-
-#################
-
-rule index_vcfs_snps:
-    input:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz")
-    output:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-filtered-snps.vcf.gz.tbi")
-    log:
-        os.path.join(outdir, "called-variants", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-snps-tabix.log")
-    resources:
-        mem = "2g",
-        time = "2:00:00"
-    shell:
-        """
-        tabix {input} &> {log}
-        """
-# Index the SNP VCFs
 
 #################
 
@@ -647,32 +464,19 @@ rule generate_consensus:
         ref = getRef
     output:
         fasta = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"),
-        chain = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain")
+        chain = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.chain"),
+        samtools_index = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa.fai"),
+        bwa_index = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
+        picard_dict = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.dict")
     log:
         os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-consensus.log")
     shell:
         """
         bcftools consensus -f {input.ref} -o {output.fasta} -c {output.chain} -e "FILTER~'pseudoit' || FILTER~'IndelGap'" {input.vcf} &> {log}
+        samtools faidx {output.fasta} 2>> {log}
+        bwa index {output.fasta} 2>> {log}
+        picard CreateSequenceDictionary R={output.fasta} O={output.picard_dict} 2>> {log}        
         """   
-
-#################
-
-rule index_consensus:
-    input:
-        consensus = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa")
-    output:
-        samtools_index = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa.fai"),
-        bwa_index = multiext(os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.fa"), ".amb", ".ann", ".bwt", ".pac", ".sa"),
-        picard_dict = os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "iter{n}", ref_str + "-{cov}X-{div}d-{het}h-snps-consensus.dict")
-    log:
-        os.path.join(outdir, "consensus", "gatk", "{cov}X", "{div}", "logs", ref_str + "-iter{n}-{cov}X-{div}d-{het}h-consensus-index.log")
-    shell:
-        """
-        samtools faidx {input.consensus} 2> {log}
-        bwa index {input.consensus} 2>> {log}
-        picard CreateSequenceDictionary R={input.consensus} O={output.picard_dict} 2>> {log}
-        """   
-
 #################
 
 rule align_consensus:
@@ -782,6 +586,61 @@ rule combine_summaries:
 
 #############################################################################
 ## UNUSED RULES
+
+#################
+
+# rule merge_golden_vcfs:
+#     input:
+#         vcf = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_golden.vcf.gz"), region=regions),
+#         index = expand(os.path.join(outdir, "simulated-reads", "{{cov}}X", "{{div}}", "heterozygous", "{{het}}", "regions", ref_str + "-{region}_golden.vcf.gz.tbi"), region=regions)
+#     output:
+#         merged_vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz"),
+#         merged_vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi")
+#     log:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "_golden-vcf-merge.log"),
+#     resources:
+#         cpus = 8,
+#         time = "2:00:00",
+#         mem = "4g"
+#     shell:
+#         """
+#         bcftools concat --threads {resources.cpus} -Oz -o {output.merged_vcf} {input.vcf} &> {log}
+#         tabix {output.merged_vcf} &>> {log}
+#         """
+# # Merge simulated VCF files for all chromosomes
+
+#################
+
+# rule select_snps_golden:
+#     input:
+#         vcf = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz"),
+#         vcf_index = os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden.vcf.gz.tbi")
+#     output:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz")
+#     log:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}d-select-snps.log")
+#     shell:
+#         """
+#         gatk SelectVariants -V {input.vcf} -O {output} -select-type SNP -xl-select-type INDEL -xl-select-type MIXED -xl-select-type SYMBOLIC &> {log}
+#         """
+# # Select SNPs only
+
+# #################
+
+# rule index_vcfs_snps_golden:
+#     input:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz")
+#     output:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", ref_str + "_golden-snps.vcf.gz.tbi")
+#     log:
+#         os.path.join(outdir, "simulated-reads", "{cov}X", "{div}", "heterozygous", "{het}", "logs", ref_str + "-{cov}X-{div}d-snps-tabix.log")
+#     resources:
+#         mem = "2g",
+#         time = "2:00:00"
+#     shell:
+#         """
+#         tabix {input} &> {log}
+#         """
 
 #################
 

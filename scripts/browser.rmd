@@ -25,7 +25,7 @@ library(JBrowseR)
 ref = assembly("https://rcood.rc.fas.harvard.edu/pun/sys/dashboard/files/fs/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/mm39-18.fa")
 bam = track_alignments("https://rcood.rc.fas.harvard.edu/pun/sys/dashboard/files/fs/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/mapped-reads/30X/0.10/0.005/iter1/mm39-30X-0.10d-0.005h.bam", assembly=ref)
 
-JBrowseR("View", assembly = ref, tracks = tracks(bam), location="18:3000449..3000469")
+#JBrowseR("View", assembly = ref, tracks = tracks(bam), location="18:3000449..3000469")
 # 3000459
 # Not FN? No reads mapped though?
 # grep -m1 3000459 mm39-iter1-18-30X-0.10d-0.005h-compare-vcf-full.tsv
@@ -47,7 +47,7 @@ JBrowseR("View", assembly = ref, tracks = tracks(bam), location="18:3000449..300
 # 30      0.10    0.005   1       18      3051370 A       G       A       hom.prev        A       A       hom.ref A       A
 
 
-#JBrowseR("View", assembly = ref, tracks = tracks(bam), location="18:90339663..90339683")
+JBrowseR("View", assembly = ref, tracks = tracks(bam), location="18:90339663..90339683")
 # 90339673
 # Actual FN
 # grep -m1 90339673 mm39-iter1-18-30X-0.10d-0.005h-compare-vcf-full.tsv

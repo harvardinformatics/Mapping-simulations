@@ -136,7 +136,7 @@ def fastaReadSeqs(filename, regions=False, header_sep=False):
 
 ####################
 
-def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=False):
+def readVCF(vcffile, regions=False, filter_str="PASS", vcf_type=False, debug=False):
 # Reads the SNPs in a vcf file
 
     compression = detectCompression(vcffile);
@@ -169,7 +169,7 @@ def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=Fals
             continue;
         # Skip comment lines
 
-        if line[6] != filter_str:
+        if filter_str and line[6] != filter_str:
             continue;
         # Skip lines with variants that are filtered        
 
@@ -178,7 +178,7 @@ def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=Fals
 
         pos = ":".join([ line[0], line[1] ]);
 
-        if minimap:
+        if vcf_type == "minimap":
             coord = line[1];
             qstart = line[7].split(";")[1].replace("QSTART=", "");
             if coord != qstart:
@@ -198,7 +198,17 @@ def readVCF(vcffile, regions=False, filter_str="PASS", minimap=False, debug=Fals
             continue;
 
         variant_list.append(pos);
-        variants[pos] = {'region' : line[0], 'pos' : line[1], 'alt' : alt, 'gt' : gt };
+        if vcf_type == "iter":
+            info = line[7].split(";")
+            info_dict = {}
+            for item in info:
+                key, value = item.split('=')
+                info_dict[key] = value
+
+            variants[pos] = {'region' : line[0], 'pos' : line[1], 'alt' : alt, 'gt' : gt, 'dp' : info_dict['DP'], 'mq' : info_dict['MQ'] };
+
+        else:
+            variants[pos] = {'region' : line[0], 'pos' : line[1], 'alt' : alt, 'gt' : gt };
         prev_pos = pos;
     ## End file loop
 
@@ -217,12 +227,13 @@ region, coverage, divergence, heterozygosity, iteration, genome_file, iter_file,
 # iteration = "2";
 # region = "18";
 # genome_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.fa";
-# iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus.fa"
-# prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
-# golden_div_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19/simulated-reads/30X/0.02/divergent/regions/mm39-18_golden.vcf.gz";
+# iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative-no-indels/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
+# prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.fa";
+# #prev_iter_file = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative-no-indels/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus.fa"
+# golden_div_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative-no-indels/simulated-reads/30X/0.02/divergent/regions/mm39-18_golden-snps.vcf.gz";
 # #golden_het_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-19-iterative/simulated-reads/30X/0.02/heterozygous/0.005/regions/mm39-18_golden.vcf.gz";
-# iteration_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/called-variants/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-filtered-snps.vcf.gz";
-# minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative/consensus/gatk/30X/0.02/iter2/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
+# iteration_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative-no-indels/called-variants/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-filtered-snps.vcf.gz";
+# minimap_vcf = "/n/holylfs05/LABS/informatics/Users/gthomas/Mapping-simulations-data/mm39-18-iterative-no-indels/consensus/gatk/30X/0.02/iter1/mm39-30X-0.02d-0.005h-snps-consensus-to-ref.vcf";
 # outdir = ".";
 # outfilename = "test.tsv";
 # tp_outfilename = "test-tp.bed";
@@ -244,6 +255,7 @@ with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, op
 
     runTime("# Compare VCFs", outfile);
     PWS(spacedOut("# Reference:", pad) + genome_file, outfile);
+    PWS(spacedOut("# Current iteration:", pad) + iter_file, outfile);
     PWS(spacedOut("# Previous iteration:", pad) + prev_iter_file, outfile);
     PWS(spacedOut("# Region:", pad) + region, outfile);
     PWS(spacedOut("# Golden div VCF:", pad) + golden_div_vcf, outfile);
@@ -292,7 +304,7 @@ with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, op
     ####################
 
     PWS("#" + getDateTime() + " Reading variants from iteration file...", outfile);
-    iter_div_variants, iter_div_variant_list, iter_div_dup_pos, extra = readVCF(iteration_vcf, regions=[region]);
+    iter_div_variants, iter_div_variant_list, iter_div_dup_pos, extra = readVCF(iteration_vcf, regions=[region], vcf_type="iter");
     # Read the SNPs from the iteration VCF
 
     # print(len(iter_div_variants));
@@ -305,7 +317,7 @@ with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, op
     ####################
 
     PWS("#" + getDateTime() + " Reading variants from minimap file...", outfile);
-    mmap_div_variants, mmap_div_variant_list, mmap_div_dup_pos, mmap_qstart_mismatches = readVCF(minimap_vcf, regions=[region], filter_str=".", minimap=True);
+    mmap_div_variants, mmap_div_variant_list, mmap_div_dup_pos, mmap_qstart_mismatches = readVCF(minimap_vcf, regions=[region], filter_str=".", vcf_type="minimap");
     # Read the SNPs from the iteration VCF
 
     # print(len(mmap_div_variants));
@@ -321,7 +333,7 @@ with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, op
 
     PWS("#" + getDateTime() + " Comparing variants...", outfile);
     meta_headers = [ "coverage", "divergence", "heterozygosity", "iteration" ];
-    headers = [ "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "minimap.gt", "minimap.allele.1", "minimap.allele.2" ];
+    headers = [ "chr", "pos", "ref", "golden.div", "prev.iter", "iter.gt", "iter.allele.1", "iter.allele.2", "iter.dp", "iter.mq", "minimap.gt", "minimap.allele.1", "minimap.allele.2" ];
     outfile.write( "# " + "\t".join(meta_headers + headers) + "\n");
     # Write the headers for the detailed SNP file
 
@@ -339,7 +351,7 @@ with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, op
 
         if any(pos in varset for varset in [golden_div_variants, iter_div_variants, mmap_div_variants] ):
             outline = { "chr" : region, "pos" : str(i), "ref" : ref_seq[region][i], 'golden.div' : ".",
-                        "prev.iter" : prev_seq[region][i], "iter.gt" : "NA", "iter.allele.1" : ".", "iter.allele.2" : ".", 
+                        "prev.iter" : prev_seq[region][i], "iter.gt" : "NA", "iter.allele.1" : ".", "iter.allele.2" : ".",  "iter.mq" : "NA", "iter.dp" : "NA",
                         "minimap.gt" : "NA", "minimap.allele.1" : ".", "minimap.allele.2" : "." };
 
             golden_snp = False;
@@ -355,6 +367,8 @@ with open(outfilename, "w") as outfile, open(tp_outfilename, "w") as tp_file, op
 
             if pos in iter_div_variants:
                 outline['iter.allele.1'] = iter_div_variants[pos]['alt'];
+                outline['iter.dp'] = iter_div_variants[pos]['dp'];
+                outline['iter.mq'] = iter_div_variants[pos]['mq'];
 
                 if iter_div_variants[pos]['gt'] in ["1/1", "1|1"]:
                     outline['iter.allele.2'] = iter_div_variants[pos]['alt'];

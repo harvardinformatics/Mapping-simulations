@@ -325,6 +325,12 @@ minimap_vars_iter = vcf_comp %>% filter(minimap.gt == "hom.alt" & minimap.allele
   mutate(perc.called.sites=n/total_len)
 minimap_vars_iter$iteration = as.character(minimap_vars_iter$iteration)
 
+minimap_vars_iter = vcf_comp %>% filter(iter.gt == "het") %>% 
+  group_by(divergence, iteration) %>% 
+  summarize(n=n()) %>% 
+  mutate(perc.called.sites=n/total_len)
+
+
 cols = corecol(numcol=3, pal="wilke")
 
 div_called_p = ggplot(minimap_vars_iter, aes(x=divergence, y=perc.called.sites, color=iteration)) +
