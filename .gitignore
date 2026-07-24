@@ -19,16 +19,17 @@ snakemake/test*
 
 docs/scripts/lib/__pycache__/
 
-summary-data/old/mm39-20X-vcf-snps.csv
-summary-data/old/mm39-iterative-20X-vcf-snps.csv
-summary-data/with-indels/mm39-30X-0.005h-snps.csv.gz
-summary-data/with-indels/mm39-30X-0.005h-snps-genmap.csv.gz
-summary-data/with-indels/mm39-30X-0.005h-3i-snps.csv.gz
-summary-data/with-indels/mm39-30X-0.005h-3i-vcf-comparison.tsv.gz
-summary-data/no-indels/mm39-30X-0.005h-3i-vcf-comparison.tsv.gz
-summary-data/with-indels/mm39-30X-0.005h-3i-vcf-comparison-iter1.tsv.gz
+# v1 (NEAT-based) summary data, archived under summary-data/v1/
+summary-data/v1/old/mm39-20X-vcf-snps.csv
+summary-data/v1/old/mm39-iterative-20X-vcf-snps.csv
+summary-data/v1/with-indels/mm39-30X-0.005h-snps.csv.gz
+summary-data/v1/with-indels/mm39-30X-0.005h-snps-genmap.csv.gz
+summary-data/v1/with-indels/mm39-30X-0.005h-3i-snps.csv.gz
+summary-data/v1/with-indels/mm39-30X-0.005h-3i-vcf-comparison.tsv.gz
+summary-data/v1/no-indels/mm39-30X-0.005h-3i-vcf-comparison.tsv.gz
+summary-data/v1/with-indels/mm39-30X-0.005h-3i-vcf-comparison-iter1.tsv.gz
 summary-data/tmp-old*
-summary-data/with-indels/window-snps-30X-summary.tab
+summary-data/v1/with-indels/window-snps-30X-summary.tab
 
 data/
 
