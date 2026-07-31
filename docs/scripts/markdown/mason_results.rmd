@@ -1,0 +1,741 @@
+---
+title: "Reference-bias simulations (v2, mason2) — chr19 divergence sweep"
+author: "[gwct](https://gwct.github.io/)"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M:%S %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file you can
+     download and open anywhere. Keep in sync with the reference copy in
+     analyses/lib/notebook.css. Passed through pandoc verbatim via the {=html} raw
+     block (an inline <style> in the markdown body gets mis-parsed as markdown). -->
+<style>
+/* --- wide content --- */
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+/* figures capped + centered so they don't scale up with the wide content column;
+   change this one value to resize every figure */
+img { max-width: 900px; height: auto; display: block;
+      margin-left: auto; margin-right: auto; }
+/* --- sticky TOC on the left --- */
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center", out.width = "80%")
+
+# Individual tidyverse components (the renv env does not carry the tidyverse
+# meta-package). cowplot is used to compose multi-panel figures; design.r
+# provides the repo-wide plotting theme (bartheme) and palette (corecol) so
+# these v2 figures match the visual style of the v1 docs.
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(cowplot)
+source("docs/scripts/lib/design.r")
+```
+
+# Introduction & methods
+
+This notebook summarizes the **v2 (mason2-based)** reference-bias simulation for a
+single chromosome (mouse **chr19**, mm39). It replaces the v1 (NEAT-based) pipeline,
+whose read-mapping "truth" required a fragile CrossMap liftover that injected a
+constant, spurious "missing reads" artifact (~840k–1.4M reads even at zero
+divergence). In v2 the truth is produced directly in **reference coordinates** by
+`mason_simulator`, so no liftover is needed.
+
+**Pipeline (single iteration):**
+
+`make_truth_vcf.py` (controlled truth VCF) → `mason_simulator` (reads + truth BAM)
+→ `bwa mem` (map back to chr19) → GATK `HaplotypeCaller`→`GenotypeGVCFs`→filter→SNPs
+→ `compare_bams.py` / `compare_vcfs.py` → summary tables.
+
+**Simulation grid.** One chromosome (chr19, length 61,420,004), coverage 30X,
+heterozygosity fixed at H = 0.5%, divergence D swept over {0.00, 0.02, 0.04, 0.06,
+0.08, 0.10}, with **3 replicate seeds (42–44)**. Points/curves show the mean over
+seeds; error bars, where drawn, are ±1 SD. The sample genome also carries **small
+indels** at 1/8 of the SNP rate (indel divergence = D/8, indel heterozygosity = H/8;
+sizes 1–6 bp, insertions and deletions), so SNP recovery here is measured in the
+*presence* of indels.
+
+**Key definitions (see the accompanying `.dict.txt` files for full column docs):**
+
+- **Divergence D** — fraction of sites made **homozygous-alternate** (truth GT `1|1`);
+  the sample's *fixed* differences from the reference.
+- **Heterozygosity H** — fraction of sites made **heterozygous** (truth GT `0|1`);
+  polymorphism within the diploid sample.
+- **Read placement classes** (each primary read matched to its truth position by
+  read name; tolerance = one read length, 150 bp): *exact* (delta 0), *close*
+  (≤150 bp), *mismapped* (same contig, >150 bp), *unmapped*, and *missing* (in truth
+  but absent from the mapped BAM — the v1 artifact, expected 0 here).
+- **Variant-call classes at divergence sites** — *div_tp* (correctly called
+  homozygous-alt), *div_het* (called heterozygous), *div_ref_or_absent* (called
+  homozygous-reference OR not called — **the reference-bias failure**), *div_other*
+  (wrong allele / multiallelic edge case).
+- **Indel call classes** — mirror the SNP classes: *indel_div_tp* (recovered),
+  *indel_div_ref_or_absent* (**reference-bias failure**), *indel_div_other*.
+- **Filtering.** GATK calls are excluded where `MQ < 30 | FORMAT/DP < 5 |
+  FORMAT/DP > 60 | ALT="*"`, then left-aligned/normalized (`bcftools norm`); SNPs and
+  indels are compared separately by matching `(POS, REF, ALT)` against the truth.
+
+```{r read-data}
+# Raw tables have one row per (divergence, seed). We average over the replicate seeds
+# for the summary curves, and keep the per-seed tables (bam_raw / vcf_raw) for error bars.
+bam_raw <- read_csv("summary-data/mm39-mason-chr19-bam-summary.csv")
+vcf_raw <- read_csv("summary-data/mm39-mason-chr19-vcf-summary.csv")
+
+bam <- bam_raw %>% group_by(divergence) %>%
+  summarize(across(where(is.numeric), mean), .groups = "drop")
+vcf <- vcf_raw %>% group_by(divergence) %>%
+  summarize(across(where(is.numeric), mean), .groups = "drop")
+
+n_seeds <- dplyr::n_distinct(vcf_raw$seed)
+chr19_len <- 61420004
+```
+
+# Read mapping accuracy
+
+## Composition of read placements across divergence
+
+The stacked bars show the proportion of reads in each placement class. We separate a
+whole-read positional **shift** (fully aligned, moved ≤150 bp) from **soft-clipping**
+(divergent read end dropped from the alignment) — mechanistically different, and the
+`clipped` class also absorbs 3′-clipped reads that still sit at the exact start
+position (previously mislabelled "exact").
+
+```{r read-composition}
+read_classes <- c("exact","shifted","clipped","mismapped","diff_chr","unmapped","missing")
+read_labels  <- c("Exact","Shifted (moved <=150bp)","Soft-clipped","Mismapped",
+                  "Different contig","Unmapped","Missing")
+
+read_long <- bam %>%
+  select(divergence, all_of(paste0(read_classes, "_prop"))) %>%
+  pivot_longer(-divergence, names_to = "class", values_to = "prop") %>%
+  mutate(class = factor(sub("_prop","",class), levels = read_classes))
+
+cols <- corecol(pal = "wilke", numcol = length(read_classes), offset = 1)
+
+ggplot(read_long, aes(x = divergence, y = prop, fill = class)) +
+  geom_col(position = position_fill(reverse = TRUE), width = 0.015) +
+  scale_x_continuous(breaks = unique(read_long$divergence)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = cols, labels = read_labels) +
+  xlab("Simulated divergence (D)") + ylab("Proportion of reads") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+## Non-exact placements: clipping dominates
+
+Isolating the non-exact classes shows the mechanism clearly: **soft-clipping grows
+explosively with divergence** (0.6% → 62% of reads at D=0.10), while a whole-read
+positional **shift stays negligible** (~2%). Mismapping rises only gently, `unmapped`
+dropout appears only at 8–10%, and **`missing` is exactly zero** throughout (the v1
+liftover artifact is gone).
+
+```{r read-errors}
+err_long <- read_long %>% filter(class %in% c("shifted","clipped","mismapped","unmapped"))
+ecols <- c("shifted"="#56b4e9","clipped"="#e69f00","mismapped"="#d55e00","unmapped"="#000000")
+
+ggplot(err_long, aes(x = divergence, y = prop, color = class)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_x_continuous(breaks = unique(err_long$divergence)) +
+  scale_color_manual(values = ecols,
+                     labels = c("Shifted","Soft-clipped","Mismapped","Unmapped")) +
+  xlab("Simulated divergence (D)") + ylab("Proportion of reads") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Reads almost always land at the right locus (mismapping stays
+<2%, and true `unmapped` dropout appears only at the highest divergence). What changes
+overwhelmingly is **soft-clipping**: by D=0.10 nearly two-thirds of reads have a
+divergent end clipped off. The clipped bases are exactly the ones carrying alternate
+alleles, so clipping removes alt evidence near read ends — but, as the mechanism and
+caller sections below show, `bwa`+GATK still recover most sites, and the dominant loss
+is downstream in the caller, not here in placement.
+
+# Reference bias in variant calling
+
+## Fate of true divergence sites
+
+Every truth divergence site is homozygous-alternate and *should* be called
+homozygous-alt. The stacked bars show what actually happens. The growing dark band is
+`div_ref_or_absent` — sites where the divergent allele is lost and the sample looks
+like the reference.
+
+```{r div-fate}
+div_classes <- c("div_tp","div_het","div_ref_or_absent","div_other")
+div_labels  <- c("Recovered (hom-alt)","Called het",
+                 "Lost to reference","Other/wrong allele")
+
+div_long <- vcf %>%
+  filter(divergence > 0) %>%                       # no divergence sites at D=0
+  select(divergence, n_truth_div, all_of(div_classes)) %>%
+  pivot_longer(all_of(div_classes), names_to = "class", values_to = "n") %>%
+  mutate(prop = n / n_truth_div,
+         class = factor(class, levels = rev(div_classes)))
+
+dcols <- c("div_tp"="#009e73","div_het"="#56b4e9",
+           "div_ref_or_absent"="#d55e00","div_other"="#999999")
+
+ggplot(div_long, aes(x = divergence, y = prop, fill = class)) +
+  geom_col(position = position_fill(reverse = TRUE), width = 0.015) +
+  scale_x_continuous(breaks = unique(div_long$divergence)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = dcols,
+                    breaks = div_classes, labels = div_labels) +
+  xlab("Simulated divergence (D)") + ylab("Proportion of true divergence sites") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+## The headline: divergence lost to the reference
+
+This is the core reference-bias measurement — the fraction of true fixed differences
+that are called as reference (or not called at all) — plotted against divergence.
+
+```{r div-lost}
+bias <- vcf_raw %>%
+  filter(divergence > 0) %>%
+  mutate(lost_rate = div_ref_or_absent / n_truth_div) %>%
+  group_by(divergence) %>%
+  summarize(mean = mean(lost_rate), sd = sd(lost_rate), .groups = "drop")
+
+col5 <- corecol(pal="wilke", numcol=1, offset=5)
+ggplot(bias, aes(x = divergence, y = mean)) +
+  geom_line(size = 1.2, color = col5) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.003, color = col5) +
+  geom_point(size = 3, color = col5) +
+  geom_text(aes(label = scales::percent(mean, accuracy = 0.1)), vjust = -1.6, size = 3.2) +
+  scale_x_continuous(breaks = bias$divergence) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 0.5)) +
+  xlab("Simulated divergence (D)") +
+  ylab("Fraction of true SNP divergence sites\ncalled as reference (lost)") +
+  bartheme()
+```
+
+**Interpretation.** Reference bias in SNP calling scales steeply and super-linearly
+with divergence: ~3% of fixed differences are lost at 2% divergence, rising to
+**~41% at 10% divergence** (error bars are tiny — the three seeds agree closely). At
+those sites the diverged sample is genotyped as identical to the reference — the
+empirical phenomenon these simulations were built to quantify, now measured against
+clean truth. Note this is *higher* than an equivalent SNP-only genome (~30% at D=0.10):
+the indels the sample also carries degrade nearby SNP recovery, so ignoring indels
+would **understate** reference bias.
+
+# Heterozygosity recovery
+
+Heterozygosity is held constant at 0.5% across the sweep, yet recovery of het sites
+degrades as the surrounding divergence increases: het sites embedded in more-divergent
+sequence increasingly drop out (called reference), so heterozygosity is progressively
+**underestimated** the more the sample differs from the reference.
+
+```{r het-recovery}
+het <- vcf %>%
+  mutate(het_tp_rate = het_tp / n_truth_het,
+         het_lost_rate = het_ref_or_absent / n_truth_het)
+
+ggplot(het, aes(x = divergence)) +
+  geom_line(aes(y = het_tp_rate, color = "Recovered (called het)"), size = 1.2) +
+  geom_point(aes(y = het_tp_rate, color = "Recovered (called het)"), size = 3) +
+  geom_line(aes(y = het_lost_rate, color = "Lost to reference"), size = 1.2) +
+  geom_point(aes(y = het_lost_rate, color = "Lost to reference"), size = 3) +
+  scale_x_continuous(breaks = het$divergence) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c("Recovered (called het)" = "#009e73",
+                                "Lost to reference" = "#d55e00")) +
+  xlab("Simulated divergence (D)") +
+  ylab("Fraction of true heterozygous sites") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+# Reference bias: SNPs vs. indels
+
+Because the sample genome carries both SNPs and small indels, we can ask directly
+whether indels suffer *more* reference bias than SNPs — the mechanistic expectation
+(a read carrying a non-reference indel must be placed with a gap, which aligners
+penalize far more heavily than a mismatch). Both curves are the fraction of fixed
+(homozygous) differences that were called as reference, averaged over the three seeds.
+
+```{r snp-vs-indel-lost, out.width="70%"}
+lost_by_type <- vcf_raw %>%
+  filter(divergence > 0) %>%
+  mutate(SNP   = div_ref_or_absent / n_truth_div,
+         Indel = indel_div_ref_or_absent / n_truth_indel_div) %>%
+  select(divergence, seed, SNP, Indel) %>%
+  pivot_longer(c(SNP, Indel), names_to = "type", values_to = "lost") %>%
+  group_by(divergence, type) %>%
+  summarize(mean = mean(lost), sd = sd(lost), .groups = "drop")
+
+ggplot(lost_by_type, aes(x = divergence, y = mean, color = type)) +
+  geom_line(size = 1.2) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.003) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = unique(lost_by_type$divergence)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 0.55)) +
+  scale_color_manual(values = c("SNP" = "#0072b2", "Indel" = "#d55e00")) +
+  xlab("Simulated divergence (D)") +
+  ylab("Fixed differences called as reference (lost)") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Indels are lost to the reference at a **higher rate than SNPs at
+every divergence level** — from ~1.8× worse at low divergence (5.5% vs 3.0% at D=0.02)
+to ~1.15× worse at high divergence (47.6% vs 41.2% at D=0.10). This confirms, in our
+own controlled measurement, the expectation that reference bias is stronger around
+indels; the gap is proportionally largest when divergence is low, exactly where a
+single indel stands out most against otherwise reference-matching sequence.
+
+```{r snp-vs-indel-het, out.width="70%"}
+het_by_type <- vcf_raw %>%
+  mutate(SNP   = het_tp / n_truth_het,
+         Indel = indel_het_tp / n_truth_indel_het) %>%
+  select(divergence, seed, SNP, Indel) %>%
+  pivot_longer(c(SNP, Indel), names_to = "type", values_to = "rec") %>%
+  group_by(divergence, type) %>%
+  summarize(mean = mean(rec), sd = sd(rec), .groups = "drop")
+
+ggplot(het_by_type, aes(x = divergence, y = mean, color = type)) +
+  geom_line(size = 1.2) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.003) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = unique(het_by_type$divergence)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c("SNP" = "#0072b2", "Indel" = "#d55e00")) +
+  xlab("Simulated divergence (D)") +
+  ylab("Heterozygous sites correctly called het") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Heterozygous indels are also recovered less well than heterozygous
+SNPs across the whole range (e.g. 45% vs 56% at D=0.10), so the underestimation of
+within-sample variation under reference bias is worse for indels than for SNPs.
+
+# False positives
+
+False positives (positions called variant that are not truth sites) remain a small
+fraction of calls, but rise with divergence — a secondary effect of mismapped,
+allele-mismatched reads accumulating in more-divergent simulations.
+
+```{r fp}
+fp <- vcf %>% mutate(fp_rate = fp / n_called_snp)
+
+p_fp_n <- ggplot(fp, aes(x = divergence, y = fp)) +
+  geom_line(size = 1.1, color = corecol(pal="wilke", numcol=1, offset=1)) +
+  geom_point(size = 3, color = corecol(pal="wilke", numcol=1, offset=1)) +
+  scale_x_continuous(breaks = fp$divergence) +
+  xlab("Divergence (D)") + ylab("False positive SNPs (count)") + bartheme()
+
+p_fp_r <- ggplot(fp, aes(x = divergence, y = fp_rate)) +
+  geom_line(size = 1.1, color = corecol(pal="wilke", numcol=1, offset=1)) +
+  geom_point(size = 3, color = corecol(pal="wilke", numcol=1, offset=1)) +
+  scale_x_continuous(breaks = fp$divergence) +
+  scale_y_continuous(labels = scales::percent) +
+  xlab("Divergence (D)") + ylab("FP as fraction of called SNPs") + bartheme()
+
+plot_grid(p_fp_n, p_fp_r, ncol = 2, labels = c("Count","Rate"))
+```
+
+# Mechanism: why are divergence sites lost?
+
+*Data note: this section uses the earlier SNP-only replicate (seed 42), which is why
+its SNP loss rates run slightly lower than the SNP+indel results above. The mechanism
+it isolates — the shift from mapping-limited to caller-limited loss with divergence —
+is the point here and is unaffected.*
+
+The variant-calling section shows divergence sites increasingly called as reference,
+but not *why*. To pin down the mechanism without the divergence confound, we take a
+**per-site** view at each divergence level: every truth divergence site is
+homozygous-alternate, so every read that *truly* covers it (known exactly from the
+mason truth BAM) should carry the ALT allele. We trace each such read to its fate in
+the mapped BAM and compare **recovered** sites (`div_tp`) against **lost** sites
+(`div_ref_or_absent`) at the *same* divergence.
+
+**Sampling / definitions.** Up to 10,000 sites per outcome class per divergence were
+randomly sampled (seed 42); D=0.00 has no divergence sites and is omitted. A read's
+fate is *retained* (aligned across the site, showing ALT / REF / other base),
+*soft-clipped over the site*, *mismapped* (>150 bp from truth), or *unmapped*. The
+"effective ALT fraction" counts only MAPQ ≥ 20 reads — the reads GATK
+HaplotypeCaller actually uses — so sites lost to low mapping quality are separated
+from sites lost to read dropout. See
+`summary-data/mm39-mason-chr19-site-linkage.csv.dict.txt` for full field definitions.
+
+```{r linkage-read, out.width="90%"}
+link <- read_csv("summary-data/mm39-mason-chr19-site-linkage.csv")
+
+fate_cols <- c("retained_alt","retained_ref","clipped","mismapped","unmapped")
+fate_labs <- c("Aligned, ALT (support kept)","Aligned, REF (seq error)",
+               "Soft-clipped over site","Mismapped (>150bp)","Unmapped")
+
+# Fraction of truly-covering reads in each fate, weighted by site depth,
+# split by call outcome and divergence.
+fate_summ <- link %>%
+  group_by(divergence, outcome) %>%
+  summarize(truth = sum(truth_depth),
+            across(all_of(fate_cols), sum), .groups = "drop") %>%
+  mutate(across(all_of(fate_cols), ~ .x / truth)) %>%
+  pivot_longer(all_of(fate_cols), names_to = "fate", values_to = "frac") %>%
+  mutate(fate = factor(fate, levels = fate_cols),
+         outcome = factor(outcome, levels = c("tp","lost"),
+                          labels = c("Recovered (div_tp)","Lost to reference")))
+
+fcols <- c("retained_alt"="#009e73","retained_ref"="#999999",
+           "clipped"="#e69f00","mismapped"="#d55e00","unmapped"="#000000")
+
+ggplot(fate_summ, aes(x = divergence, y = frac, fill = fate)) +
+  geom_col(position = position_stack(reverse = TRUE), width = 0.015) +
+  facet_wrap(~outcome) +
+  scale_fill_manual(values = fcols, breaks = fate_cols, labels = fate_labs) +
+  scale_y_continuous(expand = c(0,0)) +
+  xlab("Simulated divergence (D)") + ylab("Fraction of truly-covering reads") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Recovered sites keep almost all reads aligned with ALT support at
+every divergence. Lost sites lose reads by two different routes: **mismapping**
+dominates at low divergence (repetitive regions), while **soft-clipping over the site**
+grows with divergence. But note both effects are partial — even lost sites keep most
+of their alt-bearing reads.
+
+## Effective alternate-allele fraction the caller sees
+
+If read dropout were the whole story, lost sites would show a depressed ALT fraction.
+This plots the effective ALT fraction (MAPQ ≥ 20 reads) for recovered vs. lost sites.
+
+```{r linkage-vaf, out.width="70%"}
+vaf <- link %>%
+  group_by(divergence, outcome) %>%
+  summarize(alt_hq = sum(pileup_alt_hq), depth_hq = sum(pileup_depth_hq),
+            .groups = "drop") %>%
+  mutate(alt_frac_hq = alt_hq / depth_hq,
+         outcome = factor(outcome, levels = c("tp","lost"),
+                          labels = c("Recovered","Lost")))
+
+ggplot(vaf, aes(x = divergence, y = alt_frac_hq, color = outcome)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_color_manual(values = c("Recovered"="#009e73","Lost"="#d55e00")) +
+  scale_y_continuous(labels = scales::percent, limits = c(0,1)) +
+  xlab("Simulated divergence (D)") +
+  ylab("Effective ALT fraction\n(MAPQ >= 20 reads at the site)") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** At low divergence the lost sites really do have a depressed ALT
+fraction (~71% at D=0.02) — read mapping explains the loss. But as divergence rises,
+the ALT fraction at lost sites climbs back to ~94%, nearly as high as recovered sites.
+That means at high divergence **most lost sites have clean, high-confidence alternate
+evidence and still are not called** — read mapping no longer explains the loss.
+
+## Two mechanisms, shifting with divergence
+
+Classifying each lost site by whether its alternate evidence was actually degraded
+(effective ALT fraction < 50%, a read-mapping failure) or was present but uncalled
+(≥ 50%, a caller/region-complexity failure) shows the balance tip with divergence.
+
+```{r linkage-cause, out.width="70%"}
+VAF_CUT <- 0.5   # heuristic: a hom-alt site with >=50% MAPQ>=20 ALT should be callable
+cause <- link %>%
+  filter(outcome == "lost") %>%
+  mutate(cause = ifelse(pileup_alt_frac_hq < VAF_CUT,
+                        "Read evidence lost (ALT frac < 50%)",
+                        "Evidence present, not called (ALT frac >= 50%)")) %>%
+  group_by(divergence, cause) %>%
+  summarize(n = n(), .groups = "drop") %>%
+  group_by(divergence) %>%
+  mutate(frac = n / sum(n))
+
+ccols <- c("Read evidence lost (ALT frac < 50%)"="#d55e00",
+           "Evidence present, not called (ALT frac >= 50%)"="#56b4e9")
+
+ggplot(cause, aes(x = divergence, y = frac, fill = cause)) +
+  geom_col(width = 0.015) +
+  scale_fill_manual(values = ccols) +
+  scale_y_continuous(labels = scales::percent, expand = c(0,0)) +
+  xlab("Simulated divergence (D)") +
+  ylab("Fraction of lost divergence sites") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation & takeaway.** Reference bias in the *calls* has two mechanisms whose
+balance shifts with divergence:
+
+- **Low divergence — mapping-limited.** Lost sites are concentrated in repetitive
+  regions where alt-bearing reads mismap, depressing the alternate fraction below the
+  callable range.
+- **High divergence — caller-limited.** Reads still carry the alternate allele with
+  high MAPQ, yet the sites are lost. This is *not* mainly about soft-clipping (which
+  rises with divergence but affects recovered sites too) — it is a property of GATK
+  HaplotypeCaller's local reassembly step (see the caller-swap test below).
+
+## What the losses actually are: density vs. caller
+
+Two direct checks pin this down.
+
+*Local variant density* only **weakly** distinguishes lost from recovered sites: the
+median distance to the nearest other variant is just 1–2 bp smaller at lost sites
+(e.g. 3 vs 4 bp at D=0.10), and at high divergence ~99% of *all* sites have a neighbour
+within 20 bp. So "dense region" is not a clean explanation — an earlier draft
+overstated it.
+
+*Swapping the caller* is decisive. Re-calling the D=0.10 BAM with a **pileup-based**
+caller (`bcftools`, which does no local reassembly) recovers the GATK-lost sites by
+outcome class:
+
+| GATK site class | bcftools recovers |
+|---|---|
+| recovered by GATK (sanity check) | 99.2% |
+| GATK-lost, evidence *degraded* (ALT frac < 50%) | 0.6% |
+| GATK-lost, evidence *present* (ALT frac ≥ 50%) | **98.7%** |
+
+So the large "evidence present but uncalled" class is **~99% recoverable simply by
+using a non-assembly caller** — the loss is specific to HaplotypeCaller's assembly, not
+a lack of evidence. The "evidence degraded" (mapping-limited) sites are recovered by
+neither caller, as expected — those need better *mapping*, not a better caller.
+
+*Caveats: the caller-swap is one condition (D=0.10, one seed) and measures **recall
+only** — bcftools' false-positive rate at high divergence has not yet been checked, so
+"more robust" is provisional pending a precision comparison. The 50% ALT-fraction
+cutoff separating the two lost classes is a heuristic.*
+
+## Decomposition: which mechanism drives the loss?
+
+Putting it together — the overall SNP loss rate split into its two mechanisms as a
+fraction of *all* true divergence sites. Each cell is how much of the genome's fixed
+SNP differences are lost to that mechanism at that divergence.
+
+```{r loss-heatmap, out.width="80%"}
+decomp <- read_csv("summary-data/mm39-mason-chr19-loss-decomposition.csv") %>%
+  mutate(mechanism = factor(mechanism, levels = c("mapping-limited", "caller-limited")))
+
+ggplot(decomp, aes(x = factor(divergence), y = mechanism, fill = frac_of_truth_lost)) +
+  geom_tile(color = "white", size = 0.6) +
+  geom_text(aes(label = scales::percent(frac_of_truth_lost, accuracy = 0.1)), size = 3.4) +
+  scale_fill_gradient(low = "#f7f7f7", high = "#d55e00",
+                      labels = scales::percent,
+                      name = "Fraction of true\nSNP sites lost") +
+  xlab("Simulated divergence (D)") + ylab("Loss mechanism") +
+  bartheme() +
+  theme(legend.position = "right", axis.line = element_blank(),
+        axis.ticks = element_blank())
+```
+
+**Interpretation.** The two mechanisms behave completely differently. **Mapping-limited
+loss is a small, nearly flat floor** (~0.6% → 1.4% across the whole divergence range) —
+essentially the fixed repetitive fraction of the chromosome, where alt reads mismap no
+matter what. **Caller-limited loss explodes** (1.6% → 28%) and accounts for almost all
+of the growth in reference bias. So as divergence rises, the reference-bias problem is
+overwhelmingly the *assembly-based caller* failing on sites whose evidence is present —
+which is why it also resolves the earlier puzzle: mapping-limited loss barely changes in
+absolute terms, so its *share* of all lost sites shrinks even as more reads mismap. It
+also says where effort pays off: at realistic divergences, a better/pileup caller (or
+iterative mapping that lowers effective divergence) addresses the dominant term, while
+graph/iterative mapping chips at the small mapping-limited floor.
+
+# Variant caller benchmark
+
+The mechanism section showed the high-divergence SNP loss is specific to GATK
+HaplotypeCaller's assembly. Here we test that comprehensively: **holding mapping fixed**
+(the same bwa BAMs), we call variants with three callers spanning the strategy axis —
+**gatk** (reference-anchored De Bruijn assembly), **bcftools** (pileup, no assembly),
+and **freebayes** (haplotype-from-alignment, no k-mer reassembly) — and score each
+caller's **recall and precision** across the divergence sweep. All callers use their
+native output normalized identically (`bcftools norm -m- --atomize`), so precision
+reflects each caller's intrinsic false-positive tradeoff.
+
+```{r caller-bench-data}
+cb <- read_csv("summary-data/mm39-mason-chr19-caller-benchmark.csv") %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")))
+
+cb_m <- cb %>% group_by(caller, divergence) %>%
+  summarize(snp_recall    = mean(div_tp / n_truth_div),
+            snp_precision  = mean(1 - fp / n_called_snp),
+            indel_recall   = mean(indel_div_tp / n_truth_indel_div),
+            .groups = "drop")
+
+# heatmap helper: caller (y) x divergence (x), fill = metric
+caller_heatmap <- function(df, metric, name, high) {
+  ggplot(df, aes(x = factor(divergence), y = caller, fill = .data[[metric]])) +
+    geom_tile(color = "white", size = 0.6) +
+    geom_text(aes(label = scales::percent(.data[[metric]], accuracy = 1)), size = 3.2) +
+    scale_fill_gradient(low = "#f7f7f7", high = high, labels = scales::percent,
+                        limits = c(0, 1), name = name) +
+    xlab("Divergence (D)") + ylab(NULL) + bartheme() +
+    theme(axis.line = element_blank(), axis.ticks = element_blank(),
+          legend.position = "right")
+}
+```
+
+## SNP recall and precision
+
+```{r caller-snp, out.width="85%", fig.height=3}
+r <- caller_heatmap(filter(cb_m, divergence > 0), "snp_recall", "SNP\nrecall", "#0072b2")
+p <- caller_heatmap(cb_m, "snp_precision", "SNP\nprecision", "#009e73")
+cowplot::plot_grid(r, p, ncol = 1, labels = c("SNP recall (divergence sites)", "SNP precision"),
+                   label_size = 11, hjust = 0)
+```
+
+**Interpretation.** For SNPs, **both non-assembly callers dramatically out-recall GATK**
+as divergence rises — at D=0.10, GATK recovers only 58% of fixed SNP differences vs 86%
+(bcftools) and 84% (freebayes). But the precision panel shows the catch: **bcftools keeps
+GATK-level precision (~97%)**, while **freebayes' precision collapses to ~84%** (one in
+six of its calls is a false positive at D=0.10). So for SNPs at high divergence,
+**bcftools is the clear win** — large recall gain at essentially no precision cost —
+whereas freebayes buys recall with a heavy false-positive penalty.
+
+## Indels — the tradeoff reverses
+
+```{r caller-indel, out.width="85%", fig.height=1.8}
+caller_heatmap(filter(cb_m, divergence > 0), "indel_recall", "Indel\nrecall", "#d55e00")
+```
+
+**Interpretation.** For indels the ranking flips: **bcftools collapses** (indel recall
+falls to ~4% at D=0.10), while GATK and freebayes retain ~45%. Pileup calling is
+intrinsically weak at indels — and worse in divergent, complex regions — whereas the
+assembly (GATK) and haplotype-from-alignment (freebayes) strategies reconstruct indels
+far better. So the very assembly/haplotype machinery that *hurts* GATK on divergent SNPs
+is what indels *need*.
+
+## Recall and precision vs divergence
+
+Divergence on the x-axis, one line per caller, split into recall vs precision (rows)
+and SNP vs indel (columns). This is the at-a-glance view: read each panel left-to-right
+to see how that metric holds up (or doesn't) as the sample diverges from the reference.
+
+```{r caller-vs-div, out.width="95%", fig.height=4.5}
+metrics_long <- cb %>% group_by(caller, divergence) %>%
+  summarize(`SNP recall`     = mean(div_tp / n_truth_div),
+            `SNP precision`   = mean(1 - fp / n_called_snp),
+            `indel recall`    = mean(indel_div_tp / n_truth_indel_div),
+            `indel precision` = mean(ifelse(n_called_indel > 0, 1 - fp_indel / n_called_indel, NA)),
+            .groups = "drop") %>%
+  pivot_longer(-c(caller, divergence), names_to = "panel", values_to = "value") %>%
+  separate(panel, into = c("variant", "metric"), sep = " ") %>%
+  filter(!is.nan(value), !is.na(value))       # recall undefined at D=0
+
+metrics_long$variant <- factor(metrics_long$variant, levels = c("SNP", "indel"))
+metrics_long$metric  <- factor(metrics_long$metric,  levels = c("recall", "precision"))
+
+ggplot(metrics_long, aes(x = divergence, y = value, color = caller)) +
+  geom_line(size = 1.1) + geom_point(size = 2.5) +
+  facet_grid(metric ~ variant) +
+  scale_x_continuous(breaks = unique(metrics_long$divergence)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_color_manual(values = c(gatk = "#d55e00", bcftools = "#0072b2", freebayes = "#009e73")) +
+  labs(x = "Simulated divergence (D)", y = NULL) +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Reading it.** Top row (recall): for SNPs, GATK falls away steeply while bcftools and
+freebayes stay high; for indels, bcftools falls off a cliff while GATK and freebayes
+decline gently together. Bottom row (precision): GATK and bcftools hold high precision
+for SNPs while freebayes drifts down. Same four numbers as the heatmaps, but the
+divergence trend is immediate.
+
+## Precision–recall trajectories (all methods in one view)
+
+The same data as a precision–recall plot: each caller is a path through PR space, one
+point per divergence level, the arrow pointing toward *increasing* divergence. Top-right
+is the ideal (high recall and precision); a method that degrades gracefully stays near
+the top-right, one that trades recall or precision away slides left or down.
+
+```{r caller-pr, out.width="90%", fig.height=3.6}
+pr <- cb %>% group_by(caller, divergence) %>%
+  summarize(SNP_recall      = mean(div_tp / n_truth_div),
+            SNP_precision    = mean(1 - fp / n_called_snp),
+            indel_recall     = mean(indel_div_tp / n_truth_indel_div),
+            indel_precision  = mean(ifelse(n_called_indel > 0, 1 - fp_indel / n_called_indel, NA)),
+            .groups = "drop")
+
+prl <- bind_rows(
+  pr %>% transmute(caller, divergence, variant = "SNP",
+                   recall = SNP_recall, precision = SNP_precision),
+  pr %>% transmute(caller, divergence, variant = "indel",
+                   recall = indel_recall, precision = indel_precision)
+) %>% filter(divergence > 0) %>%           # recall undefined at D=0
+  arrange(caller, variant, divergence)     # path order = increasing divergence
+
+prl$variant <- factor(prl$variant, levels = c("SNP", "indel"))
+
+ggplot(prl, aes(x = recall, y = precision, color = caller, group = caller)) +
+  geom_path(arrow = arrow(length = unit(0.15, "cm"), type = "closed"), size = 0.9) +
+  geom_point(aes(size = as.numeric(divergence))) +
+  facet_wrap(~variant) +
+  scale_x_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_color_manual(values = c(gatk = "#d55e00", bcftools = "#0072b2", freebayes = "#009e73")) +
+  scale_size_continuous(name = "Divergence", range = c(1.5, 5)) +
+  labs(x = "Recall", y = "Precision") +
+  bartheme() + theme(legend.position = "right")
+```
+
+**Reading it.** *SNP panel:* bcftools (blue) stays pinned to the top-right — recall
+erodes only slightly and precision holds — while GATK (orange) slides straight left
+(recall collapses, precision intact) and freebayes (green) sags down-and-left (losing
+both). *Indel panel:* the picture inverts — GATK and freebayes stay upper/right-ish
+while bcftools shoots to the far left (indel recall → ~0). One figure captures the whole
+story: which method to trust depends on the variant type and how much precision vs recall
+you can spend.
+
+**Takeaway.** There is no single best caller across the board:
+
+- **SNPs at high divergence:** bcftools (best recall *and* precision).
+- **Indels:** GATK or freebayes (bcftools fails); freebayes matches GATK's indel recall.
+- **freebayes** overall: strong recall for both types but a real SNP precision cost.
+
+This reframes "reference bias is a caller problem" precisely: it's a caller problem *for
+SNPs*, fixable by dropping the assembly requirement — but indels genuinely need
+haplotype/assembly reconstruction, so the lever there is better *mapping* (graph or
+iterative, to lower effective divergence) rather than a simpler caller.
+
+*Caveats: native (unfiltered) calls, so GATK's numbers here differ from the filtered
+main-results section; chr19, single iteration, 3 seeds; freebayes' complex alleles are
+atomized to compare fairly.*
+
+# Summary
+
+- **The v1 liftover artifact is gone**: `missing` reads = 0 at every divergence level,
+  so these numbers are trustworthy.
+- **Mapping is robust to divergence at the read level**: reads land at the right locus
+  (mismapping <2%, `unmapped` dropout only at 8–10%). The big change is **soft-clipping**
+  (up to 62% of reads at D=0.10); a whole-read positional shift stays negligible (~2%).
+- **Reference bias lives in variant calling**: the fraction of true fixed SNP
+  differences called as reference rises from ~3% (D=0.02) to **~41% (D=0.10)**, tight
+  across the three seeds.
+- **Indels suffer more than SNPs**: fixed indels are lost to the reference at a higher
+  rate than SNPs at every divergence (up to ~1.8× at low D), and het indels are
+  recovered less well than het SNPs — reference bias is stronger around indels.
+- **Indels worsen SNP recovery too**: SNP loss is higher here than in a SNP-only genome
+  (~41% vs ~30% at D=0.10), so ignoring indels understates reference bias.
+- **Heterozygosity is underestimated more as divergence grows**, despite a constant
+  simulated het rate; the effect is larger for indels.
+- **Two mechanisms, shifting with divergence** (mechanism section): mapping-limited
+  loss (repeats/mismapping) dominates at low divergence; at high divergence the loss is
+  **caller-specific** — a pileup caller recovers the high-evidence sites GATK's assembler
+  drops.
+- **Caller benchmark** (mapping fixed): for **SNPs** at D=0.10, GATK recovers 58% vs
+  **bcftools 86% at matched precision** (freebayes 84% but precision drops to ~84%). For
+  **indels** the ranking reverses — bcftools collapses (~4%), GATK/freebayes retain ~45%.
+  So reference bias is a caller problem *for SNPs* (drop the assembly requirement); indels
+  need haplotype/assembly reconstruction, i.e. better mapping.
+- **False positives stay low for GATK/bcftools** (<0.3% of calls) but increase with
+  divergence; freebayes is markedly more FP-prone at high divergence.
+
+*Scope: single chromosome (chr19), chr19-only mapping, 3 replicate seeds, single
+iteration. Whole-genome mapping, a v1-vs-v2 comparison, and iterative (pseudo-it)
+mapping are planned extensions.*

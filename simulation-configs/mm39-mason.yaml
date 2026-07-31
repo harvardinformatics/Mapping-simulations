@@ -1,0 +1,68 @@
+#############################################################################
+# Configuration for the v2 (mason2-based) reference-bias mapping simulations.
+#
+# Pipeline (single iteration, SNP-only, chr19, map back to chr19):
+#   extract_region_ref  : pull the region out of the reference and index it
+#   make_truth_vcf       : controlled truth VCF -> D homozygous + H het SNP sites
+#   mason_simulator      : apply truth VCF, simulate reads + truth alignment BAM
+#   bwa_map              : map reads back to the (chr19) reference
+#   gatk                 : HaplotypeCaller -> GenotypeGVCFs -> filter -> select SNPs
+#   compare_bams         : mapped positions vs truth positions (no liftover)
+#   compare_vcfs         : called SNPs vs truth genotypes
+#   combine_summaries    : concatenate per-condition rows into summary-data/
+#
+# REPLICABILITY NOTE: launch the workflow from an ACTIVATED `mapping-sims` conda
+# environment. SLURM jobs inherit that environment (sbatch --export=ALL default),
+# so mason_simulator / bwa / gatk / bcftools / samtools / python are found on PATH.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+# Whole-genome mm39 reference; the region(s) below are extracted from it and the
+# extracted region is used as BOTH the mason input and the bwa mapping target
+# (chr19-only mapping for this sweep).
+ref_file: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str: mm39
+
+## --- scripts -------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/scripts
+
+## --- simulation grid -----------------------------------------------------
+regions: ["19"]
+# Chromosome(s) to simulate/ map. One region for this sweep.
+
+covs: ["30"]
+# Fold coverage. mason num-fragments = cov * region_length / (2 * read_length).
+
+divs: ["0.00", "0.02", "0.04", "0.06", "0.08", "0.10"]
+# Fixed divergence D: fraction of sites made homozygous-alternate (truth GT 1|1).
+
+hets: ["0.005"]
+# Heterozygosity H: fraction of sites made heterozygous (truth GT 0|1).
+
+seeds: ["42", "43", "44"]
+# Replicate random seeds. Each seed is an independent replicate (different truth
+# sites AND read sampling), giving variance/error bars on every curve.
+
+## --- indels --------------------------------------------------------------
+indel_ratio: 0.125
+# Indel rate as a fraction of the SNP rate: indel divergence = indel_ratio * D,
+# indel heterozygosity = indel_ratio * H. ~1:8 approximates the empirical indel:SNP ratio.
+min_indel_size: 1
+max_indel_size: 6
+# Small indel size range (bp); insertions and deletions are drawn 50/50.
+
+## --- read simulation parameters ------------------------------------------
+read_length: 150
+fragment_mean: 300
+
+## --- variant calling -----------------------------------------------------
+# bcftools EXCLUDE expression: sites matching are dropped before SNP selection.
+# (Low mapping quality, extreme depth, or spanning-deletion star alleles.)
+filter: 'MQ < 30.0 || FORMAT/DP < 5 || FORMAT/DP > 60 || ALT="*"'
+
+## --- output --------------------------------------------------------------
+# Per-run intermediates go here (in-repo data/ is git-ignored). Combined summary
+# tables are written to the repo's summary-data/ directory by the workflow.
+sim_outdir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/mm39-mason-chr19
+summary_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/summary-data

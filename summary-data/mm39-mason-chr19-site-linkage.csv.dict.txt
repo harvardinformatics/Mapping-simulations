@@ -1,0 +1,6 @@
+Data dictionary for summary-data/mm39-mason-chr19-site-linkage.csv
+Combined site-linkage summary: one row per (coverage, divergence) condition.
+Columns are identical to the per-condition files produced by the
+compare_site-linkages.py script; see that script's *-summary.dict.txt for full
+column definitions.
+Header: region,coverage,divergence,heterozygosity,pos,outcome,truth_depth,retained_alt,retained_ref,retained_other,clipped,mismapped,unmapped,missing,retention,true_alt_frac,pileup_depth,pileup_alt,pileup_ref,pileup_alt_frac,pileup_depth_hq,pileup_alt_hq,pileup_alt_frac_hq

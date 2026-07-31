@@ -1,0 +1,13 @@
+divergence,mechanism,n_sites_lost,frac_of_truth_lost
+0.00,caller-limited,0,0.000000
+0.00,mapping-limited,0,0.000000
+0.02,caller-limited,19654,0.016000
+0.02,mapping-limited,7846,0.006387
+0.04,caller-limited,117504,0.047828
+0.04,mapping-limited,16343,0.006652
+0.06,caller-limited,347358,0.094258
+0.06,mapping-limited,26991,0.007324
+0.08,caller-limited,837239,0.170392
+0.08,mapping-limited,45925,0.009347
+0.10,caller-limited,1731523,0.281915
+0.10,mapping-limited,88259,0.014370

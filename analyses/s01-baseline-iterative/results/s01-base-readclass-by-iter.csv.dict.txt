@@ -1,0 +1,6 @@
+Data dictionary for /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv
+Combined readclass-bam summary: one row per (coverage, divergence) condition.
+Columns are identical to the per-condition files produced by the
+compare_readclass-bams.py script; see that script's *-summary.dict.txt for full
+column definitions.
+Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,total_reads,exact,shifted,clipped,mismapped,diff_chr,unmapped,missing,exact_prop,shifted_prop,clipped_prop,mismapped_prop,diff_chr_prop,unmapped_prop,missing_prop

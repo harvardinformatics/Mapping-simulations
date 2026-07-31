@@ -1,0 +1,382 @@
+---
+title: "s01 — baseline vs. iterative mapping (chr19, SNP-only)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file you can
+     download and open anywhere. Keep in sync with the reference copy in
+     analyses/lib/notebook.css. Passed through pandoc verbatim via the {=html} raw
+     block (an inline <style> in the markdown body gets mis-parsed as markdown). -->
+<style>
+/* --- wide content --- */
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+/* figures capped + centered so they don't scale up with the wide content column;
+   change this one value to resize every figure */
+img { max-width: 900px; height: auto; display: block;
+      margin-left: auto; margin-right: auto; }
+/* --- sticky TOC on the left --- */
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Does iterative (pseudo-it) mapping recover more true divergence than single-shot
+mapping, and does that depend on the variant caller?** A diverged sample is simulated
+against the mm39 reference, mapped back, and variant-called; reference bias is the true
+divergence that gets lost. Iterative mapping remaps to a consensus that absorbs the
+recovered divergence, lowering the *effective* divergence each round.
+
+Everything below is **chr19, SNP-only, 30×**, produced by `workflow.smk` (divergence
+recovery), `het_recovery.smk` (het), and `read_classification.smk` (read placement),
+all driven by `config/config.yaml` and launched with the `run_*.sh` orchestrators.
+
+- **Truth** (`analyses/lib/make_truth_vcf.py`):
+  homozygous divergence SNPs at rate **D ∈ {0.02, 0.04, 0.06, 0.08, 0.10}** (+ a D=0
+  control), genotype `1|1`; heterozygous SNPs at rate **H = 0.005**, genotype `0|1`;
+  **no indels** (`indel_divergence = 0`, the SNP-only baseline). Alt alleles are drawn
+  uniformly from the 3 non-reference bases, independently per site (a phylogenetic
+  extension would instead inherit alleles down a tree).
+- **Reads** (`mason_simulator`): chr19 extracted from mm39 (`samtools faidx`); **30×**,
+  **150 bp** paired reads, **300 bp** mean fragment; `NFRAG = cov × len / (2 × readlen)`.
+  **3 replicate seeds — 42, 43, 44** (independent truth + reads); figures show mean ± 1 SD.
+- **Mapping & iteration:** `bwa mem` (defaults) → `samtools sort/index`. **n_iterations = 3**;
+  iteration 1 maps to the reference (**the single-shot baseline**), iteration *k* maps to
+  the consensus from iteration *k−1*. The consensus is `bcftools consensus` of that
+  iteration's **homozygous SNP calls only** (`bcftools view -v snps -g hom`) — which keeps
+  it exactly reference-length (identity coordinates → **no liftover**) and free of IUPAC
+  het codes.
+- **Variant callers** (an axis; each iterates independently): **gatk** HaplotypeCaller
+  (reference-anchored local reassembly; run scatter-gather over 8 intervals →
+  `GenotypeGVCFs`), **bcftools** `mpileup | call` (pileup), **freebayes**
+  (haplotype-from-alignment). Min mapping quality 20; all output normalized identically
+  (`bcftools norm -f ref -m- --atomize`).
+- **Scoring:** *divergence recovery* (cumulative) = exact consensus-vs-reference SNP diff
+  (`consensus_diff_snps.py`) scored vs normalized truth with `compare_vcfs.py` (`div_tp`);
+  *het recovery* and the het/other fate bands = `compare_vcfs.py` on the **raw** caller
+  VCF (`calls.norm`, which carries the `0/1` genotypes) vs truth (`het_tp`, `div_het`,
+  `div_other`); *read placement* = mason `-oa` truth alignment regenerated at the original
+  seed (deterministic → identical reads) and each iteration's BAM classified with
+  `compare_bams.py` (exact / shifted / soft-clipped / mismapped / unmapped; 150 bp tolerance).
+
+```{r load}
+# --- divergence recovery (from the consensus-vs-reference diff) ---
+d <- read_csv("analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv") %>%
+  filter(divergence > 0) %>%                       # no divergence sites at D=0
+  mutate(recall    = div_tp / n_truth_div,
+         precision = ifelse(n_called_snp > 0, 1 - fp / n_called_snp, NA),
+         caller    = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         iteration = factor(iteration))
+agg <- d %>% group_by(caller, divergence, iteration) %>%
+  summarize(recall_m = mean(recall), recall_sd = sd(recall),
+            prec_m = mean(precision), prec_sd = sd(precision), .groups = "drop")
+n_iter <- max(as.integer(as.character(d$iteration)))
+cols   <- corecol(pal = "wilke", numcol = n_iter)
+
+# --- het recovery + fate bands (from the raw per-iteration caller VCF) ---
+het <- read_csv("analyses/s01-baseline-iterative/results/s01-base-het-recovery-by-iter.csv") %>%
+  filter(divergence > 0) %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         iteration = factor(iteration),
+         het_recall = het_tp / n_truth_het)
+hets <- het %>% group_by(caller, divergence, iteration) %>%
+  summarize(m = mean(het_recall), s = sd(het_recall), .groups = "drop")
+
+# --- read placement ---
+rc <- read_csv("analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv") %>%
+  filter(divergence > 0) %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         iteration = factor(iteration))
+
+# --- fate of divergent sites (cumulative-correct) ---
+# Recovered comes from the CONSENSUS (d$div_tp), because a site recovered in one round is
+# baked into the consensus and no longer re-called the next -- so the raw caller VCF would
+# wrongly show it migrating back to "lost". The het/other bands (sites the caller calls
+# 0/1 or wrong-allele, hence NOT baked into the hom consensus) come from the caller VCF;
+# lost-to-reference is the remainder.
+fate <- inner_join(
+    d   %>% select(caller, divergence, seed, iteration, n_truth_div, rec = div_tp),
+    het %>% select(caller, divergence, seed, iteration, div_het, div_other),
+    by = c("caller", "divergence", "seed", "iteration")) %>%
+  mutate(lost = pmax(n_truth_div - rec - div_het - div_other, 0)) %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(Recovered           = mean(rec / n_truth_div),
+            `Called het`        = mean(div_het / n_truth_div),
+            `Lost to reference` = mean(lost / n_truth_div),
+            Other               = mean(div_other / n_truth_div), .groups = "drop") %>%
+  pivot_longer(-c(caller, divergence, iteration), names_to = "fate", values_to = "prop") %>%
+  mutate(fate = factor(fate, levels = c("Recovered", "Called het",
+                                        "Lost to reference", "Other")))
+
+small_legend <- theme(legend.position = "bottom",
+                      legend.text = element_text(size = 8),
+                      legend.title = element_blank(),
+                      legend.key.size = unit(0.40, "cm"))
+```
+
+# Read classification
+
+The mapping-side view: where did each read actually land relative to where it was
+simulated from? Each stacked bar is the composition of read placements at one iteration
+(exact / shifted / soft-clipped / mismapped / diff-chr / unmapped), for every caller
+(rows) and divergence (columns). Iteration 1 maps to the reference and so is
+caller-independent; later iterations map to each caller's own consensus.
+
+```{r readclass-composition, out.width="100%", fig.width=11, fig.height=6.5}
+classes <- c("exact", "shifted", "clipped", "mismapped", "diff_chr", "unmapped", "missing")
+class_cols <- c(exact = "#009E73", shifted = "#56B4E9", clipped = "#E69F00",
+                mismapped = "#D55E00", diff_chr = "#CC79A7",
+                unmapped = "#999999", missing = "#333333")
+comp <- rc %>% group_by(caller, divergence, iteration) %>%
+  summarize(across(all_of(paste0(classes, "_prop")), mean), .groups = "drop") %>%
+  pivot_longer(-c(caller, divergence, iteration), names_to = "class", values_to = "prop") %>%
+  mutate(class = factor(sub("_prop", "", class), levels = classes))
+
+ggplot(comp, aes(x = iteration, y = prop, fill = class)) +
+  geom_col(width = 0.85) +
+  facet_grid(caller ~ divergence) +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0)) +
+  scale_fill_manual(values = class_cols) +
+  xlab("Iteration") + ylab("Fraction of reads") +
+  bartheme() + small_legend
+```
+
+**Interpretation.** Read the **iter1 bars across the three caller rows — they are
+identical**: single-shot mapping is caller-independent (everyone maps to the reference),
+and at D=0.10 only ~57% of reads are exact, ~40% soft-clipped. That is the key control —
+the reads are placed the *same way* for every caller at iter1, yet gatk recovers far fewer
+SNPs (§3) — so gatk's single-shot deficit is its reference-anchored reassembler, not a
+mapping/clipping artifact. From iter2 the rows separate: bcftools/freebayes recover ~all
+divergence at iter1, so their consensus is near-complete and reads map almost perfectly by
+iter2; gatk's consensus improves gradually, so its soft-clip band shrinks gradually
+(~40%→10% at D=0.10). Mapping quality is *downstream* of caller recovery
+(recover → consensus → better mapping → recover more), and the soft-clipped bases are
+retained in the BAM and used by gatk anyway — so this is a readout of falling effective
+divergence, not evidence removed from the caller.
+
+# SNP recovery
+
+The homozygous-divergence result — the core reference-bias question — from four angles:
+the fate of every divergent site, the recovered counts, recall/precision, and how the
+iteration benefit differs by caller.
+
+## Fate of divergent sites per iteration
+
+Every true divergent site is homozygous-alternate and *should* be recovered as such;
+these stacked bars show what actually becomes of it at each iteration — the
+variant-calling analogue of the read-placement composition above. **Recovered** = the
+site is in the consensus (cumulative); **Called het** / **Other** = the raw caller VCF
+calls it `0/1` or with the wrong allele (so it is not baked into the hom consensus);
+**Lost to reference** = the remainder (the sample looks like the reference — reference
+bias itself).
+
+```{r div-fate, out.width="100%", fig.width=11, fig.height=6.5}
+fate_cols <- c("Recovered" = "#009e73", "Called het" = "#56b4e9",
+               "Lost to reference" = "#d55e00", "Other" = "#999999")
+ggplot(fate, aes(x = iteration, y = prop, fill = fate)) +
+  geom_col(width = 0.85) +
+  facet_grid(caller ~ divergence) +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0)) +
+  scale_fill_manual(values = fate_cols) +
+  xlab("Iteration") + ylab("Proportion of true divergent sites") +
+  bartheme() + small_legend
+```
+
+**Interpretation.** The orange **Lost to reference** band *is* reference bias, and it
+shrinks every iteration — most dramatically for gatk at high divergence (28% → 18% lost
+at D=0.10). The **Called het** band (a divergent site only partly rescued — one allele's
+worth of reads surviving) stays thin throughout (~0.5%). bcftools/freebayes are almost
+fully green from iteration 1; gatk starts with a large lost band that iteration steadily
+eats into. This is the recall story below shown as a complete accounting of where every
+divergent site goes.
+
+## Recovered SNP counts
+
+True divergent SNPs recovered, shown as **count (% of truth, +new)**, by caller and
+divergence for each iteration (means over the 3 seeds). **+new** = additional true SNPs
+recovered vs. the previous iteration (blank for iter1, the single-shot baseline);
+`truth` = total divergent sites simulated. Rows are grouped by caller.
+
+```{r recovered-table}
+library(kableExtra)
+fmt <- function(x) formatC(round(x), format = "d", big.mark = ",")
+cells <- d %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(recovered = mean(div_tp),
+            recall    = mean(div_tp / n_truth_div), .groups = "drop") %>%
+  arrange(caller, divergence, iteration) %>%
+  group_by(caller, divergence) %>%
+  mutate(gained = recovered - lag(recovered)) %>%   # new SNPs vs previous iteration
+  ungroup() %>%
+  mutate(cell = ifelse(is.na(gained),
+                       sprintf("%s (%.1f%%)", fmt(recovered), 100 * recall),
+                       sprintf("%s (%.1f%%, +%s)", fmt(recovered), 100 * recall, fmt(gained))),
+         iteration = paste0("iter", iteration)) %>%
+  select(caller, divergence, iteration, cell) %>%
+  pivot_wider(names_from = iteration, values_from = cell)
+
+truth_col <- d %>% group_by(caller, divergence) %>%
+  summarize(truth = formatC(round(mean(n_truth_div)), format = "d", big.mark = ","),
+            .groups = "drop")
+tab <- left_join(truth_col, cells, by = c("caller", "divergence")) %>%
+  arrange(caller, divergence)
+
+grp  <- tab %>% count(caller)
+disp <- tab %>% select(-caller)
+kbl <- knitr::kable(
+    disp, align = "r",
+    col.names = c("divergence", "truth", paste0("iter", seq_len(n_iter))),
+    caption = "True divergent SNPs recovered as count (% of truth), mean over seeds.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, position = "center")
+start <- 1
+for (i in seq_len(nrow(grp))) {
+  kbl   <- kbl %>% pack_rows(as.character(grp$caller[i]), start, start + grp$n[i] - 1)
+  start <- start + grp$n[i]
+}
+kbl
+```
+
+## Precision and recall
+
+Recall (recovered / truth) and precision (of the consensus SNP set vs truth), by caller.
+At each divergence the grey connector spans the iterations, so its length is the iteration
+gain; error bars are ±1 SD over the 3 seeds.
+
+```{r recall-by-iter, out.width="95%", fig.height=3.5}
+ggplot(agg, aes(x = divergence, y = recall_m, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
+  geom_errorbar(aes(ymin = recall_m - recall_sd, ymax = recall_m + recall_sd), width = 0.0015) +
+  geom_point(size = 2.6) +
+  facet_wrap(~caller) +
+  scale_x_continuous(breaks = unique(agg$divergence)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Simulated divergence (D)") + ylab("SNP divergence recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+```{r precision-by-iter, out.width="95%", fig.height=3.5}
+ggplot(agg, aes(x = divergence, y = prec_m, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
+  geom_errorbar(aes(ymin = prec_m - prec_sd, ymax = prec_m + prec_sd), width = 0.0015) +
+  geom_point(size = 2.6) +
+  facet_wrap(~caller) +
+  scale_x_continuous(breaks = unique(agg$divergence)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Simulated divergence (D)") + ylab("SNP precision (consensus vs truth)") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Recall rises every iteration and converges by ~3 rounds; the effect is
+tiny for **bcftools / freebayes** (already ~99% — little headroom) and large for **gatk**,
+whose single-shot recall collapses at high divergence but is substantially rescued. Error
+bars are <0.1 pt everywhere (aggregate recall over chr19's millions of sites is
+near-deterministic — the near-zero seed variance is itself a result). Precision confirms
+the recall gains are not bought with false positives.
+
+## Variant caller comparison
+
+Where iteration helps most: the recall improvement from single-shot (iter1) to the last
+iteration, by caller and divergence.
+
+```{r gain-heatmap, out.width="75%", fig.height=2.4}
+gain <- agg %>%
+  filter(iteration %in% c("1", as.character(n_iter))) %>%
+  select(caller, divergence, iteration, recall_m) %>%
+  pivot_wider(names_from = iteration, values_from = recall_m) %>%
+  mutate(gain = .data[[as.character(n_iter)]] - .data[["1"]])
+
+ggplot(gain, aes(x = factor(divergence), y = caller, fill = gain)) +
+  geom_tile(color = "white", size = 0.6) +
+  geom_text(aes(label = sprintf("+%.1f", gain * 100)), size = 3.4) +
+  scale_fill_gradient(low = "#f7f7f7", high = "#0072b2",
+                      labels = scales::percent, name = "Recall gain\n(iter1 -> last)") +
+  xlab("Simulated divergence (D)") + ylab(NULL) +
+  bartheme() + theme(axis.line = element_blank(), axis.ticks = element_blank())
+```
+
+**Interpretation.** The gain is **inversely related to how good the caller already is, and
+scales with divergence**: near-zero for the pileup/haplotype callers, rising to a large lift
+for gatk at high divergence — iteration lowers the *effective* divergence so gatk's
+reference-anchored assembly (which fails on far-from-reference sequence) starts working
+again. Iteration mitigates reference bias exactly where single-shot suffers most.
+
+# Heterozygous site recovery
+
+Het sites (true `0/1`) are the classic allelic-dropout target of reference bias: when a
+het's alt-bearing reads map poorly, the site looks homozygous-reference. They are never
+baked into the (haploid) consensus, so this is scored from the **raw per-iteration caller
+VCF** vs truth — `het_tp / n_truth_het`.
+
+```{r het-by-iter, out.width="95%", fig.height=3.5}
+ggplot(hets, aes(x = divergence, y = m, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
+  geom_errorbar(aes(ymin = m - s, ymax = m + s), width = 0.0015) +
+  geom_point(size = 2.6) +
+  facet_wrap(~caller) +
+  scale_x_continuous(breaks = unique(hets$divergence)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Simulated divergence (D)") + ylab("Heterozygous-site recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Het recall behaves almost exactly like the divergence recall — same
+caller ordering, same iteration rescue, and per caller the two nearly coincide (at D=0.10
+single-shot: gatk het 69% vs div 70%; bcftools het 97% vs div 98%). So het reference bias
+is **not** a uniform evidence effect. It splits into (1) a **small, caller-independent
+allelic-dropout tax** — the pileup callers sit ~1 point below their own divergence recall
+(99.2% → ~97% as D rises), the genuine case where a het's alt reads are clipped/unmapped;
+iteration restores it; and (2) a **large, gatk-specific loss that mirrors its homozygous
+divergence deficit** — het sites in divergent regions are missed by the same reassembly
+failure that loses the homozygous divergent SNPs, and recovered the same way as effective
+divergence falls. For the assembler, a het in a divergent window is lost for the same
+reason a homozygous divergent SNP is.
+
+# Summary
+
+- **Iterative mapping recovers more true divergence** — recall rises every iteration and
+  converges by ~3 rounds.
+- **The benefit is largest where single-shot is weakest**: negligible for the pileup/
+  haplotype callers already near ceiling, but a large lift for gatk at high divergence
+  (single-shot 70.4% → iterated 81.0% at D=0.10; 3 seeds, SD <0.1 pt). The fate bars show
+  the same thing as a shrinking "lost to reference" band.
+- **Heterozygous sites recover the same way**: het recall closely tracks divergence recall
+  per caller (gatk ~69%→80% at D=0.10; pileup callers ~97%→99.5%), so het reference bias is
+  dominated by the same assembler mechanism — plus a small caller-independent allelic-dropout
+  tax that iteration also restores.
+- **This is a caller, not a mapping, effect**: single-shot read placement is caller-independent
+  (identical iter1 bars), yet gatk recovers the fewest SNPs — so its deficit is the
+  reference-anchored assembler. As the consensus converges, reads map more exactly (gatk
+  soft-clip 40%→10% at D=0.10), a readout of falling effective divergence that both tracks
+  and feeds the recovery.
+
+*Scope: chr19, SNP-only, 30×. Open question: how far does iteration go — does recall plateau
+below 100%, and is the residual the repeat/mapping-limited floor? (Test with more iterations
++ a convergence diagnostic.) Indels + liftover are s02.*

@@ -1,0 +1,61 @@
+#############################################################################
+# s01 — baseline vs iterative mapping
+#
+# Question: does iterative mapping (pseudo-it style) recover more true divergence
+# than single-shot mapping, and does that depend on the variant caller?
+#
+# This file is the single place to edit the parameters for this section. Every
+# threshold that varies is recorded here and echoed into each output's data
+# dictionary. Re-running with changed thresholds writes to a new labeled path
+# (see `run_tag`), never overwriting a previous configuration.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str: mm39
+region: "19"                 # single chromosome for speed (per GUIDE: chr19 until the pipeline is nailed down)
+
+## --- paths ---------------------------------------------------------------
+# section-specific scripts, and the shared analysis library (make_truth_vcf,
+# compare_vcfs, combine_summaries live in analyses/lib so the analyses/ tree is
+# self-contained)
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s01-baseline-iterative/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+# large intermediates (BAMs/VCFs, git-ignored) live under data/; small result
+# tables + dictionaries live under the section's results/ (git-tracked)
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s01-baseline-iterative
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s01-baseline-iterative/results
+
+## --- baseline simulation (SNP-only, homogeneous divergence) --------------
+# SNP-only is the deliberate BASELINE: other parameters (indels, SV, het,
+# heterogeneous divergence) are added in s02 and measured RELATIVE to this.
+covs:  ["30"]
+divs:  ["0.00", "0.02", "0.04", "0.06", "0.08", "0.10"]   # fixed divergence D
+het:   "0.005"               # single heterozygosity value (held fixed in s01)
+indel_divergence:  0.0       # BASELINE = no indels
+indel_heterozygosity: 0.0
+seeds: ["42", "43", "44"]    # 3 replicate seeds -> error bars (seed 42 done in the
+                             # single-seed first pass; 43/44 add replication)
+read_length: 150
+fragment_mean: 300
+
+## --- mapping / iteration -------------------------------------------------
+# n_iterations = number of pseudo-it rounds. Iteration 1 == single-shot baseline,
+# so the single-vs-iterative comparison is iteration 1 vs iterations 2..N.
+n_iterations: 3
+
+## --- variant callers (an AXIS: every iteration is called by all three) ----
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20      # bcftools/freebayes/GATK read MAPQ floor
+
+# GATK HaplotypeCaller is very slow on divergent sequence (~16 h/call at D=0.06),
+# and iteration SERIALIZES calls, so we scatter HaplotypeCaller across this many
+# equal intervals run in parallel on one node, then gather (turns ~16 h into ~16/N h).
+gatk_scatter: 8
+
+## --- normalization / scoring ---------------------------------------------
+# calls are compared to truth as NATIVE output normalized identically
+# (bcftools norm -f ref -m- --atomize); no post-hoc MQ/DP hard filter here
+# (filtering is explored separately in s04).
+run_tag: "base"              # label distinguishing this parameter configuration

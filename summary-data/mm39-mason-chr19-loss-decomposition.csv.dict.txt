@@ -1,0 +1,13 @@
+Data dictionary for summary-data/mm39-mason-chr19-loss-decomposition.csv
+SNP reference-bias loss decomposed by mechanism vs divergence (SNP-only run).
+
+divergence        : simulated fixed SNP divergence D
+mechanism         : caller-limited (alt evidence present, ALT frac >= 0.50;
+                    a pileup caller recovers these) vs mapping-limited (alt
+                    evidence degraded, ALT frac < 0.50; needs better mapping)
+n_sites_lost      : number of true divergence sites lost to that mechanism
+                    (overall lost count x that mechanism's share of lost sites)
+frac_of_truth_lost: n_sites_lost / n_truth_div (fraction of ALL true div sites)
+
+Provenance: overall loss from per-condition compare_vcfs summaries; the
+caller/mapping split from the site-linkage table (both SNP-only run).

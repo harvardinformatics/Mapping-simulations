@@ -1,0 +1,54 @@
+/* ============================================================================
+   REFERENCE / MASTER copy of the shared notebook layout for the
+   mapping-simulations analyses.  Goal: WIDE content with a STICKY TOC on the left.
+
+   NOTE: notebooks do NOT link this file. Each .Rmd EMBEDS its own copy of these
+   rules inside a `{=html}` raw block in the body, so the rendered HTML is a single
+   SELF-CONTAINED file you can download and open anywhere (no external stylesheet).
+   This file is the canonical source: edit the styles HERE, then paste the updated
+   block into each notebook's <style> (they are kept in sync by hand).
+
+   (The `{=html}` raw block is required -- a plain inline <style> in the markdown
+   body gets mis-parsed by pandoc as markdown; the css: output option would keep
+   the styles in a separate file instead of embedding them.)
+   ============================================================================ */
+
+/* --- wide content --------------------------------------------------------- */
+.main-container {
+  max-width: 2200px !important;
+  width: 97% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+body { font-size: 15px; line-height: 1.55; }
+
+/* wide elements (code, tables) may use the full width and scroll inside their
+   own box so the page itself never scrolls sideways */
+pre, table, .kable-table { overflow-x: auto; display: block; }
+
+/* Figures are CAPPED at a sensible size and centered, so they do NOT scale up
+   with the wide content column (chunk out.width percentages otherwise make them
+   huge on a wide page). Adjust this one value to resize all figures. */
+img {
+  max-width: 900px;
+  height: auto;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* --- sticky TOC on the left ----------------------------------------------- */
+/* rmarkdown's toc_float puts the TOC in a Bootstrap col-md-3 (as #TOC.tocify)
+   and the content in col-md-9; widen the content and slim the TOC column. */
+@media (min-width: 992px) {
+  .col-md-3 { width: 15%; }   /* slim TOC column */
+  .col-md-9 { width: 85%; }   /* even wider content */
+}
+.tocify {
+  position: fixed;
+  top: 15px;
+  width: 13%;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.tocify .tocify-item { font-size: 0.85em; }
