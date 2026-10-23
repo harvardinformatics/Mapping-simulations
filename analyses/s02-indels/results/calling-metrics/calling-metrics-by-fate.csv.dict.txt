@@ -1,0 +1,66 @@
+Data dictionary for calling-metrics-by-fate.csv
+
+WHAT THIS IS
+------------
+Per-fate summary of the static CALLING-side covariates (calling-metrics.csv), aggregated so
+each divergent SNP's local sequence/variant context can be compared across its single-shot
+(iter1) fate. Answers: "which local properties separate a caller's calling-limited sites
+(alt reads present but never emitted) from its recovered sites, and from its mapping-limited
+sites (alt reads never placed)?"
+
+The single existing calling-side metric was "unrecovered-neighbour SNPs". This table adds the
+other axes of calling-limitation: assembly-graph complexity (indel/SNP density), graph
+resolvability (homopolymer / low-complexity sequence), and genotyping complexity (het density).
+
+HOW EACH SNP'S FATE IS ASSIGNED
+-------------------------------
+From the s02 vrf-pileup ledger at iteration 1 (single-shot mapping, no iteration), per caller:
+  recovered       : the divergent genotype was emitted (recovered == 1)
+  calling-limited : not recovered, but >= 2 alt-supporting reads were present in the pileup
+                    (alt_p >= 2) -- the reads are there; the caller did not emit the variant
+  mapping-limited : not recovered, and < 2 alt reads present -- the alt reads were never
+                    placed at the site (a mapping failure, upstream of calling)
+Fate is per (caller, divergence, snp_pos); the calling metrics themselves are static (identical
+across callers/iterations) and are joined in by (divergence, snp_pos).
+
+ROWS
+----
+One row per divergence x caller x outcome x metric.
+
+FIELDS
+------
+  divergence   : simulated mean divergence condition (0.06 / 0.08 / 0.10)
+  caller       : bcftools / freebayes / gatk
+  outcome      : mapping-limited / calling-limited / recovered (see above)
+  metric       : one of the four calling covariates below
+  n            : number of divergent SNPs in this cell
+  mean         : mean of the metric over those SNPs
+  se           : standard error of the mean (sd / sqrt(n))
+
+METRICS (metric column values; all measured in a +/-100 bp window around each divergent SNP)
+  indel_density    : indel truth sites per bp        (assembly-graph complexity)
+  homopolymer_frac : fraction of the window in homopolymer runs >= 5 bp
+                     (low-complexity sequence that breaks de Bruijn assembly -- resolvability)
+  het_density      : heterozygous truth SNPs per bp  (genotyping complexity)
+  snp_density      : divergent truth SNPs per bp, incl. self (assembly-graph complexity)
+
+SOURCE
+------
+  calling metrics : analyses/s02-indels/results/calling-metrics/calling-metrics.csv
+                    (built by analyses/lib/calling_metrics.py; see its .dict.txt)
+  fates           : analyses/s02-indels/results/vrf-pileup/vrf-pileup-<caller>.csv (iter1)
+
+KEY READINGS (accompanying interpretation)
+------------------------------------------
+* homopolymer_frac is the CALLING signal and it is gatk-specific: gatk's calling-limited sites
+  sit above its recovered sites at every divergence (0.0370 vs 0.0345 at D=0.06; 0.0384 vs
+  0.0338 at 0.08; 0.0399 vs 0.0317 at 0.10 -- the gap widens with divergence). bcftools and
+  freebayes, which call straight from the pileup, show no such separation. Low-complexity
+  sequence stalls gatk's local reassembler even when the alt reads are present.
+* indel_density and snp_density are MAPPING signals: mapping-limited sites carry the highest
+  local indel and SNP density for every caller -- dense divergence / nearby indels defeat
+  placement, upstream of calling.
+* het_density is flat across fates here (het rate 0.005 is too sparse to separate outcomes).
+
+The figure calling-metrics-by-fate.png shows the D=0.10 slice (strongest); the cross-divergence
+trend is in this csv.

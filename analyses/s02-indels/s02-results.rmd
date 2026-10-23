@@ -1,0 +1,619 @@
+---
+title: "s02 — indels + iterative mapping (chr19)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file. Keep in sync
+     with analyses/lib/notebook.css. Raw {=html} block so pandoc passes it through. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+img { max-width: 900px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Does iterative (pseudo-it) mapping recover reference-biased *indels*, and how does that
+depend on the variant caller?** s02 extends s01 (SNP-only) by adding indels. Indels are the
+hard case for reference bias: a read spanning an unrepresented indel maps terribly, so the
+caller never sees it. They also make the consensus a different *length* than the reference,
+so iteration ≥2 lives in shifted coordinates and calls/reads must be lifted back to
+reference coordinates before scoring — the machinery v2/mason was built for.
+
+**Scope caveat:** this is a **single seed (42)** first pass — no error bars yet. The
+seed-to-seed variance in s01 was <0.1 pt, so the point estimates should be representative;
+replicate seeds (43, 44) are a one-line config change + rerun.
+
+Produced by `analyses/s02-indels/workflow.smk` (recovery) and `read_classification.smk`,
+config `config/config.yaml`, launched with the `run_*.sh` orchestrators.
+
+- **Truth** (`analyses/lib/make_truth_vcf.py`): homozygous divergence SNPs at rate
+  **D ∈ {0.02–0.10}** (`1|1`) **plus homozygous indels at Di = 0.12·D** (a realistic
+  indel:SNP ≈ 1:8), sizes uniform **1–10 bp**, 50/50 ins/del; heterozygous SNPs at H=0.005.
+  All sites are **disjoint and biallelic** (no multiallelic sites are simulated).
+- **Reads** (`mason_simulator`): chr19, **30×**, 150 bp paired, 300 bp fragment; + the mason
+  `-oa` truth alignment (reference coords) for read classification.
+- **Mapping & iteration:** `bwa mem`; **3 iterations**; iter1 maps to the reference
+  (single-shot), iter *k* maps to the consensus from iter *k−1*.
+- **Callers:** **gatk** HaplotypeCaller (reference-anchored reassembly, scatter-gather),
+  **bcftools** `mpileup|call` (pileup), **freebayes** (haplotype-from-alignment). MQ ≥ 20;
+  all output normalized (`bcftools norm -m- --atomize`).
+- **Liftover (the s02 machinery):** the consensus is rebuilt each iteration from the
+  **original reference + the accumulated reference-coordinate recovered calls**, so each
+  iteration has one clean ref↔consensus chain (no chain composition). Each round's calls are
+  lifted consensus→reference with **Picard `LiftoverVcf`** (CrossMap mangles ~40% of indels).
+  Recovery = the accumulated recovered set vs truth (`compare_vcfs`, SNP and indel
+  separately). Read placement is point-lifted (`compare_bams --chain`, start+end) — a full
+  re-projection (CrossMap bam) drops indel-spanning reads.
+
+```{r load}
+res <- "analyses/s02-indels/results/"
+lv  <- c("gatk", "bcftools", "freebayes")
+
+rec <- read_csv(paste0(res, "s02-indels-recovery-summary.csv")) %>%
+  filter(divergence > 0) %>%
+  mutate(caller = factor(caller, levels = lv), iteration = factor(iteration),
+         snp_recall   = div_tp / n_truth_div,
+         indel_recall = ifelse(n_truth_indel_div > 0, indel_div_tp / n_truth_indel_div, NA),
+         snp_prec     = ifelse(n_called_snp   > 0, 1 - fp / n_called_snp, NA),
+         indel_prec   = ifelse(n_called_indel > 0, 1 - fp_indel / n_called_indel, NA))
+
+het <- read_csv(paste0(res, "s02-indels-het-summary.csv")) %>%
+  mutate(caller = factor(caller, levels = lv), iteration = factor(iteration),
+         het_recall = ifelse(n_truth_het > 0, het_tp / n_truth_het, NA))   # D=0 KEPT: germline baseline
+
+rc <- read_csv(paste0(res, "s02-indels-readclass-by-iter.csv")) %>%
+  mutate(caller = factor(caller, levels = lv), iteration = factor(iteration))   # D=0 KEPT: baseline
+
+# s01 (SNP-only) SNP recall, for the "indels degrade SNP recovery" comparison
+s01 <- read_csv("analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv") %>%
+  filter(divergence > 0) %>%
+  mutate(caller = factor(caller, levels = lv), iteration = factor(iteration),
+         snp_recall_s01 = div_tp / n_truth_div)
+
+n_iter <- max(as.integer(as.character(rec$iteration)))
+cols   <- corecol(pal = "wilke", numcol = n_iter)
+callcols <- corecol(pal = "wilke", numcol = 3)
+```
+
+# Read classification
+
+The mapping-side view. Each stacked bar is the composition of read placements at one
+iteration (exact / shifted / soft-clipped / mismapped / unmapped), per caller (rows) and
+divergence (columns). Iteration ≥2 BAMs are point-lifted from consensus to reference
+coordinates before classifying.
+
+```{r readclass, out.width="100%", fig.width=11, fig.height=6.5}
+classes <- c("exact", "shifted", "clipped", "span_off", "mismapped", "diff_chr", "unmapped", "missing")
+class_cols <- c(exact = "#009E73", shifted = "#56B4E9", clipped = "#E69F00", span_off = "#F0E442",
+                mismapped = "#D55E00", diff_chr = "#CC79A7", unmapped = "#999999", missing = "#333333")
+comp <- rc %>% group_by(caller, divergence, iteration) %>%
+  summarize(across(all_of(paste0(classes, "_prop")), mean), .groups = "drop") %>%
+  pivot_longer(-c(caller, divergence, iteration), names_to = "class", values_to = "prop") %>%
+  mutate(class = factor(sub("_prop", "", class), levels = classes))
+ggplot(comp, aes(x = iteration, y = prop, fill = class)) +
+  geom_col(width = 0.85) +
+  facet_grid(caller ~ divergence) +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0)) +
+  scale_fill_manual(values = class_cols) +
+  xlab("Iteration") + ylab("Fraction of reads") +
+  bartheme() + theme(legend.position = "bottom", legend.text = element_text(size = 8),
+                     legend.title = element_blank(), legend.key.size = unit(0.4, "cm"))
+```
+
+**Interpretation.** Single-shot mapping with indels is **brutal** — at D=0.10 only ~24% of
+reads map exactly and ~65% are soft-clipped (vs ~40% clipped SNP-only in s01: the indels add
+a lot of clipping). iter1 is identical across the three caller rows (everyone maps to the
+reference — the control). Iteration then recovers the mapping dramatically (clipped → ~15%,
+exact → ~60% by iter3), because once indels are baked into the consensus, reads span them
+cleanly. **`missing` is ~0 everywhere** — the point-lift retains every read, even the
+indel-spanning ones, across the whole sweep. This falling clip rate is the mechanism behind
+the variant recovery below.
+
+# Variant recovery — SNPs vs indels
+
+## Recovery by iteration
+
+Recall (recovered / truth) by caller; at each divergence the grey connector spans the
+iterations, so its length is the iteration gain.
+
+```{r snp-recall, out.width="95%", fig.height=3.5}
+agg <- rec %>% group_by(caller, divergence, iteration) %>%
+  summarize(snp = mean(snp_recall), indel = mean(indel_recall), .groups = "drop")
+ggplot(agg, aes(x = factor(divergence), y = snp, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
+  geom_point(size = 2.6) + facet_wrap(~caller) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Simulated divergence (D)") + ylab("SNP recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+```{r indel-recall, out.width="95%", fig.height=3.5}
+ggplot(agg, aes(x = factor(divergence), y = indel, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
+  geom_point(size = 2.6) + facet_wrap(~caller) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Simulated divergence (D)") + ylab("Indel recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** For **SNPs**, iteration helps most for **gatk** (its assembler collapses
+at high divergence) — the s01 story, now with indels also present. For **indels**, the
+picture inverts: **bcftools** starts almost unable to call indels at high divergence
+(single-shot indel recall ≈ 5% at D=0.10) and iteration rescues it enormously (→ ~67%). gatk
+and freebayes recover indels far better at single-shot (~41–43%) and gain less. Iteration
+rescues whichever caller is weak — a *different* caller for each variant type.
+
+## The caller flip
+
+Single-shot (iteration 1) SNP vs indel recall, side by side, at D=0.10 — the clearest view
+of the flip.
+
+```{r caller-flip, out.width="70%", fig.height=3}
+flip <- rec %>% filter(iteration == "1", divergence == 0.10) %>%
+  select(caller, SNP = snp_recall, indel = indel_recall) %>%
+  pivot_longer(c(SNP, indel), names_to = "variant", values_to = "recall") %>%
+  mutate(variant = factor(variant, levels = c("SNP", "indel")))
+ggplot(flip, aes(x = caller, y = recall, fill = variant)) +
+  geom_col(position = position_dodge(0.7), width = 0.62) +
+  geom_text(aes(label = scales::percent(recall, accuracy = 0.1)),
+            position = position_dodge(0.7), vjust = -0.4, size = 3) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1), expand = expansion(c(0, 0.08))) +
+  scale_fill_manual(values = c(SNP = "#0072b2", indel = "#e69f00"), name = NULL) +
+  xlab(NULL) + ylab("Single-shot recall (D=0.10)") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** The single-shot weak link is **caller- and variant-specific**:
+**bcftools** (pileup) is best on SNPs but near-zero on indels; **gatk** (reference-anchored
+assembler) is weakest on SNPs but decent on indels; **freebayes** (haplotype-from-alignment)
+is good on *both*. Mechanistically: a pileup needs reads that cleanly span a variant, and at
+divergence indel-spanning reads are clipped — so bcftools has no indel evidence. gatk's
+reassembly of the active region against the reference fails when the region is too divergent,
+dropping SNPs *and* indels there. freebayes reconstructs local haplotypes from the existing
+alignments without reassembling against the reference, so it keeps pileup-like SNP robustness
+while still getting indels — at the cost of noisy over-calling (see §5).
+
+## Recovered counts & recall table
+
+```{r rec-table}
+library(kableExtra)
+tab <- rec %>%
+  mutate(cell_snp   = sprintf("%.1f%%", 100 * snp_recall),
+         cell_indel = sprintf("%.1f%%", 100 * indel_recall)) %>%
+  select(caller, divergence, iteration, cell_snp, cell_indel) %>%
+  pivot_wider(names_from = iteration, values_from = c(cell_snp, cell_indel)) %>%
+  arrange(caller, divergence)
+grp  <- tab %>% count(caller)
+disp <- tab %>% select(-caller)
+kbl <- knitr::kable(disp, align = "r",
+    col.names = c("divergence", paste0("SNP i", 1:n_iter), paste0("indel i", 1:n_iter)),
+    caption = "Recall by iteration: SNP (left) and indel (right), seed 42.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, position = "center")
+start <- 1
+for (i in seq_len(nrow(grp))) { kbl <- kbl %>% pack_rows(as.character(grp$caller[i]), start, start + grp$n[i] - 1); start <- start + grp$n[i] }
+kbl
+```
+
+## Precision
+
+Precision of the recovered set (1 − FP/called), SNP and indel, by caller.
+
+```{r precision, out.width="95%", fig.height=3.5}
+prc <- rec %>% select(caller, divergence, iteration, SNP = snp_prec, indel = indel_prec) %>%
+  pivot_longer(c(SNP, indel), names_to = "variant", values_to = "prec")
+ggplot(prc, aes(x = factor(divergence), y = prec, color = iteration, shape = variant)) +
+  geom_point(size = 2.4) + facet_wrap(~caller) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  scale_shape_manual(values = c(SNP = 16, indel = 17), name = NULL) +
+  xlab("Simulated divergence (D)") + ylab("Precision (recovered set vs truth)") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** The recall gains are not bought with false positives — precision of the
+accumulated recovered (homozygous) set stays high. (freebayes' noisy over-calling shows up in
+its raw VCF, not here, because the recovered set is filtered to homozygous calls matched to
+truth.)
+
+## Indels degrade SNP recovery
+
+Comparing single-shot (iter1) SNP recall **with indels (s02)** vs **SNP-only (s01)** — the
+indels the sample also carries make nearby SNPs harder to recover.
+
+```{r indels-vs-s01, out.width="95%", fig.height=3.5}
+cmp <- rec %>% filter(iteration == "1") %>% select(caller, divergence, s02 = snp_recall) %>%
+  left_join(s01 %>% filter(iteration == "1") %>% select(caller, divergence, s01 = snp_recall_s01),
+            by = c("caller", "divergence")) %>%
+  pivot_longer(c(s01, s02), names_to = "sim", values_to = "snp_recall") %>%
+  mutate(sim = recode(sim, s01 = "SNP-only (s01)", s02 = "with indels (s02)"))
+ggplot(cmp, aes(x = factor(divergence), y = snp_recall, color = sim)) +
+  geom_line(size = 1) + geom_point(size = 2.4) + facet_wrap(~caller) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c("SNP-only (s01)" = "#999999", "with indels (s02)" = "#d55e00"), name = NULL) +
+  xlab("Simulated divergence (D)") + ylab("Single-shot SNP recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Adding indels lowers single-shot SNP recall for every caller (the
+reads around an indel are clipped/mismapped, taking nearby SNPs down with them) — largest at
+high divergence. So ignoring indels *understates* SNP reference bias, and iteration recovers
+this indel-induced SNP loss too.
+
+## Phantom truth sites and effective recall
+
+As in s01, a fraction of "truth" SNPs were **never simulated into the reads** — the `mason -oa` truth
+BAM carries the reference base — so they are unrecoverable and belong out of the recall denominator
+(`effective_truth.py`, `run_effective_truth.sh`). The cause is **adjacent-variant collision**: mason
+(`-iv`) only applies our VCF and generates nothing de novo, but when two variants land ~1 bp apart it
+drops one during haplotype construction. **Indels make this markedly worse** — s02 phantom rates are
+~5× s01 — because every indel is another collision partner: phantom SNPs sit a median 1–2 bp from their
+nearest truth neighbor (below) vs 3–7 bp for normal sites.
+
+```{r s2-phantom-adjacency}
+read_csv("analyses/s02-indels/results/effective-truth/phantom-adjacency.csv", col_types = cols()) %>%
+  filter(divergence %in% c(0.04, 0.10)) %>%
+  transmute(divergence, group, `median NN (bp)` = median_nn_bp,
+            `within 2 bp` = scales::percent(frac_within_2bp, accuracy = 1)) %>%
+  kable(caption = "Distance to nearest other truth variant (s02): phantom SNPs sit ~1-2 bp from a neighbor.",
+        table.attr = 'class="center"')
+```
+
+```{r s2-phantom-load}
+ph <- read_csv("analyses/s02-indels/results/effective-truth/phantom-by-divergence.csv", col_types = cols())
+```
+
+```{r s2-phantom-rate, out.width="65%", fig.height=3}
+ph %>% select(divergence, `hom-div` = phantom_div_rate, het = phantom_het_rate) %>%
+  pivot_longer(-divergence, names_to = "site", values_to = "rate") %>%
+  ggplot(aes(factor(divergence), rate, color = site)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.6) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 2), name = "truth site") +
+  labs(x = "divergence (D)", y = "phantom rate", title = "Phantom (unsimulated) truth-site rate — s02 (indels)") +
+  bartheme() + theme(plot.title = element_text(size = 11))
+```
+
+**Effective SNP recall** removes the phantom floor: `div_tp / (n_truth_div · (1 − phantom_rate))` (exact,
+since phantoms are never called). Top panel = corrected recall; bottom = the lift (broken out because on
+the recall axis it is invisible). With s02's larger floor the lift is bigger than s01 — up to ~2–3 pt at
+D=0.10.
+
+```{r s2-effective-recall-fig, out.width="100%", fig.width=9, fig.height=6}
+er <- rec %>% left_join(select(ph, divergence, prate = phantom_div_rate), by = "divergence") %>%
+  mutate(prate = ifelse(is.na(prate), 0, prate),
+         nominal = div_tp / n_truth_div, effective = div_tp / (n_truth_div * (1 - prate))) %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(nominal = mean(nominal), effective = mean(effective), .groups = "drop") %>%
+  mutate(lift = 100 * (effective - nominal))
+p_eff <- ggplot(er, aes(factor(divergence), effective, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) + geom_point(size = 2.6) +
+  facet_wrap(~ caller) + scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) + scale_color_manual(values = cols, name = "iteration") +
+  labs(x = NULL, y = "effective SNP recall", title = "Effective SNP recall (phantom-corrected)") +
+  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "none")
+p_lift <- ggplot(er, aes(factor(divergence), lift, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) + geom_point(size = 2.6) +
+  facet_wrap(~ caller) + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_color_manual(values = cols, name = "iteration") +
+  labs(x = "divergence (D)", y = "lift (pt)", title = "Recall lift from phantom-accounting (effective − nominal)") +
+  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "bottom")
+patchwork::wrap_plots(p_eff, p_lift, ncol = 1)
+```
+
+# Per-variant read fate: SNPs in the presence of indels
+
+The recall numbers say indels lower SNP recovery; this section shows — per SNP, directly at the
+reference base — *how*, and compares it to the SNP-only s01 baseline. It is the project's standard
+read-fate analysis (`analyses/lib/variant_read_fate.py --aggregate`, `run_vrf_aggregate.sh`, whole
+chromosome, all callers × divergences), with **one s02-specific addition**: at iteration > 1 the
+consensus is length-shifted by recovered indels, so reads are in *consensus* coordinates — the tool
+lifts each SNP position and each read's true start into consensus coordinates via that iteration's
+`ref2cons.chain` before classifying at `p`. All definitions (covering reads by mason-truth position;
+`n_true_alt` via the `oH` haplotype tag; `f_alt` = alt aligned at `p` / reads truly carrying alt; the
+per-`p` classes) are exactly as in the s01 section. **The SNP set is s02's hom-div SNPs — we are
+tracing SNP fate in the indel context, not the fate of the indels themselves.**
+
+```{r vrf2-load}
+library(ggalluvial); library(patchwork)
+AGG2 <- "analyses/s02-indels/results/vrf-agg"                     # s02 aggregate tables
+AGG1 <- "analyses/s01-baseline-iterative/results/vrf-agg"          # s01 baseline, for comparison
+lvc  <- c("gatk", "bcftools", "freebayes")
+rdcsv <- function(dir, pat) bind_rows(lapply(list.files(dir, pat, full.names = TRUE), read_csv, col_types = cols()))
+h2 <- rdcsv(AGG2, "hcomp.csv$") %>% mutate(caller = factor(caller, levels = lvc), section = "s02 (indels)")
+h1 <- rdcsv(AGG1, "hcomp.csv$") %>% mutate(caller = factor(caller, levels = lvc), section = "s01 (SNP-only)")
+gtraj2 <- rdcsv(AGG2, "gtraj.csv$")
+```
+
+## Do indels degrade SNP mapping? (s01 vs s02)
+
+Left: fraction of *called* SNPs' reads that are clipped over `p` — the direct indel effect. Right:
+`alt maps at p` for *not-called* SNPs — how much the base is still there. Dashed = s01, solid = s02.
+
+```{r vrf2-compare, out.width="100%", fig.width=11, fig.height=4.6}
+cmp <- bind_rows(h1, h2) %>% filter(iteration == 1) %>%
+  mutate(clip_frac = clipped / n_reads, alt_frac = alt_at_p / n_reads)
+lt <- c(`s01 (SNP-only)` = "22", `s02 (indels)` = "solid")
+p_clip <- cmp %>% filter(status == "called") %>%
+  ggplot(aes(factor(divergence), clip_frac, color = caller, linetype = section, group = interaction(caller, section))) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.2) + scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+  scale_linetype_manual(values = lt, name = NULL) +
+  labs(x = "divergence (D)", y = "clipped over p", title = "Called SNPs: indels clip the reads (~2x)") + bartheme()
+p_alt <- cmp %>% filter(status == "not_called") %>%
+  ggplot(aes(factor(divergence), alt_frac, color = caller, linetype = section, group = interaction(caller, section))) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.2) + scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+  scale_linetype_manual(values = lt, name = NULL) +
+  labs(x = "divergence (D)", y = "alt maps at p", title = "Not-called SNPs: is the base still there?") + bartheme()
+patchwork::wrap_plots(p_clip, p_alt, ncol = 2, guides = "collect")
+```
+
+**Interpretation.** Left: indels roughly **double** the clipping of called-SNP reads (e.g. at D=0.10,
+~13%→~22–26%) — reads spanning a nearby unrepresented indel get soft-clipped, taking the SNP with them.
+Right: at high divergence, indels **lower** not-called `alt_at_p` for every caller (gatk 76%→53%,
+bcftools 24%→11%, freebayes 23%→13% at D=0.10) — so indels add an **alignment-limited** component on top
+of s01's assembler ceiling. **Caveat:** the *not-called set differs* between s01 and s02, so this mixes
+"same SNP, worse mapping" with "different SNPs uncalled." That's why freebayes' not-called `alt_at_p` is
+*higher* in s02 at low divergence: near an indel, freebayes tends to emit a complex/multiallelic call
+instead of the simple SNP (§ VCF inflation), so the base is present but the SNP-as-such isn't called.
+
+## Why SNPs stay uncalled (s02)
+
+```{r vrf2-uncalled, out.width="100%", fig.width=9, fig.height=4.6}
+h2 %>% filter(status == "not_called", iteration %in% c(1, 3)) %>% mutate(alt_frac = alt_at_p / n_reads) %>%
+  ggplot(aes(factor(divergence), alt_frac, color = caller, linetype = factor(iteration),
+             group = interaction(caller, iteration))) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.3) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+  scale_linetype_manual(values = c(`1` = "solid", `3` = "22"), name = "iteration") +
+  labs(x = "divergence (D)", y = "alt maps at p (fraction)", title = "Not-called SNPs in the indel context (s02, whole chromosome)") +
+  bartheme()
+```
+
+## What maps at position p (s02)
+
+```{r vrf2-hcomp, out.width="100%", fig.width=10, fig.height=5.4}
+cats <- c("alt_at_p", "ref_at_p", "err_at_p", "clipped", "deleted", "mapped_elsewhere", "unmapped")
+nice <- c(alt_at_p = "alt maps at p", ref_at_p = "ref maps at p", err_at_p = "other base (error)",
+          clipped = "clipped over p", deleted = "deleted at p", mapped_elsewhere = "mapped elsewhere", unmapped = "unmapped")
+fcol <- setNames(c("#1b7837", "#2166ac", "#92c5de", "#e08214", "#8073ac", "#b2182b", "#4d4d4d"), unname(nice[cats]))
+h2 %>% filter(divergence == 0.10) %>%
+  pivot_longer(all_of(cats), names_to = "atp", values_to = "reads") %>%
+  mutate(frac = reads / n_reads, atp = factor(nice[atp], levels = unname(nice[cats])),
+         status = recode(status, called = "called", not_called = "not called")) %>%
+  ggplot(aes(factor(iteration), frac, fill = atp)) + geom_col(width = 0.75, color = "grey30", linewidth = 0.12) +
+  facet_grid(status ~ caller) + scale_fill_manual(values = fcol, name = "what is at position p") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "iteration", y = "fraction of covering reads", title = "What maps at p — s02, D=0.10, by caller and call outcome") +
+  bartheme()
+```
+
+## Joint state across iterations (s02, G)
+
+```{r vrf2-G, out.width="100%", fig.width=17, fig.height=8.5, out.extra='style="max-width:1600px"'}
+BIN   <- c("0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0")
+fbcol <- setNames(hcl.colors(5, "Viridis"), BIN)
+Glev  <- c(paste("not called", BIN, sep = " · "), "gap", paste("called", BIN, sep = " · "))
+makeG <- function(cc, dd) {
+  g <- gtraj2 %>% filter(caller == cc, divergence == dd, fb1 %in% BIN, fb2 %in% BIN, fb3 %in% BIN)
+  lodes <- g %>% mutate(id = row_number()) %>%
+    pivot_longer(c(s1, fb1, s2, fb2, s3, fb3), names_to = c(".value", "iter"), names_pattern = "([a-z]+)([0-9])") %>%
+    transmute(id, n = n_snps, iter, status = ifelse(s == "not_called", "not called", "called"),
+              fb = factor(fb, levels = BIN), state = factor(paste(status, fb, sep = " · "), levels = Glev), is_gap = FALSE)
+  gapN <- round(0.03 * sum(g$n_snps))
+  lodes <- bind_rows(lodes, tibble(id = max(lodes$id) + 1, n = gapN, iter = c("1", "2", "3"), status = "gap",
+                     fb = factor(NA, levels = BIN), state = factor("gap", levels = Glev), is_gap = TRUE))
+  box <- lodes %>% filter(!is_gap) %>% group_by(iter, status) %>% summarize(n = sum(n), .groups = "drop") %>%
+    group_by(iter) %>% mutate(ncall = sum(n[status == "called"])) %>% ungroup() %>%
+    mutate(pos = as.integer(iter), xmin = pos - 0.22, xmax = pos + 0.22,
+           ymin = ifelse(status == "called", 0, ncall + gapN), ymax = ifelse(status == "called", ncall, ncall + gapN + n))
+  ggplot(lodes, aes(x = iter, stratum = state, alluvium = id, y = n, fill = fb, alpha = is_gap)) +
+    geom_flow() +
+    geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE, fill = "white") +
+    geom_stratum(color = NA, width = 0.44) +
+    geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE, fill = NA, color = "grey15", linewidth = 0.6) +
+    scale_alpha_manual(values = c(`FALSE` = 0.4, `TRUE` = 0), guide = "none") +
+    scale_fill_manual(values = fbcol, name = "f_alt bin", na.value = "white", na.translate = FALSE) +
+    scale_x_discrete(labels = c("i1", "i2", "i3"), expand = c(0.08, 0.08)) +
+    labs(x = NULL, y = NULL, title = sprintf("%s  D=%s", cc, format(dd))) +
+    theme_minimal(base_size = 9) + theme(panel.grid = element_blank(), axis.text.y = element_blank(), plot.title = element_text(size = 9))
+}
+conds <- expand.grid(dd = c(0.005, 0.02, 0.04, 0.06, 0.08, 0.10), cc = lvc, stringsAsFactors = FALSE)
+patchwork::wrap_plots(Map(makeG, conds$cc, conds$dd), ncol = 6, guides = "collect")
+```
+
+Within each panel the lower box is `called`, the upper `not called`; colour = `f_alt` bin. **Data
+dictionary** for `results/vrf-agg/vrf-agg-<caller>-<div>-{gtraj,hcomp}.csv` is identical to the s01
+section (hcomp = per-`p` read-fate counts summed over SNPs per iteration × call-status; gtraj = SNP
+counts per 3-iteration (status, `f_alt`-bin) trajectory).
+
+## Companion decomposition: what changes when a SNP flips to called?
+
+Exactly the s01 companion decomposition, run on the s02 (indel-context) data: for each SNP we join the
+position-centric pileup at `p` (`--pileup`, chain-lifted to consensus coords for iter>1) with the
+mismapped-in/out counts and the **off-`p` neighborhood load** (unrecovered hom-div SNPs within ±200 bp),
+then compare across the three fates (flip / stayed-called / stayed-not-called). Shared code:
+`analyses/lib/decomp_figs.R` (+ `run_vrf_pileup.sh`, `run_neighborhood.sh`); definitions are as in the
+s01 section.
+
+```{r vrf2-decomp-load}
+source("analyses/lib/decomp_figs.R")
+pairs <- decomp_load("analyses/s02-indels/results/vrf-pileup",
+                     "analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv")
+```
+
+Per-SNP **distributions** by fate (boxplots), one figure per divergence:
+
+```{r vrf2-decomp-d06, out.width="100%", fig.width=11, fig.height=11.5}
+decomp_distfig(pairs, 0.06)
+```
+
+```{r vrf2-decomp-d08, out.width="100%", fig.width=11, fig.height=11.5}
+decomp_distfig(pairs, 0.08)
+```
+
+```{r vrf2-decomp-d10, out.width="100%", fig.width=11, fig.height=11.5}
+decomp_distfig(pairs, 0.10)
+```
+
+**Mean** trend across divergences, one figure per fate:
+
+```{r vrf2-decomp-mtflip, out.width="100%", fig.width=9.5, fig.height=10.5}
+decomp_meantrend(pairs, "flip (→called)")
+```
+
+```{r vrf2-decomp-mtscall, out.width="100%", fig.width=9.5, fig.height=10.5}
+decomp_meantrend(pairs, "stayed called")
+```
+
+```{r vrf2-decomp-mtsnc, out.width="100%", fig.width=9.5, fig.height=10.5}
+decomp_meantrend(pairs, "stayed not-called")
+```
+
+The **gatk signature** — how often the pileup at `p` is already clean before the flip, and how little it
+moves:
+
+```{r vrf2-decomp-sig1}
+kable(decomp_gatksig_clean(pairs), table.attr = 'class="center"',
+      caption = "Fraction of flip SNPs whose pileup at p already looked called-ready before the flip (D=0.10).")
+```
+
+```{r vrf2-decomp-sig2}
+kable(decomp_gatksig_delta(pairs), table.attr = 'class="center"',
+      caption = "Mean absolute change in each pileup axis across the flip (D=0.10).")
+```
+
+The **assemblable neighborhood** (off `p`) and the flips by **starting `f_alt` bin**:
+
+```{r vrf2-decomp-neigh, out.width="100%", fig.width=9.5, fig.height=3.6}
+decomp_neighfig("analyses/s02-indels/results/neighborhood/neighborhood-summary.csv")
+```
+
+```{r vrf2-decomp-bybin, out.width="100%", fig.width=10, fig.height=4.2}
+decomp_bybin(pairs)
+```
+
+**Interpretation.** The mechanism is identical to s01 and unchanged by the indel context: **gatk** flips
+happen with the pileup at `p` already clean (largest "already clean" fraction, smallest per-axis change)
+— its neighborhood unrecovered-SNP load collapses (≈26→8 at D=0.10) as the consensus converges, making
+the region assemblable; **bcftools/freebayes** flips clear a contaminated pileup (mismapped-in ref reads
+leave, MAPQ rises). What indels *change* is the magnitude: the neighborhood load sits a little higher at
+each divergence (indels add local divergence the SNP-only count doesn't even show), and — importantly —
+the **phantom floor is ~5× larger** (next), because indel-dense clusters drop more adjacent SNPs.
+
+# Heterozygous site recovery
+
+Het sites (`0/1`) are scored from the raw per-iteration caller VCF vs truth (het is never
+baked into the haploid consensus).
+
+```{r het, out.width="95%", fig.height=3.5}
+hets <- het %>% group_by(caller, divergence, iteration) %>%
+  summarize(m = mean(het_recall), .groups = "drop")
+ggplot(hets, aes(x = factor(divergence), y = m, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
+  geom_point(size = 2.6) + facet_wrap(~caller) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Simulated divergence (D)") + ylab("Heterozygous-site recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+**Interpretation.** Het recall tracks divergence recall per caller and improves with
+iteration for the same reason (falling effective divergence restores the alt-allele reads),
+mirroring s01.
+
+# Caller behavior: VCF inflation & multiallelic over-calling
+
+The truth contains **no multiallelic sites** — every simulated variant is biallelic and at a
+disjoint position. Yet the callers, especially freebayes, emit many multiallelic and
+spanning-deletion (`*`) records. This is a pure calling artifact, and it's why freebayes'
+VCFs are large enough to have overrun Picard's heap during liftover.
+
+```{r composition, out.width="95%", fig.height=3.3}
+comp2 <- read_csv(paste0(res, "s02-indels-callvcf-composition.csv")) %>%
+  mutate(caller = factor(caller, levels = lv), iteration = factor(iteration),
+         complex = star + multiallelic_extra, simple = total - (star + multiallelic_extra)) %>%
+  select(caller, iteration, simple, complex) %>%
+  pivot_longer(c(simple, complex), names_to = "kind", values_to = "n") %>%
+  mutate(kind = factor(kind, levels = c("complex", "simple")))
+ggplot(comp2, aes(x = iteration, y = n / 1e6, fill = kind)) +
+  geom_col(width = 0.72) + facet_wrap(~caller) +
+  scale_fill_manual(values = c(simple = "#56b4e9", complex = "#d55e00"),
+                    labels = c(complex = "multiallelic + spanning-del (*)", simple = "biallelic"),
+                    name = NULL) +
+  scale_y_continuous(expand = expansion(c(0, 0.05))) +
+  xlab("Iteration") + ylab("Raw caller VCF records (millions)") +
+  ggtitle("Raw call composition, D=0.10 (truth = ~6.5M biallelic sites, 0 multiallelic)") +
+  bartheme() + theme(legend.position = "bottom", plot.title = element_text(size = 11))
+```
+
+**Interpretation.** All three callers' *total* counts fall with iteration (the real divergent
+SNPs get baked into the consensus, so fewer remain to call). But freebayes carries a large,
+**roughly constant floor of complex records** — ~1.4M multiallelic + spanning-deletion (`*`)
+records at *every* iteration, persisting even at iter3 where the mapping is clean. So it
+dominates once the real signal is stripped away: **~79% of freebayes' iter3 calls are complex
+artifacts**, vs ~21% for gatk and <1% for bcftools. That the floor doesn't fall with better
+mapping says the over-calling is **intrinsic to freebayes** — its haplotype windows generate
+competing overlapping candidates around het sites and error clusters — not merely a
+high-divergence mapping artifact. It does **not** affect the recovery numbers (we score the
+homozygous subset against biallelic truth), but it bloats the VCFs — it's what overran
+Picard's heap during liftover — and a light QUAL / min-alt-count filter would remove most of it.
+
+# Summary
+
+- **Iterative mapping recovers reference-biased indels — dramatically.** Indels show severe
+  single-shot bias (reads spanning an unrepresented indel are clipped, ~65% clipped at
+  D=0.10) that iteration rescues (clipped → ~15%, and indel recall climbs steeply).
+- **The caller ranking flips between SNPs and indels.** Single-shot at D=0.10: bcftools is
+  best on SNPs (84%) but near-useless on indels (4.7%); gatk is weakest on SNPs (57%) but
+  decent on indels (43%); freebayes is good on both (83% / 41%). **Iteration rescues whichever
+  caller is weak** — gatk's SNPs, bcftools' indels — so all three converge by iter3.
+- **The mechanism is about local reconstruction, not "pileup vs assembler."** A pileup
+  (bcftools) can't call indels because it needs cleanly-spanning reads → SNP-robust,
+  indel-blind. **Reference-anchored reassembly (gatk) is the specific thing that fails on
+  SNPs at high divergence** (the graph can't be built), taking indels down with it only where
+  the region is un-assemblable. Haplotype-from-alignment (freebayes) reconstructs without
+  reassembling against the reference, so it's good at both — at the cost of noisy
+  over-calling.
+- **Indels drag down SNP recovery**, so ignoring them understates SNP reference bias; and
+  het recovery behaves like divergence recovery. Iteration mitigates all of it.
+
+*Scope: chr19, seed 42, 30×, D=0.02–0.10, Di=0.12·D, indels 1–10 bp. Liftover via Picard
+(VCF) + point-lift (reads); validated end-to-end. Next: replicate seeds 43/44 for error bars;
+indel recovery stratified by size.*

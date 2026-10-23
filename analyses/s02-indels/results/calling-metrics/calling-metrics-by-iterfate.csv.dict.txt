@@ -1,0 +1,59 @@
+Data dictionary for calling-metrics-by-iterfate.csv
+
+WHAT THIS IS
+------------
+The static CALLING-side covariates (calling-metrics.csv) aggregated by each divergent SNP's
+ITERATION-transition fate, per caller. Companion to calling-metrics-by-fate.csv, which uses the
+single-shot fate. The metrics are static (unchanged across iterations), so there is no before/after;
+the question here is different: does the static sequence/variant context PREDICT which sites
+iterative mapping can rescue?
+
+HOW THE ITERATION FATE IS ASSIGNED
+----------------------------------
+From the s02 vrf-pileup ledger, per caller, comparing recovered at iteration 1 vs iteration 2
+(the primary rescue step):
+  stayed not-called : uncalled at iter1 AND iter2  (iteration could NOT rescue)
+  flip (->called)   : uncalled at iter1, called at iter2  (iteration rescued it)
+  stayed called     : called at iter1 AND iter2  (already recovered single-shot)
+  (the rare called->uncalled "lost" transition is dropped)
+Fate is per (caller, divergence, snp_pos); the static metrics are joined in by (divergence, snp_pos).
+
+ROWS
+----
+One row per caller x divergence x fate x metric.
+
+FIELDS
+------
+  caller     : bcftools / freebayes / gatk
+  divergence : 0.06 / 0.08 / 0.10
+  fate       : stayed not-called / flip (->called) / stayed called (see above)
+  metric     : one of the four static covariates (all in a +/-100 bp window per SNP)
+                 homopolymer_frac : fraction of window in homopolymer runs >= 5 bp (resolvability)
+                 indel_density    : indel truth sites per bp (assembly / mapping complexity)
+                 snp_density      : divergent truth SNPs per bp incl. self (assembly complexity)
+                 het_density      : heterozygous truth SNPs per bp (genotyping complexity)
+  n          : divergent SNPs in this cell
+  mean       : mean of the metric over those SNPs
+  se         : standard error of the mean (sd / sqrt(n))
+
+SOURCE
+------
+  calling metrics : analyses/s02-indels/results/calling-metrics/calling-metrics.csv
+  fates           : analyses/s02-indels/results/vrf-pileup/vrf-pileup-<caller>.csv (iter1 vs iter2)
+
+KEY READING (accompanying interpretation)
+-----------------------------------------
+Static context is ordered by rescuability, and the two failure axes behave differently:
+  * div-SNP density (mapping axis) PEAKS at flip(->called): divergence-dense sites are exactly the
+    ones iteration rescues, because iteration lowers the effective divergence around each site.
+  * indel_density (mapping axis) and homopolymer_frac (calling axis) are HIGHEST at
+    stayed-not-called: the indel/mapping-wall failures and the low-complexity (sequence-driven)
+    calling failures are what iteration canNOT fix -- iteration changes effective divergence, not
+    the reference's indels or low-complexity sequence. For gatk at D=0.10 homopolymer_frac declines
+    monotonically 0.0398 (stayed not-called) -> 0.0371 (flip) -> 0.0317 (stayed called).
+  * het_density is flat across fates at this het rate.
+So iteration's limit is set by static context: it clears divergence-driven loss but leaves the
+sequence/structure-driven loss behind.
+
+Shown as means with 95% CIs (decomp_callingfig_iter): the signal is in the right tail of these
+zero-inflated covariates, so a boxplot's median/IQR would hide it.

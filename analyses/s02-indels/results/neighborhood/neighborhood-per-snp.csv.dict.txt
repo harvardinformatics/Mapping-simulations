@@ -1,0 +1,44 @@
+Data dictionary for neighborhood-per-snp.csv
+
+Produced by: analyses/lib/neighborhood_assembly.py (driver: analyses/s02-indels/run_neighborhood.sh)
+
+WHAT THIS IS
+------------
+Per divergent-SNP, per-iteration measure of the local "assemblable neighbourhood": how many nearby
+truth variants are STILL UNRECOVERED (not yet called into the consensus) around each divergent SNP.
+The premise (see the tool docstring): gatk's reference-anchored reassembler fails while the local
+sequence is too divergent from the (consensus) reference; as iteration bakes neighbouring variants
+into the consensus, the local unrecovered load falls and the site becomes callable.
+
+Window: ±200 bp around each query divergent SNP (reference coordinates throughout).
+Query sites: the divergent SNPs sampled in the vrf-pileup CSVs.
+Recovered = a truth position that appears (by exact position) in that caller's accumulated recovered
+VCF (mm39_recovered.acc.vcf.gz) at that iteration. Counted by set membership, so caller
+false-positives at non-truth positions cannot drive the count negative.
+
+FIELDS
+------
+  caller                 : gatk / bcftools / freebayes
+  divergence             : mean SNP divergence condition (0.06 / 0.08 / 0.10)
+  snp_pos                : 1-based reference position of the query divergent SNP
+  iteration              : 1 / 2 / 3
+  n_neighbor_truth       : # of OTHER divergent (1|1) truth SNPs within ±200 bp (excludes the query).
+                           STATIC across iterations (a property of the truth).
+  n_unrecovered          : # of those neighbour truth SNPs NOT yet recovered by this caller at this
+                           iteration. Dynamic; falls as iteration recovers neighbours.
+  n_neighbor_truth_indel : # of divergent (1|1) truth INDELS within ±200 bp. STATIC across iterations.
+  n_unrecovered_indel    : # of those neighbour truth indels NOT yet recovered by this caller at this
+                           iteration. Dynamic. (Indel recovery is by position match of normalized
+                           truth vs recovered indels, so it is a slight LOWER BOUND on true recovery.)
+
+The *_indel columns mirror the SNP columns so the notebook can contrast the neighbour SNP-vs-indel
+unrecovered load across iterations (synthesis §5 "Indels").
+
+KEY READING (s02, pooled fraction still unrecovered = sum(unrec)/sum(neighbor_truth))
+------------------------------------------------------------------------------------
+At every caller and divergence the indel unrecovered-fraction sits ABOVE the SNP one: iteration
+clears indels LESS completely than SNPs, leaving a larger residual (~20-47% of neighbour indels vs
+3-30% of SNPs still unrecovered by iteration 3). Strongly caller-dependent: bcftools recovers almost
+no indels single-shot (~95% unrecovered at iter 1) then iteration rescues it sharply; freebayes stays
+stuck (~47%); gatk improves modestly. Iteration reduces the indel load but cannot eliminate it — that
+residual is the divergence it cannot bake into the consensus.

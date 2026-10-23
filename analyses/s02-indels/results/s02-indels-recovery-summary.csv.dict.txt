@@ -1,0 +1,6 @@
+Data dictionary for /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s02-indels/results/s02-indels-recovery-summary.csv
+Combined vcf summary: one row per (coverage, divergence) condition.
+Columns are identical to the per-condition files produced by the
+compare_vcfs.py script; see that script's *-summary.dict.txt for full
+column definitions.
+Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,n_truth_div,div_tp,div_het,div_ref_or_absent,div_other,n_truth_het,het_tp,het_hom_alt,het_ref_or_absent,het_other,fp,n_called_snp,n_truth_indel_div,indel_div_tp,indel_div_ref_or_absent,indel_div_other,n_truth_indel_het,indel_het_tp,indel_het_ref_or_absent,indel_het_other,fp_indel,n_called_indel

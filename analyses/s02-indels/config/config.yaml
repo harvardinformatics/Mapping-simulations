@@ -1,0 +1,52 @@
+#############################################################################
+# s02 — indels + coordinate liftover
+#
+# Extends s01 with indels. Because indels shift downstream coordinates, every
+# iteration>1 is in the (length-shifted) consensus coordinate system, so calls and
+# read alignments are lifted back to reference coordinates (CrossMap + a chainSwap'd
+# bcftools-consensus chain) before scoring. Measured RELATIVE to the s01 SNP-only
+# baseline. This is the single place to edit s02 parameters.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"
+
+## --- paths ---------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s02-indels/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s02-indels
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s02-indels/results
+
+## --- simulation (SNPs + indels) ------------------------------------------
+covs:  ["30"]
+divs:  ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]   # SNP divergence D (0.00 control + 0.001/0.005 near-0 anchors)
+het:   "0.005"                # SNP heterozygosity (as s01)
+# indel divergence Di = indel_snp_ratio * D (realistic indel:SNP ~ 1:8); the workflow
+# computes it per-divergence, so indels scale with divergence on a single axis.
+indel_snp_ratio: 0.12
+min_indel_size: 1
+max_indel_size: 10           # uniform 1-10 bp, 50/50 ins/del (make_truth_vcf)
+indel_heterozygosity: 0.0    # het indels: deferred to a 2nd pass
+seeds: ["42"]               # first pass = single seed; add "43","44" for error bars later
+read_length: 150
+fragment_mean: 300
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3
+
+## --- variant callers -----------------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8
+
+## --- liftover ------------------------------------------------------------
+# consensus is rebuilt each iteration from the ORIGINAL reference using the ACCUMULATED
+# reference-coordinate recovered calls, so each iteration has a single ref<->consensus
+# chain (no chain composition). chainSwap (chainswap env) flips bcftools' ref->cons chain
+# to cons->ref for CrossMap.
+chainswap_env: chainswap
+
+run_tag: "indels"

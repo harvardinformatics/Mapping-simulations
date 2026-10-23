@@ -1,0 +1,15 @@
+Data dictionary for analyses/s02-indels/results/calling-metrics/calling-metrics-0.10.csv
+
+Per divergent (1|1) SNP: local CALLING-side covariates (window +/- 100 bp).
+
+Fields:
+  divergence      : condition label
+  snp_pos         : 1-based reference position of the divergent SNP
+  het_density     : heterozygous truth SNPs per bp near p (genotyping complexity)
+  indel_density   : indel truth sites per bp near p (assembly complexity)
+  dist_to_indel   : bp to nearest indel truth site (1000000000 if none within the contig)
+  snp_density     : divergent truth SNPs per bp near p, incl. self (assembly complexity)
+  homopolymer_frac: fraction of the window in homopolymer runs >= 5 bp
+                    (low-complexity sequence that breaks de Bruijn assembly)
+
+Static per site (do not change across iterations) -> compare BY FATE downstream.
