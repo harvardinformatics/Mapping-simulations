@@ -1,0 +1,50 @@
+Data dictionary for analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv
+
+s05 mapping-vs-calling decomposition, binned by local divergence -- the REALISTIC CAPPED
+configuration (as opposed to s05-mapping-vs-calling.csv, which is the uncapped
+"characterization" config that deliberately spans the whole local-D axis).
+
+CONFIG
+------
+  field         : L20000-S1.0-C0.20  (correlation length 20 kb, sigma 1.0, weight cap 0.20)
+  mean divergence : 0.03     het : 0.005     seed : 42     coverage : 30X     region : chr19
+  cap semantics : the cap limits the divergence FIELD's mean-weighting; the realized read-scale
+                  local_d_150 can still spike slightly above 0.20 from local clustering (observed
+                  max ~0.297), so the axis runs a little past the cap but the mass sits <= 0.20.
+  source pileups: analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped/vrf-pileup-<caller>.csv
+                  (mason -oa truth BAM regenerated for this config; see run_vrf_truthbam_capped.sh
+                  and run_vrf_pileup_capped.sh)
+  localdiv      : data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/
+                  mm39-truth-locald.tsv (POS -> local_d_150)
+  produced by   : analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py --window 150
+                  --alt-min 2
+
+One row per (caller, iteration, local-D bin). Alt-evidence threshold --alt-min = 2 reads.
+
+Fields:
+  caller, iteration : condition
+  window            : local-D window half-size (bp) used for binning
+  locald_lo/hi/mid  : local-divergence bin edges + midpoint (sites/bp)
+  n_sites           : divergent truth SNPs sampled in this bin
+  n_recovered/calling/mapping : site counts by class
+  frac_recovered    : recovered / n_sites (== recall)
+  frac_calling      : CALLING-limited (alt present >= alt-min but uncalled) / n
+  frac_mapping      : MAPPING-limited (alt absent at p) / n
+  mean_f_alt        : mean (ex_alt+sh_alt)/n_true_alt = alt-support survival
+                      (low where mapping-limited: alt reads did not arrive)
+  mean_clipped_frac : mean fraction of alt-carrying reads that arrived but
+                      were soft-clipped over p
+  mean_mismapped_frac : mean fraction mismapped/diff-chr/unmapped
+  mean_alt_p/depth_p: mean alt-supporting reads / total depth in the pileup at p
+
+frac_recovered + frac_calling + frac_mapping = 1 within each bin.
+
+KEY READING
+-----------
+Even on this realistic capped config the FULL transition is present: at low local D the loss is
+gatk CALLING-limited (mapping ~0); the calling band peaks near local D ~0.145 (gatk frac_calling
+~0.46) and MAPPING-limited then takes over (~0.80 of sites by local D 0.225). The calling->mapping
+crossover (~0.16) matches the uncapped characterization config almost exactly, confirming the
+mechanism is a property of the caller + read length, not of the field configuration. The realistic
+mass sits at local D <= 0.20 (dashed line in the figure); the bins past it are sparse (n_sites
+1640 at 0.225, 67 at 0.275) but still trace the wall's onset.

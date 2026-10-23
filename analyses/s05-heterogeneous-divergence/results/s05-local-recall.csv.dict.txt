@@ -1,0 +1,23 @@
+Data dictionary for analyses/s05-heterogeneous-divergence/results/s05-local-recall.csv
+
+s05 SNP recovery binned by measured local divergence.
+One row per (field config, caller, iteration, window, local-D bin), plus
+a window='all' whole-config cross-check row per (config, caller, iteration).
+
+Fields:
+  field       : divergence-field tag L{corr_len}-S{sigma}
+  corr_len    : field correlation length (bp); scale of heterogeneity
+  sigma       : field log-amplitude; 0 = homogeneous control
+  caller      : gatk | bcftools | freebayes
+  iteration   : mapping iteration (1 = single-shot; 2..N iterative)
+  window      : local-D window half-size in bp (150 read, 500 fragment); 'all' = whole config
+  locald_lo/hi: local-divergence bin edges (sites/bp); blank for window='all'
+  locald_mid  : bin midpoint (plotting x); blank for window='all'
+  n_sites     : truth divergent (1|1) SNP sites in the bin
+  n_recovered : of those, recovered at this iteration (in the consensus diff)
+  recall      : n_recovered / n_sites
+
+Local divergence per site = divergent-site density in +/- window bp (from
+annotate_local_divergence.py). Mean divergence is FIXED at div=0.06 across all
+configs, so differences between configs are due to spatial STRUCTURE only.
+Bin edges: 0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.13, 0.16, 0.2, 0.25, 0.3, 0.4, 0.6, 1.01

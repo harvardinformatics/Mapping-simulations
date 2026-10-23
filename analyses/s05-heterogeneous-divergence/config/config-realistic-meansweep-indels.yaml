@@ -1,0 +1,63 @@
+#############################################################################
+# s05 — REALISTIC scenario across MEAN divergence, WITH INDELS.
+#
+# The indel counterpart of config-realistic-meansweep.yaml. Same REALISTIC field
+# (sigma=1, ell=20 kb, local-D cap 0.20, heterozygosity on the field) swept over
+# genome-wide MEAN divergence, but now with INDELS placed on the same field
+# (indel_on_field: true) and scored for indel recall -- so the synthesis "problem"
+# figure can show a realistic-heterogeneous INDEL recall curve alongside the SNP one.
+#
+# Uses the indel+liftover workflow (workflow-indels.smk). Writes to its OWN data branch
+# (data/s05.../realistic-indels) so it cannot collide with the SNP-only capped runs
+# (data/s05.../sim) or the uncapped interaction test (data/s05.../indels). The combined
+# recovery summary lands at results/s05-realistic-meansweep-indels-recovery-summary.csv
+# (auto-produced by the workflow's combine rule).
+#
+# Homogeneous baselines for comparison: SNP = s01, indel = s02.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"
+
+## --- paths ---------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s05-heterogeneous-divergence/realistic-indels
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/results
+
+## --- simulation (SNPs + indels) ------------------------------------------
+covs:  ["30"]
+divs:  ["0.01", "0.02", "0.03", "0.04", "0.06"]   # MEAN divergence sweep (matches the SNP-only realistic sweep)
+het:   "0.005"
+indel_snp_ratio: 0.12       # Di = 0.12 * D  (same as s02 / hetindel)
+min_indel_size: 1
+max_indel_size: 10
+indel_heterozygosity: 0.0
+seeds: ["42"]
+read_length: 150
+fragment_mean: 300
+
+## --- divergence field (REALISTIC: capped + het-on-field) -----------------
+divergence_sigma: 1.0        # amplitude (>0 = heterogeneous)
+divergence_corr_len: 20000   # correlation length (bp)
+divergence_field_seed: 42
+divergence_cap: 0.20         # realistic cap on the local-divergence field (vs uncapped hetindel)
+het_on_field: true           # heterozygosity on the same field (the realistic config)
+indel_on_field: true         # indels co-cluster with SNP divergence
+local_div_windows: "150,500"
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3
+
+## --- variant callers -----------------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8
+
+## --- liftover ------------------------------------------------------------
+chainswap_env: chainswap
+
+run_tag: "realistic-meansweep-indels"

@@ -1,0 +1,65 @@
+#############################################################################
+# s05 — heterogeneous divergence WITH indels (interaction test).
+#
+# Runs the s02 indel+liftover workflow (workflow-indels.smk) with the s05 autocorrelated
+# field applied to the truth. This first config ISOLATES the indel x heterogeneity
+# interaction:
+#   * mean SNP divergence fixed at 0.06 (matches s02 D=0.06, the homogeneous baseline);
+#   * SNP divergence heterogeneous (sigma=1, corr 20 kb), UNCAPPED (to compare cleanly
+#     against s02's uncapped homogeneous run);
+#   * INDELS placed on the SAME field (indel_on_field: true) -> indel divergence
+#     co-clusters with SNP divergence;
+#   * heterozygosity left UNIFORM (het_on_field: false) so the only thing changed vs s02
+#     is the spatial structure of divergence + indels.
+#
+# Homogeneous baseline for comparison = the existing s02 D=0.06 run (its own data tree);
+# this config writes to a separate data branch (data/s05.../indels) and results tag
+# (hetindel), so nothing collides. A later config will add the cap + het-on-field +
+# lower-mean sweep as the realistic combined scenario.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"
+
+## --- paths ---------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s05-heterogeneous-divergence/indels
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/results
+
+## --- simulation (SNPs + indels) ------------------------------------------
+covs:  ["30"]
+divs:  ["0.06"]              # single mean (matches s02 D=0.06 homogeneous baseline)
+het:   "0.005"
+indel_snp_ratio: 0.12       # Di = 0.12 * D  (same as s02)
+min_indel_size: 1
+max_indel_size: 10
+indel_heterozygosity: 0.0
+seeds: ["42"]
+read_length: 150
+fragment_mean: 300
+
+## --- divergence field (the s05 addition) ---------------------------------
+divergence_sigma: 1.0        # amplitude (>0 = heterogeneous)
+divergence_corr_len: 20000   # correlation length (bp)
+divergence_field_seed: 42
+# divergence_cap: (omitted -> uncapped, to match s02's uncapped homogeneous baseline)
+het_on_field: false          # het uniform (isolate the divergence+indel interaction)
+indel_on_field: true         # indels co-cluster with SNP divergence
+local_div_windows: "150,500"
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3
+
+## --- variant callers -----------------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8
+
+## --- liftover ------------------------------------------------------------
+chainswap_env: chainswap
+
+run_tag: "hetindel"

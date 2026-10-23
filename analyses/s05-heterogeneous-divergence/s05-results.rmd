@@ -1,0 +1,623 @@
+---
+title: "s05 — heterogeneous divergence (chr19, SNP-only, continuous autocorrelated field)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file you can
+     download and open anywhere. Keep in sync with the reference copy in
+     analyses/lib/notebook.css. Passed through pandoc verbatim via the {=html} raw
+     block (an inline <style> in the markdown body gets mis-parsed as markdown). -->
+<style>
+/* --- wide content --- */
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+/* figures capped + centered so they don't scale up with the wide content column;
+   change this one value to resize every figure */
+img { max-width: 1000px; height: auto; display: block;
+      margin-left: auto; margin-right: auto; }
+/* --- sticky TOC on the left --- */
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Real divergence is not spread evenly along the genome** — it clusters (fast/
+"accelerated-like" patches) and thins (conserved-like stretches) at the scale of
+features, genes, and recombination structure. If the *same amount* of divergence is
+concentrated instead of uniform, **how much does read mapping and SNP recovery
+change, and can iterative mapping recover the diverged patches?**
+
+The trick that makes this a clean experiment: the **genome-wide mean divergence is
+held fixed at D = 0.06** for every configuration. Only the *spatial structure*
+varies. So any difference from the homogeneous baseline is due to structure, not
+amount — and the σ = 0 configuration reproduces uniform placement exactly and serves
+as the in-section control (it is the s01-style homogeneous run at D = 0.06).
+
+Everything below is **chr19, SNP-only, 30×**, produced by `workflow.smk` and driven by
+`config/config.yaml` (`run_sweep.sh`). It is identical to the s01 pipeline except for
+how divergent sites are placed.
+
+- **The divergence field** (`analyses/lib/divergence_field.py`): a latent Gaussian field
+  is built as white noise smoothed by an FFT Gaussian kernel of standard deviation
+  **corr_len** (the correlation length = scale of heterogeneity), standardized, then
+  turned into placement weights `w(x) = exp(σ · z(x))` (σ = amplitude). Exactly
+  `round(D·L)` divergent sites are drawn **without replacement, ∝ w(x)** (Efraimidis–
+  Spirakis). Because the count is fixed, **the mean divergence is pinned by construction**
+  — the field only redistributes. Two knobs: **corr_len** (2 kb / 20 kb / 200 kb) and
+  **σ** (0 / 1 / 2). The realized 1/e autocorrelation length is ≈ 2 × corr_len (a
+  documented property of Gaussian smoothing). Het sites and (here, zero) indels stay
+  **uniform** — only fixed divergence is made heterogeneous.
+- **Configurations** (field tag `L{corr_len}-S{σ}`, `field_seed = 42` fixes *which*
+  regions are hot):
+  `L20000-S0.0` (homogeneous control), `L2000-S1.0`, `L20000-S1.0`, `L200000-S1.0`,
+  `L20000-S2.0`.
+- **Truth** (`make_truth_vcf.py --divergence-sigma/-corr-len/-field-seed`): homozygous
+  divergence SNPs at mean **D = 0.06** (`1|1`), heterozygous SNPs at **H = 0.005**
+  (`0|1`, uniform), **no indels**. Alt alleles uniform over the 3 non-reference bases.
+- **Reads / mapping / iteration / callers / scoring:** identical to s01 — `mason_simulator`
+  30× 150 bp / 300 bp fragments (seed 42); `bwa mem`; **3 iterations** (iter 1 = single-shot,
+  iter *k* maps to the iter *k−1* homozygous-SNP consensus, reference-length → no liftover);
+  **gatk / bcftools / freebayes**; recovery = cumulative consensus-vs-reference SNP diff vs
+  truth (`compare_vcfs.py`, `div_tp`).
+- **Local divergence** (`annotate_local_divergence.py`): every divergent truth site is
+  labeled with its **measured local divergence** = divergent-site density in a **±150 bp
+  (read)** and **±500 bp (fragment)** window — the divergence a read covering it actually
+  experiences. This is the binning axis for the recovery analysis. Note: averaged over
+  *sites*, local divergence exceeds the global mean because divergent sites preferentially
+  sit in dense regions (size-biasing) — the genome mean is still pinned; binning uses the
+  per-site value.
+
+**Single seed (42).** s01 showed aggregate recall over chr19's millions of sites is
+near-deterministic across seeds (SD ~0), so one seed suffices for the mean; replicate
+seeds would only add negligible error bars.
+
+```{r load}
+labs <- c(`L20000-S0.0` = "homogeneous (σ=0)",
+          `L2000-S1.0`  = "σ=1, ℓ=2kb",
+          `L20000-S1.0` = "σ=1, ℓ=20kb",
+          `L200000-S1.0`= "σ=1, ℓ=200kb",
+          `L20000-S2.0` = "σ=2, ℓ=20kb")
+lev <- names(labs)
+mkfac <- function(x) factor(labs[x], levels = labs[lev])
+callers <- c("gatk", "bcftools", "freebayes")
+
+# global recovery (mean D fixed; `field` column distinguishes configs)
+g <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-hetdiv-iterative-summary.csv") %>%
+  mutate(recall    = div_tp / n_truth_div,
+         precision = ifelse(n_called_snp > 0, 1 - fp / n_called_snp, NA),
+         caller    = factor(caller, levels = callers),
+         iteration = factor(iteration),
+         config    = mkfac(field))
+
+# recall binned by local divergence
+lr <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-local-recall.csv") %>%
+  mutate(caller = factor(caller, levels = callers), iteration = factor(iteration),
+         config = mkfac(field))
+lr_bin <- lr %>% filter(window == 150, locald_mid != "")     # binned rows, read scale
+lr_bin$locald_mid <- as.numeric(lr_bin$locald_mid)
+
+# landscape + local-D distribution
+land <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-landscape.csv") %>%
+  filter(valid == 1) %>% mutate(config = mkfac(field))
+dist <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-localdist.csv") %>%
+  filter(window == 150, !grepl(">", locald_mid)) %>%
+  mutate(locald_mid = as.numeric(locald_mid), config = mkfac(field))
+
+cols_it  <- corecol(pal = "wilke", numcol = 3)              # 3 iterations
+cols_cfg <- corecol(pal = "wilke", numcol = 5)              # 5 configs
+```
+
+# The divergence landscape {#landscape}
+
+The two knobs produce landscapes ranging from flat (the control) to sharply spiked.
+The panels below show local divergence (divergent sites per mappable base, 50 kb bins)
+along chr19. The **homogeneous control is flat at ≈ 0.06**; raising σ deepens the
+peaks and troughs; changing the correlation length changes how *wide* the hot/cold
+runs are (short ℓ = fine texture, long ℓ = broad blocks). The dashed line is the fixed
+mean D = 0.06 that **all** panels share.
+
+```{r landscape, fig.width=13, fig.height=8}
+ggplot(land, aes(bin_center/1e6, local_divergence)) +
+  geom_hline(yintercept = 0.06, linetype = "dashed", color = "grey50") +
+  geom_line(color = cols_cfg[3], linewidth = 0.3) +
+  facet_wrap(~config, ncol = 1, strip.position = "right") +
+  labs(x = "chr19 position (Mb)", y = "local divergence (sites / mappable bp, 50 kb bins)") +
+  bartheme()
+```
+
+*Interpretation.* Same mean, very different genomes as a read sees them. Under σ = 1 the
+local divergence swings from near 0 to ~0.2–0.3 over the chromosome; under σ = 2 the
+peaks exceed 0.4. Correlation length sets the width of those excursions — `ℓ=2kb` is
+finely mottled, `ℓ=200kb` is a few broad blocks — while keeping the same genome-wide
+average. N-gap bins (<50 % mappable) are dropped.
+
+## How heterogeneity spreads the divergence a read experiences
+
+The same information per *site*: the distribution of local divergence at the read
+(±150 bp) scale. The control is a narrow spike near the mean; heterogeneity spreads a
+large fraction of sites into high–local-divergence territory where mapping fails.
+
+```{r localdist, fig.width=12, fig.height=5}
+ggplot(dist, aes(locald_mid, n_sites/1e3, color = config)) +
+  geom_vline(xintercept = 0.06, linetype = "dashed", color = "grey50") +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = cols_cfg, name = NULL) +
+  labs(x = "per-site local divergence (±150 bp)", y = "truth divergent sites (thousands)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+```{r hi-frac}
+hi <- dist %>% group_by(config) %>%
+  summarize(`% sites, localD>0.15` = round(100*sum(n_sites[locald_mid>0.15])/sum(n_sites),1),
+            `% sites, localD>0.25` = round(100*sum(n_sites[locald_mid>0.25])/sum(n_sites),1),
+            .groups="drop")
+knitr::kable(hi, caption="Fraction of divergent sites sitting in high–local-divergence neighborhoods.")
+```
+
+*Interpretation.* The control puts **0 %** of sites above local divergence 0.15; the σ = 1
+configs put **33–38 %** there, and σ = 2 puts **~65 %**. This is the whole story in one
+number: heterogeneity relocates a third to two-thirds of all divergent sites into
+neighborhoods far more diverged than the 0.06 mean — neighborhoods where, as the next
+section shows, recovery collapses. Note also that **longer correlation length pushes
+*more* sites into the high tail** (ℓ=200kb 38.5 % vs ℓ=20kb 33.2 %): broad hot blocks
+raise the local density every site inside them sees.
+
+# Recovery is governed by *local* divergence {#recovery}
+
+Binning each divergent site by its local divergence and asking what fraction was
+recovered turns the aggregate into a mechanism. Below, the reference configuration
+(σ = 1, ℓ = 20 kb); lines are iterations.
+
+```{r recall-headline, fig.width=13, fig.height=5}
+ref <- lr_bin %>% filter(field == "L20000-S1.0")
+ggplot(ref, aes(locald_mid, recall, color = iteration)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1) +
+  scale_color_manual(values = cols_it, name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "local divergence (±150 bp)", y = "SNP recall",
+       title = "σ=1, ℓ=20 kb (mean D=0.06)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* Two distinct failure shapes. **gatk erodes gradually** — its
+reference-anchored reassembler starts losing sites from local divergence ~0.06 upward.
+**bcftools and freebayes hold a ~99.7 % plateau** until ~0.13–0.15 local divergence,
+then **fall off a cliff**. Above local divergence ~0.25 *all three* callers recover
+essentially nothing, even at iteration 3: these are the diverged cores where reads no
+longer map. **Iteration lifts the curves** (most for gatk, in the gradual-erosion
+zone) but **cannot rescue the cores** — the cliff moves only slightly.
+
+## The same curves across configurations
+
+Overlaying iter-3 recall-vs-local-divergence for all configs shows something important:
+at **matched local divergence the curves nearly coincide**. The correlation length and
+amplitude barely change *how recoverable a given local divergence is* — what they change
+is **how many sites land at each local divergence** (previous section).
+
+```{r recall-configs, fig.width=13, fig.height=5}
+i3 <- lr_bin %>% filter(iteration == 3)
+ggplot(i3, aes(locald_mid, recall, color = config)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = cols_cfg, name = NULL) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "local divergence (±150 bp)", y = "SNP recall (iteration 3)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* The recovery-vs-local-divergence relationship is close to a **property
+of the mapper/caller**, not of the landscape: a site at local divergence 0.2 recovers
+about the same whether it sits in a 2 kb patch or a 200 kb block. The one systematic gap
+is at the transition, where **`ℓ=200kb` recovers slightly *worse* at matched local
+divergence** — the anchoring/spillover effect (below).
+
+# Why recovery fails: mapping vs. calling {#mechanism}
+
+The recall curves above *describe* the wall; this section says **what breaks at it**.
+Reference bias is really two distinct failures, and they have different cures:
+
+- **mapping-limited** — the alt-carrying reads never arrive at the site (they soft-clip
+  over it, mismap elsewhere, or don't map at all), so the alt allele is **absent from the
+  pileup** and *no* caller could emit it; versus
+- **calling-limited** — the alt allele **is present** in the pileup with real read support,
+  but the caller does not emit the variant (an assembler/genotyper failure).
+
+Using the per-site read-fate ledger + position pileup (`variant_read_fate.py --pileup`,
+truth alignment regenerated deterministically; 50 k sampled sites on the reference config
+L20000-S1.0), every unrecovered divergent site is classed as one or the other: unrecovered
+with ≥ 2 alt reads in the pileup = calling-limited, else mapping-limited. The stacked bands
+below sum to 1 in each local-divergence bin.
+
+```{r load-mvc}
+mvc <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling.csv") %>%
+  filter(window == 150, iteration %in% c(1,3), n_sites > 50, locald_mid <= 0.5) %>%
+  mutate(caller = factor(caller, levels = callers),
+         iteration = factor(paste0("iteration ", iteration)))
+mvc_long <- mvc %>%
+  select(caller, iteration, locald_mid, frac_recovered, frac_calling, frac_mapping) %>%
+  pivot_longer(starts_with("frac_"), names_to = "class", values_to = "frac") %>%
+  mutate(class = factor(recode(class,
+                               frac_recovered = "recovered",
+                               frac_calling   = "calling-limited",
+                               frac_mapping   = "mapping-limited"),
+                        levels = c("recovered", "calling-limited", "mapping-limited")))
+mvc_cols <- c(recovered = "#4477AA", `calling-limited` = "#CCBB44", `mapping-limited` = "#AA3377")
+```
+
+```{r mvc-fig, fig.width=13, fig.height=7}
+ggplot(mvc_long, aes(locald_mid, frac, fill = class)) +
+  geom_area(color = "white", linewidth = 0.1) +
+  scale_fill_manual(values = mvc_cols, name = NULL) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_grid(iteration ~ caller) +
+  labs(x = "local divergence (±150 bp)", y = "fraction of divergent truth sites") +
+  bartheme() + theme(legend.position = "top")
+```
+
+*Interpretation.* The two callers fail for **different reasons**, and this is the whole
+explanation of the two recall shapes:
+
+- **bcftools / freebayes are essentially never calling-limited** (the amber band is absent).
+  Given the alt in the pileup they always call it; their entire loss is the **mapping-
+  limited** band appearing abruptly at local divergence ~0.15 — i.e. their cliff *is* the
+  alt reads clipping/mismapping out of the pileup. Corroborated by the ledger: alt-support
+  survival (f_alt) and pileup alt-depth collapse across exactly that band (f_alt 0.82→0.05,
+  ~26→1 alt reads from local D 0.115→0.225).
+- **gatk adds a calling-limited deficit** (a wide amber band from local divergence ~0.05):
+  its reassembler fails to emit variants that *are* present in the pileup (f_alt still 0.6–
+  0.9, 19–29 alt reads). That extra band is exactly why gatk sits below the pileup callers
+  throughout the recoverable range. Past ~0.18 gatk also enters the mapping-limited regime.
+- **The wall (local divergence ≳ 0.25) is mapping-limited for all three** — reads carrying
+  the alt stop arriving entirely (f_alt→0), so it is a property of the aligner, not the
+  caller. This is why the callers converge to ~0 together.
+
+**Iteration acts on both failures.** From iteration 1 → 3 the mapping-limited band shrinks
+(the consensus absorbs recovered divergence, lowering *effective* local divergence, so more
+alt reads place — e.g. bcftools at local D 0.18: recall 0.59 → 0.88, mapping-limited 0.40 →
+0.12), and for gatk the calling-limited band shrinks too (the improved consensus also makes
+the reassembly tractable). What iteration cannot move is the high–local-divergence core,
+which stays mapping-limited at every iteration — the reads never map there to begin with.
+
+# Heterogeneity vs. the homogeneous control, at fixed mean {#hetvshom}
+
+Same mean divergence, drastically different recovery. The bars compare each config's
+global recall to the homogeneous control.
+
+```{r global-bars, fig.width=13, fig.height=5}
+gg <- g %>% filter(iteration %in% c("1","3"))
+ggplot(gg, aes(config, recall, fill = iteration)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_hline(data = g %>% filter(field=="L20000-S0.0", iteration=="3"),
+             aes(yintercept = recall), linetype = "dashed", color = "grey40") +
+  scale_fill_manual(values = cols_it[c(1,3)], name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = NULL, y = "global SNP recall") +
+  bartheme() + theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+```{r global-tab}
+gt <- g %>% filter(iteration %in% c("1","3")) %>%
+  select(config, caller, iteration, recall) %>%
+  pivot_wider(names_from = iteration, values_from = recall, names_prefix = "iter") %>%
+  mutate(across(c(iter1, iter3), ~round(100*.,1))) %>%
+  arrange(caller, config)
+knitr::kable(gt, caption = "Global SNP recall (%), iteration 1 vs 3. Dashed line in the figure = the homogeneous control's iter-3 recall.")
+```
+
+*Interpretation.* At the **same mean D = 0.06** where the homogeneous control gives
+bcftools/freebayes **~99.7 %**, clustering drops them to **~80 %** (σ = 1) and **~44 %**
+(σ = 2); gatk falls from ~94 % to ~69 % and ~38 %. **Reporting only mean divergence badly
+understates reference bias** whenever divergence is spatially structured — which it always
+is in real genomes. Iteration still helps (gatk most), but never closes the gap to the
+control, because the diverged cores are unrecoverable.
+
+# What drives it: amplitude, scale, and spillover {#drivers}
+
+**Amplitude (σ) dominates.** Going σ = 1 → 2 roughly halves recall (e.g. bcftools 80 % →
+44 %). Amplitude controls how *extreme* the hot spots get, and recovery is a steeply
+falling function of local divergence, so deeper spikes remove disproportionately more
+sites.
+
+**Correlation length has a smaller, two-part effect.** From the sections above:
+
+1. *Distribution effect (larger).* Longer ℓ builds broader hot blocks, which raise the
+   local density every interior site sees, pushing more sites into the high-local-
+   divergence tail (38.5 % vs 33.2 % above 0.15 for ℓ=200kb vs 20kb) → lower global recall.
+2. *Anchoring / spillover effect (smaller).* At *matched* local divergence, sites in
+   **larger** hot blocks recover slightly worse, because there is no nearby low-divergence
+   sequence to anchor reads. The panel isolates this: iter-3 recall in the transition
+   zone (local divergence 0.15–0.25) by correlation length.
+
+```{r spillover, fig.width=9, fig.height=5}
+sp <- lr_bin %>%
+  filter(iteration == 3, sigma == 1, locald_mid > 0.10, locald_mid < 0.30) %>%
+  mutate(corr = factor(paste0("ℓ=", as.integer(corr_len)/1000, "kb"),
+                       levels = c("ℓ=2kb","ℓ=20kb","ℓ=200kb")))
+ggplot(sp, aes(locald_mid, recall, color = corr)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.2) +
+  scale_color_manual(values = corecol(pal="wilke", numcol=3), name = NULL) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "local divergence (±150 bp)", y = "SNP recall (iteration 3)",
+       title = "Anchoring: at matched local divergence, broad hot blocks recover worse") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* The three correlation lengths nearly overlap — confirming recovery is
+mostly a function of local divergence, not block size — but in the transition zone
+`ℓ=200kb` sits a few points below `ℓ=2kb`/`ℓ=20kb`. A diverged site flanked by more
+diverged sequence (a big block) loses the read-anchoring help that a diverged site in a
+small patch still gets from its conserved surroundings. This is the boundary/spillover
+signal, small at chr-scale aggregate but mechanistically real.
+
+# Adding indels: is the effect still just redistribution? {#indels}
+
+Everything so far is SNP-only. Real genomes also differ by indels, which are the worst
+mapping case (a read spanning an unrepresented indel clips or mismaps). So the natural
+worry is an **interaction**: if indels *co-cluster* with SNP divergence, do hot regions
+become disproportionately unrecoverable — worse than their local divergence alone would
+predict?
+
+To test it, indels were placed on the **same field** as the SNP divergence (`make_truth_vcf
+--indel-on-field`; indel divergence Di = 0.12·D, sizes 1–10 bp), at mean D = 0.06, run
+through the full indel-aware liftover pipeline (`workflow-indels.smk`: consensus rebuilt from
+the reference + accumulated recovered calls, Picard LiftoverVcf back to reference coordinates
+— identical to s02). Recovery (SNP and indel separately) is then binned by **local**
+divergence and overlaid on the **homogeneous** s02 curve (recall vs **mean** divergence). The
+separability null: heterogeneous recall at local divergence *x* should equal homogeneous
+recall at mean divergence *x*.
+
+```{r load-hetindel}
+hi <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-hetindel-local-recovery.csv") %>%
+  filter(iteration == 3, n_sites > 500) %>%
+  mutate(caller = factor(caller, levels = callers),
+         vtype  = factor(ifelse(vtype == "snp", "SNP", "indel"), levels = c("SNP", "indel")))
+s02 <- read_csv("analyses/s02-indels/results/s02-indels-recovery-summary.csv") %>%
+  filter(iteration == 3, divergence > 0) %>%
+  mutate(caller = factor(caller, levels = callers),
+         SNP = div_tp / n_truth_div, indel = indel_div_tp / n_truth_indel_div) %>%
+  select(caller, divergence, SNP, indel) %>%
+  pivot_longer(c(SNP, indel), names_to = "vtype", values_to = "recall") %>%
+  mutate(vtype = factor(vtype, levels = c("SNP", "indel")))
+ov_cols <- c(`homogeneous (vs mean D)` = "grey30",
+             `heterogeneous (vs local D)` = corecol(pal = "wilke", numcol = 5)[3])
+```
+
+```{r hetindel-fig, fig.width=13, fig.height=7}
+ggplot() +
+  geom_line(data = s02, aes(divergence, recall, color = "homogeneous (vs mean D)"),
+            linewidth = 0.5) +
+  geom_point(data = s02, aes(divergence, recall, color = "homogeneous (vs mean D)"),
+             size = 2) +
+  geom_line(data = hi, aes(locald_mid, recall, color = "heterogeneous (vs local D)"),
+            linewidth = 1) +
+  scale_color_manual(values = ov_cols, name = NULL) +
+  scale_y_continuous(labels = scales::percent) +
+  coord_cartesian(xlim = c(0, 0.15)) +
+  facet_grid(vtype ~ caller) +
+  labs(x = "divergence  (MEAN for homogeneous points, LOCAL for the heterogeneous line)",
+       y = "recall (iteration 3)") +
+  bartheme() + theme(legend.position = "top")
+```
+
+*Interpretation.* **The heterogeneous line lies on top of the homogeneous points** — for
+both SNPs and indels, all three callers, across the overlapping range. Recovery under
+clustered divergence-with-indels at local divergence *x* is the same as recovery in a
+homogeneous genome at mean divergence *x*. **The interaction hypothesis is refuted: there is
+no super-additive penalty.** (The large *global* gap — bcftools indel recall 62% here vs 84%
+homogeneous at the same mean — is entirely the redistribution effect: co-clustering moves a
+third of all sites into high-local-divergence neighborhoods where the shared curve is low.)
+
+Why even indels are separable: because they sit on the **same field** as the SNPs, a
+locally-hot region has the same indel:SNP ratio as a homogeneous genome at that divergence —
+so it is statistically indistinguishable from "homogeneous at the local rate," and the
+homogeneous curve predicts it. (An interaction would require indels to cluster *independently*
+of, or more tightly than, the SNPs.)
+
+**This is the section's most general statement.** Recovery under *any* divergence landscape is
+predictable from just two ingredients: the **homogeneous recall-vs-divergence curve** (a
+property of the mapper + caller, measured once in s01/s02) and the **local-divergence
+distribution** of the landscape. No new simulation is needed per landscape — heterogeneity
+only reshapes *where on the curve* the genome's sites sit.
+
+# A realistic scenario {#realistic}
+
+The sweep above deliberately spans a wide, partly **unrealistic** range: mean D = 0.06
+is already a fairly diverged pair, and the log-normal field (especially σ = 2) drives
+local divergence to 0.4–0.6 — beyond substitution saturation, i.e. sequence that would
+not be orthologous/alignable at all. That set is best read as a **characterization of
+the failure curve** and a way to locate the ~25 % local-divergence *mapping wall*, not
+as a biological genome.
+
+This section is the **biologically-defensible scenario**, produced by
+`config-realistic.yaml`:
+
+- **lower mean divergence (D = 0.03)**,
+- **moderate amplitude (σ = 1)**,
+- a **cap on local divergence at 0.20** — the field's hot regions are bounded to the
+  realistic "fast-evolving" range instead of saturating (validated: per-site local
+  divergence at read scale has **p95 ≈ 0.19**, and only **3.3 %** of sites exceed 0.20;
+  uncapped, the same field reached 0.57), and
+- **heterozygosity placed on the same field as divergence** (`het_on_field: true`) — so
+  diversity co-varies with divergence, as in real genomes, rather than being uniform.
+
+It includes its own **mean-0.03 homogeneous control**.
+
+```{r load-realistic}
+labr <- c(`L20000-S0.0` = "homogeneous", `L20000-S1.0-C0.20` = "realistic\n(cap 0.20, het on field)")
+gr <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-realistic-iterative-summary.csv") %>%
+  mutate(recall = div_tp / n_truth_div, caller = factor(caller, levels = callers),
+         iteration = factor(iteration), config = factor(labr[field], levels = labr))
+lrr <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-realistic-local-recall.csv") %>%
+  filter(window == 150, locald_mid != "") %>%
+  mutate(caller = factor(caller, levels = callers), iteration = factor(iteration),
+         locald_mid = as.numeric(locald_mid), config = factor(labr[field], levels = labr))
+```
+
+```{r realistic-bars, fig.width=12, fig.height=4.5}
+ggplot(gr %>% filter(iteration %in% c("1","3")), aes(config, recall, fill = iteration)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = cols_it[c(1,3)], name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = NULL, y = "global SNP recall", title = "Realistic scenario (mean D = 0.03)") +
+  bartheme() + theme(axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+```{r realistic-tab}
+grt <- gr %>% filter(iteration %in% c("1","3")) %>%
+  mutate(config = gsub("\n"," ",config)) %>%
+  select(config, caller, iteration, recall) %>%
+  pivot_wider(names_from = iteration, values_from = recall, names_prefix = "iter") %>%
+  mutate(across(c(iter1, iter3), ~round(100*.,1))) %>% arrange(caller, config)
+knitr::kable(grt, caption = "Realistic scenario: global SNP recall (%), iteration 1 vs 3.")
+```
+
+*Interpretation.* Even this **modest, capped** heterogeneity measurably reduces recovery
+relative to the homogeneous control at the same mean: at iteration 3, gatk falls
+**98.2 % → 87.1 %** (−11 pt) and bcftools/freebayes **99.8 % → ~96 %** (−3.6 pt). The
+effect is real but **not catastrophic** — capping the spikes removes the collapse seen
+in the σ = 2 stress test. Iteration recovers a meaningful share (gatk **+5 pt**,
+bcftools **+3.3 pt** from iter 1 → 3). So the qualitative conclusions survive into the
+realistic regime: **clustered divergence costs recall even at a low mean, gatk is hit
+hardest, and iteration helps but does not fully close the gap.**
+
+```{r realistic-curve, fig.width=13, fig.height=4.5}
+ggplot(lrr %>% filter(field == "L20000-S1.0-C0.20"),
+       aes(locald_mid, recall, color = iteration)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1) +
+  scale_color_manual(values = cols_it, name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "local divergence (±150 bp)", y = "SNP recall",
+       title = "Realistic config: recall vs local divergence (capped at 0.20)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* Same recall-vs-local-divergence shape as the characterization sweep —
+because it is a property of the mapper/caller — but the cap keeps the population of sites
+within the recoverable/transition range, so the genome-wide damage is bounded. The curve
+simply does not extend into the ">0.25, everything dies" regime, because the field no
+longer puts sites there.
+
+## Across mean divergence
+
+The single realistic point becomes a curve by sweeping the genome-wide **mean** divergence at
+the fixed realistic settings (σ=1, ℓ=20 kb, cap 0.20, het on field) — "reference bias vs
+divergence, realistic," laid against the **homogeneous** baseline (s01). We do not re-sweep
+σ/ℓ (the characterization already mapped those); only the mean varies, because that is the
+primary biological axis.
+
+```{r load-meansweep}
+ms <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-iterative-summary.csv") %>%
+  filter(divergence > 0) %>%
+  mutate(recall = div_tp / n_truth_div, caller = factor(caller, levels = callers),
+         iteration = factor(iteration))
+s01m <- read_csv("analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv") %>%
+  filter(divergence > 0) %>%
+  mutate(recall = div_tp / n_truth_div, caller = factor(caller, levels = callers)) %>%
+  group_by(caller, divergence, iteration) %>%      # average over s01's replicate seeds
+  summarize(recall = mean(recall), .groups = "drop") %>% mutate(iteration = factor(iteration))
+ms_cols <- c(homogeneous = "grey35",
+             `realistic heterogeneous` = corecol(pal = "wilke", numcol = 5)[1])
+```
+
+```{r meansweep-fig, fig.width=13, fig.height=4.5}
+ggplot() +
+  geom_line(data = s01m %>% filter(iteration == 3),
+            aes(divergence, recall, color = "homogeneous"), linewidth = 0.8) +
+  geom_point(data = s01m %>% filter(iteration == 3),
+             aes(divergence, recall, color = "homogeneous"), size = 1.6) +
+  geom_line(data = ms %>% filter(iteration == 1),
+            aes(divergence, recall, color = "realistic heterogeneous"),
+            linewidth = 0.5, linetype = "dashed") +
+  geom_line(data = ms %>% filter(iteration == 3),
+            aes(divergence, recall, color = "realistic heterogeneous"), linewidth = 1) +
+  geom_point(data = ms %>% filter(iteration == 3),
+             aes(divergence, recall, color = "realistic heterogeneous"), size = 1.6) +
+  scale_color_manual(values = ms_cols, name = NULL) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "mean SNP divergence", y = "SNP recall",
+       caption = "solid = iteration 3; dashed = realistic heterogeneous single-shot (iter 1)") +
+  bartheme() + theme(legend.position = "top")
+```
+
+*Interpretation.* Reference bias grows with mean divergence, and at every mean the **realistic
+heterogeneous** genome loses more than the homogeneous one — the gap widening with divergence
+(at mean 0.06, iteration 3: bcftools ~85 % vs ~100 % homogeneous; gatk ~72 % vs ~94 %). So even
+a *capped, low-amplitude* landscape with correlated heterozygosity carries a real, divergence-
+scaling reference-bias cost that a mean-divergence-only view misses. The dashed line (single-
+shot) vs the solid (iterated) is the size of the fix: iteration recovers a growing share as
+divergence rises, most for gatk, but does not fully close the gap to the homogeneous ceiling.
+
+# Summary {#summary}
+
+- **Heterogeneity matters enormously at fixed mean.** Concentrating the same D = 0.06 into
+  an autocorrelated field drops recall from the homogeneous ~99.7 % (bcftools/freebayes)
+  to ~80 % (σ=1) or ~44 % (σ=2); gatk ~94 % → ~69 % / ~38 %. **Mean divergence alone is a
+  poor predictor of reference bias.**
+- **Recovery is governed by *local* divergence.** Recall is ~99.7 % up to local divergence
+  ~0.13 (pileup callers) then cliffs; gatk erodes from ~0.06. Above ~0.25 local divergence,
+  nothing is recovered even at iteration 3 — the diverged cores are the hard floor.
+- **The wall is two different failures.** bcftools/freebayes loss is ~entirely *mapping-
+  limited* (alt reads clip/mismap out of the pileup) — their cliff at ~0.15 is evidence
+  vanishing, not a caller flaw. gatk adds a *calling-limited* deficit from ~0.05 (its
+  reassembler drops variants that are present in the pileup), which is why it trails the
+  pileup callers throughout. The ~0.25 core is mapping-limited for all three (an aligner
+  limit). Iteration shrinks both bands — lower effective divergence → reads place and the
+  reassembly becomes tractable — but cannot move the un-mappable core.
+- **Amplitude > correlation length.** σ (how extreme the spikes) dominates; ℓ (their width)
+  acts mainly by reshaping the local-divergence distribution, plus a small anchoring effect
+  where broad hot blocks recover worse than small hot patches at matched local divergence.
+- **The effect is separable — even with indels.** Heterogeneous recall vs *local* divergence
+  coincides with homogeneous recall vs *mean* divergence, for SNPs and indels co-clustered on
+  the same field. There is no super-additive interaction; heterogeneity only *redistributes*
+  sites along the local-divergence axis. Consequence: recovery under any landscape is
+  predictable from the homogeneous recall-vs-divergence curve plus the local-divergence
+  distribution — no per-landscape simulation needed.
+- **Iteration helps but cannot rescue the cores** — it lifts the gradual-erosion zone
+  (gatk most), never the cliff.
+- **In a realistic regime the effect is bounded but persists.** At mean D = 0.03 with
+  capped local divergence (≤0.20) and heterozygosity on the same field, recall still
+  drops vs the homogeneous control — gatk −11 pt, pileup callers −3.6 pt at iteration 3 —
+  and iteration recovers only part of it. So the finding is not an artifact of the extreme
+  stress-test settings.
+- **General reference-bias implication.** The high–local-divergence tail is where recovery
+  collapses, so *any* downstream analysis that leans on the diverged / fast-evolving
+  regions of a genome is preferentially starved of exactly the sequence it needs, and
+  iteration only partially restores it. "Accelerated" / "conserved" here are just the high
+  / low tails of the continuous local-divergence axis (a post-hoc reading of the field, no
+  labeled classes injected). PhyloAcc-style acceleration detection is one such downstream
+  consumer, not the point of the analysis.
+
+*Data tables (with dictionaries) in `results/`: `s05-hetdiv-iterative-summary.csv` (global
+recovery), `s05-local-recall.csv` (recall by local divergence), `s05-landscape.csv` +
+`s05-localdist.csv` (the landscapes). Fixed local-divergence bin edges are recorded in the
+`s05-local-recall.csv` dictionary.*

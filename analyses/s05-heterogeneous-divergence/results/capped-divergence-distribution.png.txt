@@ -1,0 +1,33 @@
+Figure: capped-divergence-distribution.png  (QC diagnostic for the realistic capped config)
+
+CONFIG: field L20000-S1.0-C0.20, mean divergence 0.03, het 0.005, seed 42, chr19, 30X.
+The field weight cap is 0.20 (limits the divergence FIELD's mean-weighting, NOT a hard clip on
+realized read-scale divergence).
+
+PURPOSE: verify the capped simulation behaves as intended and to justify the mvc plot's x-axis
+range. Two panels, both over the actual simulated data (no modeling).
+
+Panel A -- PER-READ divergence: edit distance (BAM NM tag) / read length, for a 15% sample of
+  primary alignments in the mason -oa truth BAM
+  (data/s05-heterogeneous-divergence/varfate/L20000-S1.0-C0.20/truth.oa.bam).
+  NM counts truth-variant mismatches+indels the read carries, plus mason's simulated sequencing
+  errors (so the mean sits a touch above the field mean). n = 1,840,628 reads.
+    mean 0.038 | p50 0.027 | p90 0.087 | p95 0.113 | p99 0.193 | p99.9 0.253 | max 0.333
+    fraction of reads with divergence > 0.20 : 0.74%
+  Smooth right-skewed decay centered near the field mean; no pile-up/hard wall -> the cap is not
+  clipping reads, it is shaping the field.
+
+Panel B -- PER-SITE read-scale local divergence: local_d_150 (divergent sites in a +/-150 bp
+  window / 150) at every divergent truth SNP, from
+  data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv.
+  n = 1,842,600 sites. Conditioned on being AT a divergent SNP, so the mean is higher than the
+  field mean.
+    mean 0.069 | p50 0.053 | p90 0.150 | p95 0.187 | p99 0.223 | p99.9 0.253 | max 0.297
+    fraction of sites with local divergence > 0.20 : 2.93%  ( > 0.25 : 0.10% )
+  The discrete "comb" spacing is just integer-SNP-count / 150.
+
+READING: 97% of divergent sites (and 99.3% of reads) have read-scale divergence <= 0.20, i.e. the
+realistic mass sits at/under the field cap. A thin, genuine tail (dense clusters the autocorrelated
+field produces) reaches ~0.25-0.30, but only 0.1% of sites exceed 0.25. The mapping-vs-calling
+figure's x-axis is therefore drawn to 0.25 (99.9th percentile); values beyond that are a <0.1%
+tail, not a truncation of substantive data.

@@ -1,0 +1,15 @@
+Data dictionaries for analyses/s05-heterogeneous-divergence/results/s05-realistic-{landscape,localdist}.csv
+
+landscape.csv -- local divergence along chr19 in 50000-bp bins:
+  field/corr_len/sigma : divergence-field config (mean D fixed at 0.03)
+  bin_center           : bp center of the bin
+  local_divergence     : divergent sites per ELIGIBLE (non-N) base in the bin
+  valid                : 1 if the bin is >=50%% non-N (else density is meaningless)
+
+localdist.csv -- distribution of per-site local divergence:
+  window     : local-D window half-size (150 read, 500 fragment)
+  locald_mid : local-divergence histogram bin midpoint (or '>0.6' overflow)
+  n_sites    : truth divergent SNP sites with local divergence in that bin
+
+The homogeneous control (sigma=0) concentrates near the mean; larger sigma
+spreads sites across a wide range of local divergence (the heterogeneity).

@@ -1,0 +1,57 @@
+#############################################################################
+# s05 — REALISTIC scenario across MEAN divergence (SNP-only).
+#
+# Extends the single realistic point (config-realistic.yaml, mean 0.03) into a curve by
+# varying the genome-wide MEAN divergence at FIXED realistic field settings (sigma=1,
+# ell=20 kb, local-D cap 0.20, heterozygosity on the field). This yields "reference bias
+# vs mean divergence, realistic heterogeneous" -- directly comparable to s01's homogeneous
+# recall-vs-divergence curve (s01 IS the homogeneous baseline: sigma=0 = uniform).
+#
+# We do NOT re-sweep sigma/ell (the mean-0.06 characterization already mapped those); only
+# MEAN is varied. Only the heterogeneous config is run here (the homogeneous curve = s01).
+# div_target is set per-invocation by the launcher (run_realistic_meansweep.sh), each mean
+# writing to its own data branch (DIV is in the path), so runs never collide and mean 0.03
+# (already done via config-realistic) is reused.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"
+
+## --- paths ---------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s05-heterogeneous-divergence
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/results
+
+## --- simulation ----------------------------------------------------------
+covs:  ["30"]
+div_target: "0.03"           # DEFAULT; overridden per mean by the launcher (--config div_target=..)
+het:   "0.005"
+indel_divergence:  0.0       # SNP-only
+indel_heterozygosity: 0.0
+seeds: ["42"]
+read_length: 150
+fragment_mean: 300
+
+## --- divergence field (fixed realistic settings; only MEAN varies) -------
+field_configs:
+  - "L20000-S1.0-C0.20"      # realistic only (homogeneous baseline = s01)
+field_seed: 42
+het_on_field: true
+
+## --- local-divergence annotation -----------------------------------------
+local_div_windows: "150,500"
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3
+
+## --- variant callers -----------------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8
+
+## --- labeling ------------------------------------------------------------
+run_tag: "realistic-meansweep"

@@ -1,0 +1,73 @@
+#############################################################################
+# s05 — heterogeneous divergence via a continuous autocorrelated field
+#
+# Question: real divergence is not uniform along the genome. If fixed differences
+# CLUSTER (high-divergence "accelerated-like" patches) and thin out ("conserved-like"
+# regions) instead of being spread evenly, how does that change read mapping and SNP
+# recovery, and does iterative mapping recover more where LOCAL divergence is high?
+#
+# The genome-wide mean divergence is held FIXED at `div_target` (identical to an s01
+# homogeneous run at the same D), so any difference is due to the SPATIAL STRUCTURE of
+# divergence, not its amount. The varying axis is the field: correlation length (scale)
+# and sigma (amplitude). sigma = 0 reproduces the homogeneous s01 placement exactly and
+# serves as the in-section control.
+#
+# Every downstream per-site analysis is binned against MEASURED LOCAL divergence
+# (analyses/lib/annotate_local_divergence.py), not the single global D.
+#
+# This file is the single place to edit s05 parameters. Re-running with a changed field
+# config writes to a new labeled path (the `field` tag L{corr}-S{sigma}), never
+# overwriting another configuration.
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"              # single chromosome for speed (per GUIDE)
+
+## --- paths ---------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s05-heterogeneous-divergence
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s05-heterogeneous-divergence/results
+
+## --- simulation ----------------------------------------------------------
+covs:  ["30"]
+div_target: "0.06"           # FIXED genome-wide mean SNP divergence (matches s01 mid D)
+het:   "0.005"               # heterozygosity held fixed (uniform; same as s01)
+indel_divergence:  0.0       # SNP-only (baseline landscape; indels deferred)
+indel_heterozygosity: 0.0
+seeds: ["42"]                # single-seed first pass (read + site sampling)
+read_length: 150
+fragment_mean: 300
+
+## --- divergence field (the varying axis) ---------------------------------
+# Each entry is a field configuration tag "L{corr_len_bp}-S{sigma}":
+#   corr_len_bp = correlation length of the field (scale of heterogeneity, bp)
+#   sigma       = log-amplitude (strength; 0 = homogeneous control)
+# The realized 1/e autocorrelation length is ~2x corr_len_bp (Gaussian smoothing;
+# see analyses/lib/divergence_field.py). Validation gate step 2 runs L20000-S1.0 first.
+field_configs:
+  - "L20000-S0.0"            # homogeneous control (sigma 0; corr ignored)
+  - "L2000-S1.0"             # read/feature-scale heterogeneity
+  - "L20000-S1.0"            # gene/locus-scale heterogeneity (first full-chain run)
+  - "L200000-S1.0"           # regional-scale heterogeneity
+  - "L20000-S2.0"            # strong amplitude at gene/locus scale
+field_seed: 42               # seed for the latent field (fixes WHICH regions are hot/cold)
+
+## --- local-divergence annotation -----------------------------------------
+# Per-site measured local divergence is emitted at these half-window scales (bp):
+# read footprint and fragment footprint.
+local_div_windows: "150,500"
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3              # iteration 1 == single-shot baseline
+
+## --- variant callers (an axis) -------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8              # scatter HaplotypeCaller across N intervals (slow at high local D)
+
+## --- labeling ------------------------------------------------------------
+run_tag: "hetdiv"            # label for this section's combined summary

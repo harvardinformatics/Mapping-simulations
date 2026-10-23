@@ -1,0 +1,15 @@
+Data dictionary for analyses/s05-heterogeneous-divergence/results/s05-hetindel-local-recovery.csv
+
+s05 het-indels: SNP and indel recovery binned by local divergence.
+One row per (caller, iteration, vtype, local-D bin). Window = +/-150 bp.
+
+Fields:
+  caller, iteration : condition (mean divergence fixed at 0.06)
+  vtype             : snp | indel (both GT 1|1 divergence truth sites)
+  locald_lo/hi/mid  : local-divergence bin edges + midpoint (div-SNP density)
+  n_sites           : truth sites of this vtype in the bin
+  n_recovered       : matched (POS,REF,ALT) in the accumulated recovered VCF
+  recall            : n_recovered / n_sites
+
+Overlay against s02 homogeneous recall-vs-mean-divergence: het recall at
+local divergence x below s02 recall at mean divergence x => super-additive.
