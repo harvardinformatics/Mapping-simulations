@@ -33,5 +33,24 @@ summary-data/v1/with-indels/window-snps-30X-summary.tab
 
 data/
 
+pseudo-it/
 
 .llm-tmp/
+
+# Python bytecode, stray R graphics-device output, job-completion marker files
+__pycache__/
+Rplots.pdf
+analyses/*/results/*.status
+
+# Large per-site intermediate tables (several are over GitHub's 100 MB limit). All are regenerable
+# from data/ with each section's run_*.sh scripts; their .dict.txt data dictionaries and the small
+# summary tables next to them stay tracked.
+analyses/*/results/vrf-pileup/*.csv
+analyses/*/results/vrf-pileup-capped/*.csv
+analyses/*/results/neighborhood/neighborhood-per-snp.csv
+analyses/*/results/calling-metrics/calling-metrics.csv
+analyses/*/results/calling-metrics/calling-metrics-0.*.csv
+
+# s01/s02 "effective truth" (phantom-site) outputs: large, and known to be mostly an artifact of
+# mason -oa gapped CIGARs in the truth BAMs; left out until the correction is redone
+analyses/*/results/effective-truth/
