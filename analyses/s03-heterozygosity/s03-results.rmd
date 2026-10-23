@@ -1,0 +1,571 @@
+---
+title: "s03 — reference-allele bias at heterozygous sites (chr19)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file. Keep in sync
+     with analyses/lib/notebook.css. Raw {=html} block so pandoc passes it through. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+img { max-width: 900px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+table.center { margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr); library(knitr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Reference bias is, at bottom, a heterozygous-site phenomenon.** At a het site the individual
+carries one reference and one alternate allele, so the *truth* is a 50/50 allele balance. But an
+alt-bearing read carries one extra mismatch to the reference — the alt allele itself — and against an
+already-divergent background that extra mismatch can tip a *marginal* read below the placement
+threshold, so it fails to align at the site (lost, mismapped, or clipped over the variant). The alt
+allele is then absent from the pileup and the balance tips toward reference; severe cases drop the
+alt entirely and the het is miscalled as homozygous reference (**allelic dropout**). This is the
+*canonical* signature of reference bias, and it is measured on the **mapping**, independent of which
+caller runs downstream.
+
+The operative word is *marginal*: it is **exclusion, not degradation**. Splitting the reads at each
+het site by the base they carry (diagnostic in `analyses/lib/`), the fraction of alt reads *missing*
+from the pileup grows with divergence (≈ 2 % at D=0 → 13 % at D=0.10), while the alt reads that do
+survive are unremarkable — equal-or-slightly-*higher* MAPQ than their ref-bearing mates, equal
+soft-clip rate. The bias lives in the alt reads that vanish, not in degraded copies of the ones we see.
+
+We quantify it with the **reference-allele fraction**
+
+$$\mathrm{RAF} = \frac{\text{ref-supporting reads}}{\text{ref-supporting reads} + \text{alt-supporting reads}}$$
+
+counted directly from the pileup at every *true* het SNP site (`pysam count_coverage`, MAPQ ≥ 20,
+BAQ ≥ 13). Unbiased mapping gives **RAF = 0.5**; reference bias gives **RAF > 0.5**.
+
+**Design.** No new simulations — this reuses the **existing s01 and s02 BAMs** and asks the RAF
+question at their het sites (`analyses/lib/allele_balance.py`, driven by `het_allele_balance.smk`).
+
+- **s01** (SNP-only, seeds 42/43/44, seed-averaged): identity coordinates, so the *cleanest*
+  measurement of RAF vs divergence and its correction by iteration.
+- **s02** (SNP + indels, seed 42): consensus is length-shifted, so for iteration ≥ 2 the het
+  positions are lifted reference→consensus with each iteration's `ref2cons` chain before counting
+  (mean lift failure 0.04 %). This isolates **how much indels worsen het allele bias.**
+- Divergence **D ∈ {0.02–0.10}** homozygous background, het rate **H = 0.005**, 30×, 3 iterations,
+  3 callers. (The caller only matters at iteration ≥ 2, where each caller's consensus differs;
+  iteration 1 maps to the shared reference and is caller-independent.)
+
+```{r load}
+res <- "analyses/s03-heterozygosity/results/"
+lv  <- c("gatk", "bcftools", "freebayes")
+
+load_ab <- function(tag) {
+  read_csv(paste0(res, "s03-", tag, "-allele-balance-summary.csv")) %>%
+    rename(div = divergence) %>%
+    mutate(source = tag, caller = factor(caller, levels = lv), iteration = factor(iteration))
+}   # D=0 KEPT: RAF at zero divergence is the unbiased baseline (~0.5)
+ab01 <- load_ab("s01")
+ab02 <- load_ab("s02")
+
+# seed-average within each (source, div, caller, iteration): mean of the per-BAM summaries
+ab <- bind_rows(ab01, ab02) %>%
+  group_by(source, div, caller, iteration) %>%
+  summarize(across(c(mean_raf, frac_ref_biased, frac_alt_dropout, mean_depth,
+                     starts_with("raf_b")), mean),
+            n_het = mean(n_het), .groups = "drop")
+
+n_iter <- max(as.integer(as.character(ab$iteration)))
+icols  <- corecol(pal = "wilke", numcol = n_iter)   # by iteration
+ccols  <- corecol(pal = "wilke", numcol = 3)         # by caller
+```
+
+# Reference-allele bias and its correction
+
+The headline: at single-shot mapping RAF sits **above 0.5** and grows with divergence; iteration
+pulls it back toward the 0.5 truth line. s01 (SNP-only) below — each panel is one caller, the dashed
+line is the unbiased expectation. At each divergence the grey connector spans the three iterations,
+so its length *is* the iteration effect (the correction toward 0.5).
+
+```{r raf-s01, out.width="100%", fig.width=11, fig.height=4.2}
+ggplot(filter(ab, source == "s01"),
+       aes(x = div, y = mean_raf, color = iteration)) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "#888888") +
+  geom_line(aes(group = div), color = "grey65", linewidth = 0.6) +
+  geom_point(size = 2.4) +
+  facet_wrap(~ caller) +
+  scale_color_manual(values = icols, name = "iteration") +
+  labs(x = "divergence (D)", y = "mean reference-allele fraction",
+       title = "s01 (SNP-only): het allele balance vs divergence") +
+  bartheme()
+```
+
+Single-shot RAF climbs to **≈ 0.54 at D = 0.10**; iteration 3 flattens it back to **≈ 0.50** for the
+pileup/haplotype callers. The correction is what iterative mapping buys at het sites: by rebuilding
+the reference toward the sample, alt-bearing reads stop being penalized.
+
+**The residual is caller-dependent.** At D = 0.10, iteration 3 leaves gatk still visibly biased while
+bcftools/freebayes are essentially unbiased:
+
+```{r raf-caller-table}
+ab %>% filter(source == "s01", div == 0.10) %>%
+  select(caller, iteration, mean_raf) %>%
+  pivot_wider(names_from = iteration, values_from = mean_raf,
+              names_prefix = "iter") %>%
+  arrange(caller) %>%
+  mutate(across(starts_with("iter"), ~ round(.x, 3))) %>%
+  kable(caption = "s01 mean RAF at D=0.10 (truth = 0.500)",
+        table.attr = 'class="center"')
+```
+
+gatk's consensus recovers less of the background divergence (its reference-anchored reassembler
+loses SNPs at high D — see s01), so at iteration 3 its mapping target is still further from the
+sample, and the residual het bias tracks that shortfall. The allele-balance correction is only as
+good as the caller's divergence recovery.
+
+## Mechanism: alt-read exclusion, not degraded survivors
+
+Is the bias really *mapping-side loss* of alt reads? Splitting the reads at each true het site by
+the base they carry (`analyses/lib/altbias_mechanism.py`, no MAPQ filter) answers it directly. The
+**alt-read deficit** — how far the alt/ref count ratio falls below 1 — is reference bias in its
+rawest form: the alt allele simply isn't in the pileup. Solid black is single-shot (iter1, which is
+caller-independent — all callers share the same mapping); dashed lines are iteration 3 per caller.
+
+```{r mechanism-load}
+mech <- read_csv(paste0(res, "s03-altbias-mechanism.csv")) %>%
+  mutate(caller = factor(caller, levels = lv), deficit = 100 * (1 - alt_ref_ratio))
+```
+
+```{r mechanism-fig, out.width="100%", fig.width=9, fig.height=4.6}
+m1 <- filter(mech, iteration == 1); m3 <- filter(mech, iteration == 3)
+ggplot() +
+  geom_hline(yintercept = 0, color = "#bbbbbb") +
+  geom_line(data = m1, aes(factor(divergence), deficit), color = "black", linewidth = 1.1) +
+  geom_point(data = m1, aes(factor(divergence), deficit), color = "black", size = 2.6) +
+  geom_line(data = m3, aes(factor(divergence), deficit, color = caller), linewidth = 0.9, linetype = "22") +
+  geom_point(data = m3, aes(factor(divergence), deficit, color = caller), size = 2.3) +
+  scale_color_manual(values = ccols, name = "iter3 caller") +
+  labs(x = "divergence (D)", y = "alt-read deficit at het sites (%)   [100·(1 − alt/ref)]",
+       title = "Reference bias is alt-read exclusion, and iteration removes it",
+       subtitle = "Solid black: single-shot (caller-independent).  Dashed: iteration 3, by caller.") +
+  bartheme()
+```
+
+```{r mechanism-table}
+mech %>% filter(iteration == 1) %>%
+  transmute(divergence,
+            `alt-read deficit %` = round(deficit, 1),
+            `MAPQ ref` = round(mapq_ref, 1),
+            `MAPQ alt (survivors)` = round(mapq_alt, 1)) %>%
+  arrange(divergence) %>%
+  kable(caption = "Single-shot: the deficit grows with divergence, but surviving alt reads keep normal MAPQ",
+        table.attr = 'class="center"')
+```
+
+Two readings. **(1)** Single-shot, the deficit climbs from ≈ 2 % at D = 0 to ≈ 13 % at D = 0.10: the
+alt allele's one extra mismatch tips more and more *marginal* reads off the site as the background
+diverges. **(2)** Iteration 3 collapses it back toward zero for bcftools/freebayes, with gatk lagging
+— the same caller-limited correction the RAF shows, from the same cause. And the surviving alt reads
+are **not** degraded: their MAPQ matches (slightly beats) the ref reads at every divergence (table).
+The bias is *exclusion* — reads that vanish — not *degradation* of the reads we keep.
+
+## The distribution, not just the mean
+
+The mean understates it: single-shot mapping doesn't just nudge RAF up, it grows a shoulder of het
+sites near RAF = 1 (alt allele barely seen). Below is the full per-site RAF distribution at
+D = 0.10 for bcftools, iteration 1 vs iteration 3 — the iter-1 mass piled at the right edge is the
+reference-bias tail, and iteration collapses it back onto 0.5.
+
+```{r raf-dist, out.width="100%", fig.width=9, fig.height=4}
+mids <- seq(0.05, 0.95, by = 0.1)
+dist <- ab %>% filter(source == "s01", caller == "bcftools", div == 0.10,
+                      iteration %in% c("1", "3")) %>%
+  select(iteration, starts_with("raf_b")) %>%
+  pivot_longer(starts_with("raf_b"), names_to = "bin", values_to = "count") %>%
+  mutate(raf = mids[as.integer(sub("raf_b", "", bin)) + 1]) %>%
+  group_by(iteration) %>% mutate(prop = count / sum(count)) %>% ungroup()
+
+ggplot(dist, aes(x = raf, y = prop, fill = iteration)) +
+  geom_col(position = "dodge", width = 0.08) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "#888888") +
+  scale_fill_manual(values = icols[c(1, 3)], name = "iteration") +
+  labs(x = "reference-allele fraction (per het site)", y = "proportion of het sites",
+       title = "s01 RAF distribution at D=0.10 (bcftools): iter1 vs iter3") +
+  bartheme()
+```
+
+## Read fate at het sites: where the excluded alt reads go
+
+The deficit above is a *count* — alt vs ref reads in the pileup. This resolves it to the individual
+read: for every read whose mason-truth span covers a het site, what does it do at the site's
+reference base `p` — present the alt, present the ref, get soft-clipped over `p`, map elsewhere, or
+not map at all? It is the project's standard read-fate analysis (`analyses/lib/variant_read_fate.py
+--het --aggregate`, `run_vrf_aggregate.sh`, whole chromosome, on the s01 SNP-only data so
+coordinates are identity across iterations). Because mason puts the alt on one **phased** haplotype,
+`n_true_alt` (via the `oH` tag) is the ~half of covering reads that truly carry the alt; `f_alt` is
+the fraction of *those* that align the alt at `p` — the surviving alt support. **"Called" here means
+the caller called the site correctly as a het (GT 0/1)** at that iteration; a het miscalled as
+hom-ref (alt lost) or hom-alt is *not* called.
+
+> **Reading `f_alt` at het sites.** `f_alt = (alt aligned at p) / n_true_alt`, and the denominator
+> `n_true_alt` is **only the alt-haplotype reads**, *not* all covering reads. So `f_alt` is
+> **alt-support survival, not the pileup allele fraction** — it is ≈1 whenever the alt-carrying reads
+> map, and drops only when they are lost (the dropout). At called het sites the denominator is ~0.59 of
+> coverage (the alt-haplotype half) and mean `f_alt` ≈ 0.86, so the G plot's mass near 1 is *expected*,
+> not "no bias"; the reference-bias signal is the **tail below 1** (excluded alt reads) and how iteration
+> pulls it back up. This is the read-level counterpart of RAF: RAF counts ref vs alt over *all* reads
+> (~0.5 unbiased); `f_alt` conditions on the alt-carrying reads (~1 unless they drop out).
+
+```{r vrf3-load}
+library(ggalluvial); library(patchwork)
+AGG <- paste0(res, "vrf-agg")
+rdcsv <- function(pat) bind_rows(lapply(list.files(AGG, pat, full.names = TRUE), read_csv, col_types = cols()))
+h3     <- rdcsv("hcomp.csv$") %>% mutate(caller = factor(caller, levels = lv))
+gtraj3 <- rdcsv("gtraj.csv$")
+```
+
+### The allele balance, restored (read resolution)
+
+`RAF@p` = ref-presenting / (ref- + alt-presenting) reads at `p` — the reference-allele fraction
+built from what actually aligns at the base (0.5 = unbiased). It reproduces the pileup RAF from the
+read side and shows iteration pulling it back to 0.5.
+
+```{r vrf3-balance, out.width="100%", fig.width=9, fig.height=4.4}
+bal <- h3 %>% filter(status == "called") %>% mutate(rafp = ref_at_p / (ref_at_p + alt_at_p))
+ggplot(bal, aes(factor(divergence), rafp, color = caller, linetype = factor(iteration),
+                group = interaction(caller, iteration))) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  geom_hline(yintercept = 0.5, color = "#bbbbbb") +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.3) +
+  scale_color_manual(values = ccols, name = "caller") +
+  scale_linetype_manual(values = c(`1` = "solid", `3` = "22"), name = "iteration") +
+  labs(x = "divergence (D)", y = "RAF@p  (ref / (ref+alt) aligned at p)",
+       title = "Het allele balance at read resolution: iteration pulls RAF@p back to 0.5",
+       subtitle = "Called het sites, whole chromosome. Solid iter1, dashed iter3.") + bartheme()
+```
+
+### Where do the lost alt reads go?
+
+Composition of covering reads at `p`, split by whether the site is called correctly as a het. The
+excluded alt reads surface here as **clipped-over-p / mapped-elsewhere / unmapped**, not as ref bases.
+
+```{r vrf3-hcomp, out.width="100%", fig.width=10, fig.height=5.4}
+cats <- c("alt_at_p", "ref_at_p", "err_at_p", "clipped", "deleted", "mapped_elsewhere", "unmapped")
+nice <- c(alt_at_p = "alt at p", ref_at_p = "ref at p", err_at_p = "other base (error)",
+          clipped = "clipped over p", deleted = "deleted at p", mapped_elsewhere = "mapped elsewhere", unmapped = "unmapped")
+fcol <- setNames(c("#1b7837", "#2166ac", "#92c5de", "#e08214", "#8073ac", "#b2182b", "#4d4d4d"), unname(nice[cats]))
+h3 %>% filter(divergence == 0.10) %>%
+  pivot_longer(all_of(cats), names_to = "atp", values_to = "reads") %>%
+  mutate(frac = reads / n_reads, atp = factor(nice[atp], levels = unname(nice[cats])),
+         status = recode(status, called = "called het", not_called = "not called het")) %>%
+  ggplot(aes(factor(iteration), frac, fill = atp)) + geom_col(width = 0.75, color = "grey30", linewidth = 0.12) +
+  facet_grid(status ~ caller) + scale_fill_manual(values = fcol, name = "what is at position p") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "iteration", y = "fraction of covering reads", title = "Read fate at het sites — D=0.10, by caller and het-call outcome") +
+  bartheme()
+```
+
+**Interpretation.** For *called* het sites the balance is near 50/50 alt/ref with little loss, and
+iteration trims the residual clipping to near zero (restoring RAF@p to 0.5). *Not-called* het sites
+are the mechanism: their alt support is depressed and the missing reads appear as **clipped /
+mapped-elsewhere / unmapped** — the alt-haplotype reads are *excluded*, so the pileup looks
+hom-ref and the het is missed. This is the pileup-level "exclusion, not degradation" result made
+per-read, and it shows dropout is **alignment-limited** (reads not placed at `p`), which is why
+iteration — which re-anchors those reads — recovers het calls.
+
+### Joint state: alt-support survival vs het call (G)
+
+Per het site, its (called-as-het?, `f_alt` bin) trajectory across the three iterations. Lower box =
+called het, upper = not called; colour = `f_alt` (alt-support survival) bin. Low-`f_alt` sites (alt
+reads lost) sit in the not-called box and climb into called as iteration restores their alt reads.
+
+```{r vrf3-G, out.width="100%", fig.width=17, fig.height=8.5, out.extra='style="max-width:1600px"'}
+BIN   <- c("0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0")
+fbcol <- setNames(hcl.colors(5, "Viridis"), BIN)
+Glev  <- c(paste("not called", BIN, sep = " · "), "gap", paste("called", BIN, sep = " · "))
+makeG <- function(cc, dd) {
+  g <- gtraj3 %>% filter(caller == cc, divergence == dd, fb1 %in% BIN, fb2 %in% BIN, fb3 %in% BIN)
+  lodes <- g %>% mutate(id = row_number()) %>%
+    pivot_longer(c(s1, fb1, s2, fb2, s3, fb3), names_to = c(".value", "iter"), names_pattern = "([a-z]+)([0-9])") %>%
+    transmute(id, n = n_snps, iter, status = ifelse(s == "not_called", "not called", "called"),
+              fb = factor(fb, levels = BIN), state = factor(paste(status, fb, sep = " · "), levels = Glev), is_gap = FALSE)
+  gapN <- round(0.03 * sum(g$n_snps))
+  lodes <- bind_rows(lodes, tibble(id = max(lodes$id) + 1, n = gapN, iter = c("1", "2", "3"), status = "gap",
+                     fb = factor(NA, levels = BIN), state = factor("gap", levels = Glev), is_gap = TRUE))
+  box <- lodes %>% filter(!is_gap) %>% group_by(iter, status) %>% summarize(n = sum(n), .groups = "drop") %>%
+    group_by(iter) %>% mutate(ncall = sum(n[status == "called"])) %>% ungroup() %>%
+    mutate(pos = as.integer(iter), xmin = pos - 0.22, xmax = pos + 0.22,
+           ymin = ifelse(status == "called", 0, ncall + gapN), ymax = ifelse(status == "called", ncall, ncall + gapN + n))
+  ggplot(lodes, aes(x = iter, stratum = state, alluvium = id, y = n, fill = fb, alpha = is_gap)) +
+    geom_flow() +
+    geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE, fill = "white") +
+    geom_stratum(color = NA, width = 0.44) +
+    geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE, fill = NA, color = "grey15", linewidth = 0.6) +
+    scale_alpha_manual(values = c(`FALSE` = 0.4, `TRUE` = 0), guide = "none") +
+    scale_fill_manual(values = fbcol, name = "f_alt bin", na.value = "white", na.translate = FALSE) +
+    scale_x_discrete(labels = c("i1", "i2", "i3"), expand = c(0.08, 0.08)) +
+    labs(x = NULL, y = NULL, title = sprintf("%s  D=%s", cc, format(dd))) +
+    theme_minimal(base_size = 9) + theme(panel.grid = element_blank(), axis.text.y = element_blank(), plot.title = element_text(size = 9))
+}
+conds <- expand.grid(dd = c(0.005, 0.02, 0.04, 0.06, 0.08, 0.10), cc = lv, stringsAsFactors = FALSE)
+patchwork::wrap_plots(Map(makeG, conds$cc, conds$dd), ncol = 6, guides = "collect")
+```
+
+**Data dictionary** — `results/vrf-agg/vrf-agg-<caller>-<div>-{gtraj,hcomp}.csv`. `hcomp`: per
+(iteration × het-call status) the summed counts, over all het sites, of covering reads by what is at
+`p` (`alt_at_p`, `ref_at_p`, `err_at_p`, `clipped`, `deleted`, `mapped_elsewhere`, `unmapped`; plus
+`n_reads` = all covering, `n_true_alt` context in the tool). `gtraj`: number of het sites (`n_snps`)
+following each 3-iteration trajectory of (status `s1..s3`, `f_alt` bin `fb1..fb3`). `f_alt` =
+alt-aligned-at-`p` / alt-haplotype reads (`oH`); status = caller called GT 0/1 at the site.
+
+## Companion decomposition: what changes when a het site flips to called?
+
+The s01 companion decomposition, run on the het data (`--het --pileup`): for each het site we join the
+position-centric pileup at `p` with the mismapped-in/out counts and the **off-`p` neighborhood load**
+(unrecovered hom-div SNPs within ±200 bp), across the three fates — here **flip = the site becomes
+correctly called as a het (0/1)**. Two het-specific reading notes: (1) `ref reads at p` are now *real*
+— the reference haplotype supplies ~half the reads — so the contamination axis to watch is
+**mismapped-in ref** (foreign reads), not raw `ref_p`; (2) `f_alt` is the alt-haplotype support
+surviving at `p`. Shared code: `analyses/lib/decomp_figs.R` (+ `run_vrf_pileup.sh`, `run_neighborhood.sh`).
+
+```{r vrf3-decomp-load}
+source("analyses/lib/decomp_figs.R")
+pairs <- decomp_load("analyses/s03-heterozygosity/results/vrf-pileup",
+                     "analyses/s03-heterozygosity/results/neighborhood/neighborhood-per-snp.csv")
+```
+
+Per-site **distributions** by fate (boxplots), one figure per divergence:
+
+```{r vrf3-decomp-d06, out.width="100%", fig.width=11, fig.height=11.5}
+decomp_distfig(pairs, 0.06)
+```
+
+```{r vrf3-decomp-d08, out.width="100%", fig.width=11, fig.height=11.5}
+decomp_distfig(pairs, 0.08)
+```
+
+```{r vrf3-decomp-d10, out.width="100%", fig.width=11, fig.height=11.5}
+decomp_distfig(pairs, 0.10)
+```
+
+**Mean** trend across divergences, one figure per fate:
+
+```{r vrf3-decomp-mtflip, out.width="100%", fig.width=9.5, fig.height=10.5}
+decomp_meantrend(pairs, "flip (→called)")
+```
+
+```{r vrf3-decomp-mtscall, out.width="100%", fig.width=9.5, fig.height=10.5}
+decomp_meantrend(pairs, "stayed called")
+```
+
+```{r vrf3-decomp-mtsnc, out.width="100%", fig.width=9.5, fig.height=10.5}
+decomp_meantrend(pairs, "stayed not-called")
+```
+
+The **gatk signature**, the **assemblable neighborhood**, and the flips by **starting `f_alt` bin**:
+
+```{r vrf3-decomp-sig1}
+kable(decomp_gatksig_clean(pairs, het = TRUE), table.attr = 'class="center"',
+      caption = paste("Fraction of flipped het sites whose pileup at p already looked call-ready before",
+                      "the flip (D=0.10). Het-aware: 'clean' = high alt-hap support, low mismapped-in ref,",
+                      "high MAPQ (ref reads are the real ref haplotype, so not a cleanliness signal)."))
+```
+
+```{r vrf3-decomp-sig2}
+kable(decomp_gatksig_delta(pairs), table.attr = 'class="center"',
+      caption = "Mean absolute change in each pileup axis across the flip (D=0.10).")
+```
+
+```{r vrf3-decomp-neigh, out.width="100%", fig.width=9.5, fig.height=3.6}
+decomp_neighfig("analyses/s03-heterozygosity/results/neighborhood/neighborhood-summary.csv")
+```
+
+```{r vrf3-decomp-bybin, out.width="100%", fig.width=10, fig.height=4.2}
+decomp_bybin(pairs)
+```
+
+**Interpretation.** The same mechanism carries over to het calling. **gatk** flips happen with the
+pileup at `p` already call-ready (largest "already clean" fraction, smallest per-axis change) — its
+off-`p` neighborhood unrecovered-SNP load collapses (≈23→5 at D=0.10) as the consensus converges, so
+the reference-anchored reassembler can finally resolve the het haplotype; **bcftools/freebayes** flips
+clear a contaminated pileup — mismapped-in ref reads leave and MAPQ rises — restoring an alt/ref balance
+the caller will call `0/1`. So het dropout is corrected by iteration through the very same
+alignment-vs-assembler split as the hom-div SNPs, now measured per het site.
+
+## Phantom het sites and effective het recall
+
+The phantom floor applies to het sites too — a het whose alt allele was never simulated is unrecoverable
+and should leave the het-recall denominator. The cause is the same **adjacent-variant collision** as in
+s01 (mason `-iv` applies our VCF but drops one of any pair landing ~1 bp apart; it does not mutate a
+site back to reference). Because s03 reuses the s01 (SNP-only) data, the het phantom rate is the one
+measured there (`effective_truth.py`); it is slightly higher than the hom-div rate (a het's alt sits on
+one haplotype, so fewer reads carry it and a dropped-neighbour collision is likelier to erase it).
+Effective het recall = `het_tp / (n_truth_het · (1 − het_phantom_rate))`.
+
+```{r s3-phantom-load}
+ph <- read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv",
+                col_types = cols())
+hr <- read_csv("analyses/s01-baseline-iterative/results/s01-base-het-recovery-by-iter.csv",
+                col_types = cols()) %>%
+  filter(divergence > 0) %>%
+  mutate(caller = factor(caller, levels = lv), iteration = factor(iteration))
+```
+
+```{r s3-phantom-fig, out.width="100%", fig.width=9, fig.height=5.4}
+er <- hr %>% left_join(select(ph, divergence, prate = phantom_het_rate), by = "divergence") %>%
+  mutate(prate = ifelse(is.na(prate), 0, prate),
+         nominal = het_tp / n_truth_het, effective = het_tp / (n_truth_het * (1 - prate))) %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(nominal = mean(nominal), effective = mean(effective), .groups = "drop") %>%
+  mutate(lift = 100 * (effective - nominal))
+p_eff <- ggplot(er, aes(factor(divergence), effective, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) + geom_point(size = 2.6) +
+  facet_wrap(~ caller) + scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) + scale_color_manual(values = icols, name = "iteration") +
+  labs(x = NULL, y = "effective het recall", title = "Effective het recall (phantom-corrected)") +
+  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "none")
+p_lift <- ggplot(er, aes(factor(divergence), lift, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) + geom_point(size = 2.6) +
+  facet_wrap(~ caller) + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_color_manual(values = icols, name = "iteration") +
+  labs(x = "divergence (D)", y = "lift (pt)", title = "Het-recall lift from phantom-accounting (effective − nominal)") +
+  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "bottom")
+patchwork::wrap_plots(p_eff, p_lift, ncol = 1)
+```
+
+# Do indels worsen het allele bias?
+
+Yes — substantially. A read spanning a nearby unrepresented **indel** maps as badly as (or worse
+than) one carrying a diverged SNP, so at het sites embedded in indel-rich sequence the alt allele is
+lost far more often. Comparing single-shot (iteration 1) RAF and dropout, s01 (SNP-only) vs s02
+(SNP + indels):
+
+```{r indel-compare, out.width="100%", fig.width=11, fig.height=4.2}
+comp <- ab %>% filter(iteration == "1") %>%   # iter1 is caller-independent; take one caller
+  filter(caller == "bcftools") %>%
+  select(source, div, mean_raf, frac_alt_dropout) %>%
+  pivot_longer(c(mean_raf, frac_alt_dropout), names_to = "metric", values_to = "value") %>%
+  mutate(metric = recode(metric,
+                         mean_raf = "mean RAF (truth 0.5)",
+                         frac_alt_dropout = "alt-allele dropout (fraction of het sites)"))
+
+ggplot(comp, aes(x = div, y = value, color = source, group = source)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.3) +
+  facet_wrap(~ metric, scales = "free_y") +
+  scale_color_manual(values = ccols[c(1, 3)], name = "dataset",
+                     labels = c(s01 = "s01 (SNP-only)", s02 = "s02 (+ indels)")) +
+  labs(x = "divergence (D)", y = NULL,
+       title = "Single-shot het bias: indels roughly double the skew and 5x the dropout") +
+  bartheme()
+```
+
+At **D = 0.10**, adding indels lifts single-shot RAF from **0.539 → 0.597** and alt-allele dropout
+from **2.5 % → 13.2 %**. Iteration still corrects both, but less completely: s02 iteration-3 RAF
+lands at **0.515** (bcftools) to **0.538** (gatk) versus s01's **0.502–0.512**, and dropout at
+**2.4–5.7 %** versus **0.2–0.9 %**. Indels leave a residual het bias that iteration only partly
+erases — because rebuilding the correct indel is itself the hard, caller-dependent step (see s02).
+
+## Allelic dropout across the sweep
+
+Dropout — the fraction of true het sites where the alt allele is missing entirely (a het miscalled
+homozygous-reference) — is the clinically relevant failure. Both datasets, all iterations:
+
+```{r dropout, out.width="100%", fig.width=11, fig.height=4.2}
+ggplot(filter(ab, caller == "bcftools"),
+       aes(x = div, y = frac_alt_dropout, color = iteration)) +
+  geom_line(aes(group = div), color = "grey65", linewidth = 0.6) +
+  geom_point(size = 2.4) +
+  facet_wrap(~ source, labeller = as_labeller(
+    c(s01 = "s01 (SNP-only)", s02 = "s02 (+ indels)"))) +
+  scale_color_manual(values = icols, name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "divergence (D)", y = "alt-allele dropout",
+       title = "Heterozygous allelic dropout (bcftools)") +
+  bartheme()
+```
+
+# Does het *density* amplify the bias? (Phase 2)
+
+Everything so far holds het rate fixed at H = 0.005 and varies *divergence*. But is the bias driven
+by divergence, or does the *density* of het sites amplify it on its own? A denser field of het sites
+means a single read more often carries **multiple** alt alleles at once, compounding the mapping
+penalty. Phase 2 tests this directly with a small SNP-only sweep: **H ∈ {0.005, 0.01, 0.02}** at low
+and high divergence (**D ∈ {0.04, 0.10}**), seed 42, produced by re-running the s01 workflow into
+`data/s03-hetsweep` (`run_phase2_hetsweep.sh`; H = 0.005 reuses s01).
+
+```{r phase2-load}
+load_raw <- function(path) read_csv(path) %>%
+  rename(div = divergence, het = heterozygosity) %>%
+  filter(div %in% c(0.04, 0.10), seed == 42, caller == "bcftools",
+         iteration %in% c(1, 3)) %>%
+  mutate(iteration = factor(iteration), div = factor(div))
+
+p2 <- bind_rows(
+  load_raw(paste0(res, "s03-s01-allele-balance-summary.csv")),        # H=0.005
+  load_raw(paste0(res, "s03-hetsweep-0.01-allele-balance-summary.csv")),
+  load_raw(paste0(res, "s03-hetsweep-0.02-allele-balance-summary.csv")))
+```
+
+```{r phase2-fig, out.width="100%", fig.width=11, fig.height=4.2}
+p2l <- p2 %>% select(div, het, iteration, mean_raf, frac_alt_dropout) %>%
+  pivot_longer(c(mean_raf, frac_alt_dropout), names_to = "metric", values_to = "value") %>%
+  mutate(metric = recode(metric, mean_raf = "mean RAF (truth 0.5)",
+                         frac_alt_dropout = "alt-allele dropout"))
+
+ggplot(p2l, aes(x = het, y = value, color = div, linetype = iteration,
+                group = interaction(div, iteration))) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.3) +
+  facet_wrap(~ metric, scales = "free_y") +
+  scale_color_manual(values = ccols[c(1, 3)], name = "divergence") +
+  scale_linetype_manual(values = c("1" = "solid", "3" = "22"), name = "iteration") +
+  scale_x_continuous(breaks = c(0.005, 0.01, 0.02)) +
+  labs(x = "heterozygosity (H)", y = NULL,
+       title = "Het density barely moves mean RAF; it amplifies single-shot dropout at high divergence") +
+  bartheme()
+```
+
+The verdict: **density is a second-order effect.** Divergence dwarfs it — going D = 0.04 → 0.10
+shifts single-shot RAF by ≈ 0.033, while *quadrupling* H (0.005 → 0.02) shifts it by at most ≈ 0.009
+(0.539 → 0.548, and only at high divergence; at D = 0.04 the lines are flat). The one place density
+bites is **single-shot allelic dropout at high divergence**, which nearly doubles (2.5 % → 4.4 %) as
+H goes 0.005 → 0.02 — exactly the multiple-alt-alleles-per-read mechanism. But **iteration erases the
+density effect entirely**: the iteration-3 lines (dashed) are flat across H for both RAF
+(0.505–0.507) and dropout (0.5–0.7 %). The correction absorbs whatever density adds.
+
+# Summary
+
+- **Reference bias at het sites is real and measurable.** RAF climbs above the 0.5 truth line with
+  divergence (≈ 0.54 at D = 0.10, SNP-only) and grows a tail of near-total alt-allele loss.
+- **Iterative mapping corrects it.** Rebuilding the reference toward the sample stops penalizing
+  alt-bearing reads; by iteration 3 RAF returns to ≈ 0.50 for the pileup/haplotype callers.
+- **The correction is caller-limited.** gatk's reference-anchored reassembler recovers less
+  background divergence, so its iteration-3 mapping target is still off and a residual het bias
+  (RAF ≈ 0.51 SNP-only, 0.54 with indels) remains. Het-bias correction tracks divergence recovery.
+- **Indels roughly double the single-shot skew and 5× the dropout** (RAF 0.539 → 0.597, dropout
+  2.5 % → 13.2 % at D = 0.10), and leave a residual that iteration only partly erases — because
+  correctly rebuilding the indel is the hard step.
+- **Het density is a second-order effect (Phase 2).** Divergence, not density, drives the bias:
+  quadrupling H (0.005 → 0.02) barely moves mean RAF (≤ 0.009), and only amplifies *single-shot*
+  dropout at high divergence (2.5 % → 4.4 %) — an effect iteration erases completely.
+
+*Caveat:* s02 and the Phase-2 sweep are single seed (42); s01 seed-to-seed variance was < 0.1 pt, so
+the point estimates should be representative. Replicate seeds and extended iterations are one-line
+config changes away.

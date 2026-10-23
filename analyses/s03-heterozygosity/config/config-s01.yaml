@@ -1,0 +1,18 @@
+#############################################################################
+# s03 allele-balance — SOURCE = s01 (SNP-only). Identity coordinates, no liftover:
+# the cleanest measurement of reference-allele bias at het sites vs divergence.
+#############################################################################
+ref_str: mm39
+region:  "19"
+lib_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+source_data_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s01-baseline-iterative
+results_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s03-heterozygosity/results
+has_liftover: false
+
+covs:  ["30"]
+divs:  ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]   # D=0.00 = no-bias baseline; 0.001/0.005 = near-0 anchors
+het:   "0.005"
+seeds: ["42", "43", "44"]        # s01 has all 3 seeds
+n_iterations: 3
+callers: ["gatk", "bcftools", "freebayes"]
+run_tag: "s01"

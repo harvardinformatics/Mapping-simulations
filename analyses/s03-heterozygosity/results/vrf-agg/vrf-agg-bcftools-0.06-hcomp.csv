@@ -1,0 +1,7 @@
+divergence,caller,iteration,status,alt_at_p,ref_at_p,err_at_p,clipped,deleted,mapped_elsewhere,unmapped,n_reads
+0.06,bcftools,1,called,4566676,4760255,24859,237569,1187,25942,1259,9617747
+0.06,bcftools,1,not_called,13025,19599,182,2895,950,58790,1,95442
+0.06,bcftools,2,called,4796487,4823708,26644,14331,832,7859,0,9669861
+0.06,bcftools,2,not_called,6380,7559,53,494,351,28491,0,43328
+0.06,bcftools,3,called,4806726,4833079,26690,13604,826,4006,0,9684931
+0.06,bcftools,3,not_called,4969,5844,36,320,320,16769,0,28258

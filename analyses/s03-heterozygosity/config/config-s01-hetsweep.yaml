@@ -1,0 +1,43 @@
+#############################################################################
+# s03 Phase 2 — heterozygosity sweep, SIMULATION side.
+#
+# Feeds the s01 workflow.smk (sim -> map -> call -> iterate) to generate NEW SNP-only
+# BAMs at elevated het rates, so Phase 2 can ask whether het DENSITY (not just
+# divergence) amplifies reference-allele bias. Phase 1 already covers H=0.005 (reuse s01);
+# this config supplies H=0.01 and H=0.02, each run via `--config het=<H> run_tag=hetsweep-<H>`
+# by run_phase2_hetsweep.sh. Restricted to D in {0.04, 0.10} (low + high) and seed 42 to
+# stay a small confirmation. Writes to its OWN data dir so s01/s02 are untouched.
+#############################################################################
+
+## --- reference (same mm39 chr19 as s01) ----------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"
+
+## --- paths (Phase-2-specific data dir) -----------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s01-baseline-iterative/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s03-hetsweep
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s03-heterozygosity/results
+
+## --- simulation (SNP-only, elevated het) ---------------------------------
+covs:  ["30"]
+divs:  ["0.04", "0.10"]       # low + high divergence only
+het:   "0.01"                 # PLACEHOLDER — overridden per run: --config het=0.01 / 0.02
+indel_divergence:  0.0        # SNP-only (isolates het density from indels)
+indel_heterozygosity: 0.0
+seeds: ["42"]                 # single seed — confirmatory
+read_length: 150
+fragment_mean: 300
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3
+
+## --- variant callers -----------------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8
+
+## --- label (overridden per run: run_tag=hetsweep-<H>) --------------------
+run_tag: "hetsweep"

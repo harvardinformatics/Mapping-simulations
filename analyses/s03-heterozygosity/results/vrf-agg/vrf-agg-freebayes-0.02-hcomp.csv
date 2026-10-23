@@ -1,0 +1,7 @@
+divergence,caller,iteration,status,alt_at_p,ref_at_p,err_at_p,clipped,deleted,mapped_elsewhere,unmapped,n_reads
+0.02,freebayes,1,called,4740665,4790951,26280,53774,1024,21426,0,9634120
+0.02,freebayes,1,not_called,13161,14347,77,423,19,52320,0,80347
+0.02,freebayes,2,called,4805199,4818449,26721,13373,855,7729,0,9672326
+0.02,freebayes,2,not_called,7359,7180,41,174,2,27385,0,42141
+0.02,freebayes,3,called,4814610,4827758,26775,13335,857,3914,0,9687249
+0.02,freebayes,3,not_called,5952,5549,38,160,1,15518,0,27218

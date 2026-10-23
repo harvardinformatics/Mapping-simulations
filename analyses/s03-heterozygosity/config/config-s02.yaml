@@ -1,0 +1,19 @@
+#############################################################################
+# s03 allele-balance — SOURCE = s02 (SNP + indels). Consensus is length-shifted, so
+# iter>1 het positions are lifted ref->consensus with each iteration's ref2cons chain.
+# Answers: do indels worsen het allele bias vs the SNP-only s01 baseline?
+#############################################################################
+ref_str: mm39
+region:  "19"
+lib_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+source_data_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s02-indels
+results_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s03-heterozygosity/results
+has_liftover: true
+
+covs:  ["30"]
+divs:  ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]
+het:   "0.005"
+seeds: ["42"]                    # s02 first pass = seed 42 only
+n_iterations: 3
+callers: ["gatk", "bcftools", "freebayes"]
+run_tag: "s02"

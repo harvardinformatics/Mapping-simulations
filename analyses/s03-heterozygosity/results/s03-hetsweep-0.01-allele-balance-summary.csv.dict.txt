@@ -1,0 +1,6 @@
+Data dictionary for /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s03-heterozygosity/results/s03-hetsweep-0.01-allele-balance-summary.csv
+Combined ab summary: one row per (coverage, divergence) condition.
+Columns are identical to the per-condition files produced by the
+compare_abs.py script; see that script's *-summary.dict.txt for full
+column definitions.
+Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,n_het,n_covered,n_nocov,lift_fail,mean_depth,mean_raf,frac_ref_biased,frac_alt_dropout,raf_b0,raf_b1,raf_b2,raf_b3,raf_b4,raf_b5,raf_b6,raf_b7,raf_b8,raf_b9

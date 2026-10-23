@@ -1,0 +1,22 @@
+#############################################################################
+# s03 Phase 2 — heterozygosity sweep, ALLELE-BALANCE side.
+#
+# Runs allele_balance.py (RAF at true het sites) over the NEW Phase-2 BAMs produced by
+# config-s01-hetsweep.yaml. SNP-only, so identity coordinates (has_liftover: false).
+# Driven per H by run_phase2_hetsweep.sh with `--config het=<H> run_tag=hetsweep-<H>`, so
+# each H writes its own s03-hetsweep-<H>-allele-balance-summary.csv.
+#############################################################################
+ref_str: mm39
+region:  "19"
+lib_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+source_data_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s03-hetsweep
+results_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s03-heterozygosity/results
+has_liftover: false
+
+covs:  ["30"]
+divs:  ["0.04", "0.10"]
+het:   "0.01"                 # PLACEHOLDER — overridden per run: --config het=0.01 / 0.02
+seeds: ["42"]
+n_iterations: 3
+callers: ["gatk", "bcftools", "freebayes"]
+run_tag: "hetsweep"          # overridden per run: run_tag=hetsweep-<H>
