@@ -1,0 +1,7 @@
+divergence,caller,iteration,status,alt_at_p,ref_at_p,err_at_p,clipped,deleted,mapped_elsewhere,unmapped,n_reads
+0.005,gatk,1,called,9531400,13865,26759,41840,1227,25028,0,9640119
+0.005,gatk,1,not_called,28640,598,84,634,18,48100,0,78074
+0.005,gatk,2,called,9616145,12159,26615,607,490,7208,0,9663224
+0.005,gatk,2,not_called,19424,473,69,540,17,34446,0,54969
+0.005,gatk,3,called,9629173,12127,26648,541,488,3323,0,9672300
+0.005,gatk,3,not_called,16355,467,56,512,16,28487,0,45893

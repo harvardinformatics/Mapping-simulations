@@ -99,18 +99,16 @@ cols   <- corecol(pal = "wilke", numcol = n_iter)
 
 # --- het recovery + fate bands (from the raw per-iteration caller VCF) ---
 het <- read_csv("analyses/s01-baseline-iterative/results/s01-base-het-recovery-by-iter.csv") %>%
-  filter(divergence > 0) %>%
   mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
          iteration = factor(iteration),
-         het_recall = het_tp / n_truth_het)
+         het_recall = het_tp / n_truth_het)   # D=0 KEPT: het recall at D=0 = the germline baseline
 hets <- het %>% group_by(caller, divergence, iteration) %>%
   summarize(m = mean(het_recall), s = sd(het_recall), .groups = "drop")
 
 # --- read placement ---
 rc <- read_csv("analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv") %>%
-  filter(divergence > 0) %>%
   mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
-         iteration = factor(iteration))
+         iteration = factor(iteration))   # D=0 KEPT: near-all-exact mapping baseline
 
 # --- fate of divergent sites (cumulative-correct) ---
 # Recovered comes from the CONSENSUS (d$div_tp), because a site recovered in one round is
@@ -268,12 +266,12 @@ At each divergence the grey connector spans the iterations, so its length is the
 gain; error bars are ±1 SD over the 3 seeds.
 
 ```{r recall-by-iter, out.width="95%", fig.height=3.5}
-ggplot(agg, aes(x = divergence, y = recall_m, color = iteration)) +
+ggplot(agg, aes(x = factor(divergence), y = recall_m, color = iteration)) +
   geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
   geom_errorbar(aes(ymin = recall_m - recall_sd, ymax = recall_m + recall_sd), width = 0.0015) +
   geom_point(size = 2.6) +
   facet_wrap(~caller) +
-  scale_x_continuous(breaks = unique(agg$divergence)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
   scale_y_continuous(labels = scales::percent) +
   scale_color_manual(values = cols, name = "Iteration") +
   xlab("Simulated divergence (D)") + ylab("SNP divergence recall") +
@@ -281,12 +279,12 @@ ggplot(agg, aes(x = divergence, y = recall_m, color = iteration)) +
 ```
 
 ```{r precision-by-iter, out.width="95%", fig.height=3.5}
-ggplot(agg, aes(x = divergence, y = prec_m, color = iteration)) +
+ggplot(agg, aes(x = factor(divergence), y = prec_m, color = iteration)) +
   geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
   geom_errorbar(aes(ymin = prec_m - prec_sd, ymax = prec_m + prec_sd), width = 0.0015) +
   geom_point(size = 2.6) +
   facet_wrap(~caller) +
-  scale_x_continuous(breaks = unique(agg$divergence)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
   scale_y_continuous(labels = scales::percent) +
   scale_color_manual(values = cols, name = "Iteration") +
   xlab("Simulated divergence (D)") + ylab("SNP precision (consensus vs truth)") +
@@ -299,6 +297,105 @@ whose single-shot recall collapses at high divergence but is substantially rescu
 bars are <0.1 pt everywhere (aggregate recall over chr19's millions of sites is
 near-deterministic — the near-zero seed variance is itself a result). Precision confirms
 the recall gains are not bought with false positives.
+
+## Phantom truth sites and effective recall
+
+A small fraction of the "truth" SNPs were **never simulated into the reads**: at these sites the
+`mason -oa` truth BAM — which places every read at its *true* origin, so mapping cannot be blamed —
+carries the **reference** base. Such **phantom** sites are unrecoverable by any caller or iteration —
+the alt simply isn't in the data — so counting them in the denominator understates recall and mislabels
+them as reference-bias loss. `analyses/lib/effective_truth.py` scans the truth BAM and flags every SNP
+whose truth reads carry < 10% alt (min depth 5); `run_effective_truth.sh` runs it per divergence (seed 42).
+
+**Why they are phantom — adjacent-variant collision, not a reversion.** `mason_simulator -iv` only
+*applies* our truth VCF (it generates no de novo variants, so nothing mutates a site back to reference),
+and the VCF has no same-position duplicate records. Instead, phantoms are almost always **immediately
+adjacent** to another variant: when two land ~1 bp apart, mason's haplotype build drops one of them.
+Phantom sites sit a median **1 bp** from their nearest truth-variant neighbor (~96% within 2 bp) vs 4–7
+bp for normal sites (`phantom_adjacency.py`) — which is why the floor scales ~D² (the chance of a ≤1 bp
+neighbor) and why indels (s02) make it ~5× worse.
+
+```{r phantom-adjacency}
+read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-adjacency.csv", col_types = cols()) %>%
+  filter(divergence %in% c(0.04, 0.10)) %>%
+  transmute(divergence, group, `median NN (bp)` = median_nn_bp,
+            `within 2 bp` = scales::percent(frac_within_2bp, accuracy = 1)) %>%
+  kable(caption = "Distance to the nearest other truth variant: phantom sites sit ~1 bp from a neighbor.",
+        table.attr = 'class="center"')
+```
+
+```{r phantom-load}
+ph <- read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv",
+               col_types = cols())
+```
+
+```{r phantom-rate, out.width="65%", fig.height=3}
+ph %>% select(divergence, `hom-div` = phantom_div_rate, het = phantom_het_rate) %>%
+  pivot_longer(-divergence, names_to = "site", values_to = "rate") %>%
+  ggplot(aes(factor(divergence), rate, color = site)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.6) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 2), name = "truth site") +
+  labs(x = "divergence (D)", y = "phantom rate", title = "Phantom (unsimulated) truth-site rate") +
+  bartheme() + theme(plot.title = element_text(size = 11))
+```
+
+**Effective recall** removes the phantom floor from the denominator:
+`div_tp / (n_truth_div · (1 − phantom_rate))`. Since phantom sites are never called, `div_tp` is
+unchanged, so this is exact. The correction is small (≤ 0.6 pt even at D=0.10) and, being a fixed floor
+identical across callers and iterations, leaves every *relative* comparison unchanged. The top panel is
+the phantom-corrected recall; the bottom panel is the lift (effective − nominal) — on the recall axis
+the two are indistinguishable, so the lift is broken out to make the change visible.
+
+```{r effective-recall-fig, out.width="100%", fig.width=9, fig.height=6}
+er <- d %>% left_join(select(ph, divergence, prate = phantom_div_rate), by = "divergence") %>%
+  mutate(prate = ifelse(is.na(prate), 0, prate),            # D<0.04 not scanned; phantom there ~0
+         nominal = div_tp / n_truth_div,
+         effective = div_tp / (n_truth_div * (1 - prate))) %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(nominal = mean(nominal), effective = mean(effective), .groups = "drop") %>%
+  mutate(lift = 100 * (effective - nominal))
+p_eff <- ggplot(er, aes(x = factor(divergence), y = effective, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) +   # connector spans iterations
+  geom_point(size = 2.6) +
+  facet_wrap(~ caller) + scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_color_manual(values = cols, name = "iteration") +
+  labs(x = NULL, y = "effective recall", title = "Effective SNP recall (phantom-corrected)") +
+  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "none")
+p_lift <- ggplot(er, aes(x = factor(divergence), y = lift, color = iteration)) +
+  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) +   # connector spans iterations
+  geom_point(size = 2.6) +
+  facet_wrap(~ caller) + scale_x_discrete(guide = guide_axis(angle = 45)) +
+  scale_color_manual(values = cols, name = "iteration") +
+  labs(x = "divergence (D)", y = "lift (pt)",
+       title = "Recall lift from phantom-accounting (effective − nominal)") +
+  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "bottom")
+patchwork::wrap_plots(p_eff, p_lift, ncol = 1)
+```
+
+```{r effective-recall-table}
+d %>% left_join(select(ph, divergence, prate = phantom_div_rate), by = "divergence") %>%
+  mutate(prate = ifelse(is.na(prate), 0, prate),      # D<0.04 not scanned; phantom there <0.09% (~0)
+         recall_eff = div_tp / (n_truth_div * (1 - prate))) %>%
+  filter(divergence >= 0.04, iteration %in% c("1", as.character(n_iter))) %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(nominal = mean(div_tp / n_truth_div), effective = mean(recall_eff), .groups = "drop") %>%
+  mutate(cell = sprintf("%.1f%% → %.1f%%", 100 * nominal, 100 * effective),
+         iteration = paste0("iter", iteration)) %>%
+  select(caller, divergence, iteration, cell) %>%
+  pivot_wider(names_from = iteration, values_from = cell) %>%
+  kable(caption = "Nominal → effective SNP recall (phantom sites removed from the denominator).",
+        table.attr = 'class="center"')
+```
+
+**Interpretation.** The phantom floor grows ~quadratically with divergence (denser clusters) but stays
+small — ≤ 0.6% hom-div and ≤ 0.9% het at D=0.10. Effective recall lifts every number by that floor
+(e.g. gatk D=0.10 single-shot 70.4% → 70.8%) without changing the shape of any curve or any
+caller/iteration comparison. **For heterogeneous divergence this correction becomes essential**:
+phantoms concentrate in the high-divergence windows (denser clusters) — exactly where reference bias is
+scored highest — and being per-SNP, `effective_truth.py` handles that automatically.
 
 ## Variant caller comparison
 
@@ -313,6 +410,7 @@ gain <- agg %>%
   mutate(gain = .data[[as.character(n_iter)]] - .data[["1"]])
 
 ggplot(gain, aes(x = factor(divergence), y = caller, fill = gain)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
   geom_tile(color = "white", size = 0.6) +
   geom_text(aes(label = sprintf("+%.1f", gain * 100)), size = 3.4) +
   scale_fill_gradient(low = "#f7f7f7", high = "#0072b2",
@@ -327,6 +425,433 @@ for gatk at high divergence — iteration lowers the *effective* divergence so g
 reference-anchored assembly (which fails on far-from-reference sequence) starts working
 again. Iteration mitigates reference bias exactly where single-shot suffers most.
 
+## Per-variant read fate: why a SNP is (not) called — whole chromosome
+
+Everything above measures recovery in aggregate; this section asks, **per variant and directly at the
+reference base**, *why* each SNP is called or not — on **every** hom-div SNP on chr19 (no sampling;
+2.46M sites at D=0.04 up to 6.14M at D=0.10). This is the project's standard per-variant read-fate
+analysis (`analyses/lib/variant_read_fate.py`, run in `--aggregate` mode across all callers ×
+divergences by `run_vrf_aggregate.sh`; figures rebuilt below from its summary tables).
+
+**Definitions / assumptions.** For each true divergent SNP we take every read that *truly* covers its
+reference coordinate `p` and classify what that read does **at `p`**:
+
+- **Covering reads** — reads whose *true* (mason-simulated) fragment spans `p`, assigned from the `-oa`
+  truth BAM (i.e. from where the read came from, **not** where `bwa` put it) — so reads that were lost,
+  mismapped, or unmapped are still counted in the denominator.
+- **True allele via `oH`** — mason tags each read with its source haplotype (`oH`); with the phased
+  genotype this gives each read's *true* allele independent of sequencing error. For hom `1|1` SNPs both
+  haplotypes carry the alt, so **`n_true_alt` = all covering reads** (verified exactly). (For a het
+  `0|1` site — see s03 — the alt is on one haplotype, so `n_true_alt` is only the ~half of covering
+  reads from that haplotype.)
+- **`f_alt` = (reads with the alt aligned at `p`) / `n_true_alt`** — of the reads that *truly carry the
+  alt*, the fraction that actually deliver it at the correct coordinate. A read whose *start* is shifted
+  but whose SNP base still aligns at `p` counts (verified: shifted reads present the true alt, never a
+  displaced base). It is **alt-support survival, not the pileup allele fraction**: the denominator is
+  restricted to the alt-carrying reads, so `f_alt = 1` under unbiased mapping and drops below 1 only
+  when those reads are lost (clipped / mismapped / unmapped). At a het site this means `f_alt` is ≈1 by
+  construction unless the alt-haplotype reads drop out — it is *not* the ~0.5 you would get from ref+alt.
+- **What is at `p`** (one class per covering read): `alt` / `ref` / `other-base (error)` aligned there;
+  `clipped over p` / `deleted at p` (read at the locus but nothing aligned at `p`); `mapped elsewhere`
+  / `unmapped` (read never reaches `p`). Read-start placement (exact/shifted) is deliberately collapsed —
+  only what happens **at `p`** matters.
+
+```{r vrf-load}
+library(ggalluvial)
+AGG <- "analyses/s01-baseline-iterative/results/vrf-agg"        # aggregate tables from run_vrf_aggregate.sh
+lv  <- c("gatk", "bcftools", "freebayes")
+hcomp <- bind_rows(lapply(list.files(AGG, "hcomp.csv$", full.names = TRUE), read_csv, col_types = cols())) %>%
+  mutate(caller = factor(caller, levels = lv))                  # per (caller,div,iter,call-status): at-p read-fate sums
+gtraj <- bind_rows(lapply(list.files(AGG, "gtraj.csv$", full.names = TRUE), read_csv, col_types = cols()))
+```
+
+### Why do SNPs stay uncalled?
+
+For the SNPs a caller does **not** call, is the alt actually there (`alt maps at p`)? If yes, the caller
+— not the mapping — is the blocker.
+
+```{r vrf-uncalled, out.width="100%", fig.width=9, fig.height=4.8}
+hcomp %>% filter(status == "not_called", iteration %in% c(1, 3)) %>%
+  mutate(alt_frac = alt_at_p / n_reads) %>%
+  ggplot(aes(factor(divergence), alt_frac, color = caller, linetype = factor(iteration),
+             group = interaction(caller, iteration))) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.4) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+  scale_linetype_manual(values = c(`1` = "solid", `3` = "22"), name = "iteration") +
+  labs(x = "divergence (D)", y = "alt maps at p  (fraction of covering reads)",
+       title = "Not-called SNPs: is the base there? (whole chromosome, every hom-div SNP)") +
+  bartheme()
+```
+
+**Interpretation.** Two clean bands. For **gatk**, not-called SNPs have the alt presented **~76–87%** of
+the time across all divergences — the base is right there and the reassembler still won't call it
+(**assembler-limited**). For **bcftools / freebayes** it is only **~16–32%** — a pileup/haplotype caller
+misses a SNP essentially only when the base genuinely isn't presented (**alignment-limited**).
+
+### What maps at position p (composition)
+
+The full read-fate breakdown at the highest divergence (D=0.10), by caller (columns) and call outcome
+(rows). Read this at `p`: `alt maps at p` is the base being delivered; everything else is a way it isn't.
+
+```{r vrf-hcomp, out.width="100%", fig.width=10, fig.height=5.4}
+cats <- c("alt_at_p", "ref_at_p", "err_at_p", "clipped", "deleted", "mapped_elsewhere", "unmapped")
+nice <- c(alt_at_p = "alt maps at p", ref_at_p = "ref maps at p", err_at_p = "other base (error)",
+          clipped = "clipped over p", deleted = "deleted at p",
+          mapped_elsewhere = "mapped elsewhere", unmapped = "unmapped")
+fcol <- setNames(c("#1b7837", "#2166ac", "#92c5de", "#e08214", "#8073ac", "#b2182b", "#4d4d4d"),
+                 unname(nice[cats]))
+hcomp %>% filter(divergence == 0.10) %>%
+  pivot_longer(all_of(cats), names_to = "atp", values_to = "reads") %>%
+  mutate(frac = reads / n_reads, atp = factor(nice[atp], levels = unname(nice[cats])),
+         status = recode(status, called = "called", not_called = "not called")) %>%
+  ggplot(aes(factor(iteration), frac, fill = atp)) +
+  geom_col(width = 0.75, color = "grey30", linewidth = 0.12) + facet_grid(status ~ caller) +
+  scale_fill_manual(values = fcol, name = "what is at position p") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "iteration", y = "fraction of covering reads",
+       title = "What maps at p — D=0.10, whole chromosome, by caller and call outcome") +
+  bartheme()
+```
+
+**Interpretation.** The *not-called* row is the story. gatk's box is **green** (`alt maps at p`, ~76%) —
+the reads deliver the base. bcftools/freebayes are **red + orange** (`mapped elsewhere` ~40–53%, `clipped`
+~15%) — the base isn't presented, dominated by reads that mismapped or were clipped. Called SNPs converge
+to ~99.5% `alt maps at p` by iteration 3 for all three.
+
+### Joint state across iterations (G)
+
+Each SNP flows through its joint (call status × `f_alt` bin) state per iteration. Within every panel the
+**lower box is `called`, the upper box `not called`** (thin gap between); colour bands are the `f_alt`
+bin (viridis; yellow = high, i.e. alt well-presented at `p`). Rows are callers, columns are divergence —
+all conditions, whole chromosome. (Larger single-condition versions, with the box labels, are also
+written to `results/vrf-viz-full/G_<caller>_D<div>.png`.)
+
+```{r vrf-G, out.width="100%", fig.width=17, fig.height=8.5, out.extra='style="max-width:1600px"'}
+BIN   <- c("0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0")
+fbcol <- setNames(hcl.colors(5, "Viridis"), BIN)
+Glev  <- c(paste("not called", BIN, sep = " · "), "gap", paste("called", BIN, sep = " · "))
+makeG <- function(cc, dd, showlab = TRUE) {
+  g <- gtraj %>% filter(caller == cc, divergence == dd, fb1 %in% BIN, fb2 %in% BIN, fb3 %in% BIN)
+  lodes <- g %>% mutate(id = row_number()) %>%
+    pivot_longer(c(s1, fb1, s2, fb2, s3, fb3), names_to = c(".value", "iter"),
+                 names_pattern = "([a-z]+)([0-9])") %>%
+    transmute(id, n = n_snps, iter, status = ifelse(s == "not_called", "not called", "called"),
+              fb = factor(fb, levels = BIN),
+              state = factor(paste(status, fb, sep = " · "), levels = Glev), is_gap = FALSE)
+  gapN <- round(0.03 * sum(g$n_snps))
+  lodes <- bind_rows(lodes, tibble(id = max(lodes$id) + 1, n = gapN, iter = c("1", "2", "3"),
+                     status = "gap", fb = factor(NA, levels = BIN),
+                     state = factor("gap", levels = Glev), is_gap = TRUE))
+  box <- lodes %>% filter(!is_gap) %>% group_by(iter, status) %>% summarize(n = sum(n), .groups = "drop") %>%
+    group_by(iter) %>% mutate(ncall = sum(n[status == "called"])) %>% ungroup() %>%
+    mutate(pos = as.integer(iter), xmin = pos - 0.22, xmax = pos + 0.22,
+           ymin = ifelse(status == "called", 0, ncall + gapN),
+           ymax = ifelse(status == "called", ncall, ncall + gapN + n), yc = (ymin + ymax) / 2)
+  p <- ggplot(lodes, aes(x = iter, stratum = state, alluvium = id, y = n, fill = fb, alpha = is_gap)) +
+    geom_flow() +
+    geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE, fill = "white") +
+    geom_stratum(color = NA, width = 0.44) +
+    geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), inherit.aes = FALSE, fill = NA, color = "grey15", linewidth = 0.6)
+  if (showlab)
+    p <- p + geom_text(data = box, aes(x = pos, y = yc, label = status), inherit.aes = FALSE, size = 2.5, fontface = "bold", colour = "grey10")
+  p + scale_alpha_manual(values = c(`FALSE` = 0.4, `TRUE` = 0), guide = "none") +
+    scale_fill_manual(values = fbcol, name = "f_alt bin", na.value = "white", na.translate = FALSE) +
+    scale_x_discrete(labels = c("i1", "i2", "i3"), expand = c(0.08, 0.08)) +
+    labs(x = NULL, y = NULL, title = sprintf("%s  D=%s", cc, format(dd))) +
+    theme_minimal(base_size = 9) + theme(panel.grid = element_blank(), axis.text.y = element_blank(),
+                                         plot.title = element_text(size = 9))
+}
+conds <- expand.grid(dd = c(0.005, 0.02, 0.04, 0.06, 0.08, 0.10), cc = lv, stringsAsFactors = FALSE)  # rows=caller, cols=div
+patchwork::wrap_plots(Map(function(cc, dd) makeG(cc, dd, showlab = FALSE), conds$cc, conds$dd),
+                      ncol = 6, guides = "collect")
+```
+
+**Interpretation.** The caller split is visible in every column: gatk's `not called` box (upper) carries
+a big **yellow** (high `f_alt`) band at all divergences — base present, uncalled (assembler ceiling) —
+whereas bcftools/freebayes `not called` boxes are the **low bins** (base absent, alignment-limited), and
+that low-bin mass grows with divergence. All three `called` boxes (lower) fill toward yellow across
+iterations as placement tidies. Divergence runs left→right: the not-called block grows and its `f_alt`
+structure shifts down for the pileup/haplotype callers, while gatk's stays high.
+
+**Data dictionary — `results/vrf-agg/vrf-agg-<caller>-<div>-{gtraj,hcomp}.csv`.** Aggregate summaries
+over the whole chromosome; no per-SNP rows are stored.
+
+- `-hcomp.csv` — one row per (`divergence`, `caller`, `iteration`, `status`∈{called,not_called}). Columns
+  `alt_at_p, ref_at_p, err_at_p, clipped, deleted, mapped_elsewhere, unmapped` are **read counts** summed
+  over all SNPs (what maps at `p`); `n_reads` is their total (all covering reads). Fractions = column / `n_reads`.
+- `-gtraj.csv` — one row per distinct 3-iteration trajectory of (`s{k}`=call status, `fb{k}`=`f_alt` bin)
+  with `n_snps` = number of SNPs that followed it. `f_alt` bins are 0.2-wide (`0.0-0.2` … `0.8-1.0`);
+  `s{k}` ∈ {called, not_called}. Feeds figure G.
+
+### Companion decomposition: what changes when a SNP flips to called?
+
+`f_alt` is one-dimensional — alt-support survival — and by construction blind to the *reference /
+contaminant* reads at `p`, the depth, and the MAPQ. So when a SNP flips not-called→called we ask what
+*else* moved. We re-run the read-fate tool in `--pileup` mode on a 30k-SNP sample
+(`run_vrf_pileup.sh`), which adds the **position-centric pileup at `p`** — the caller's-eye view of
+every read aligned over `p` — **and two complementary mismap counts**: **mismapped-IN** (`mmin_*`:
+reads aligned at `p` whose *true* span is elsewhere — foreign reads the ledger books at their home
+loci) and its corollary **mismapped-OUT** (reads that *belong* at `p` by truth but are mapped
+elsewhere or unmapped, `mm_clip+mm_noclip+dc+un`). We join consecutive iterations per SNP and compare
+the pileup across **three fates** — `not-called→called` (flip), `called→called` (stayed called),
+`not-called→not-called` (stayed not-called) — over **all `f_alt` bins** and **all divergences**,
+tracking depth, ref reads, mismapped-in, mismapped-out, MAPQ, and `f_alt`. The by-divergence and
+by-fate figures pool **all SNPs** in a group; only the last figure separates by `f_alt` bin.
+
+```{r vrf-decomp-load}
+PILE  <- "analyses/s01-baseline-iterative/results/vrf-pileup"
+BINS  <- c("0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0")
+FATES <- c("stayed not-called", "flip (→called)", "stayed called")
+nbps <- read_csv("analyses/s01-baseline-iterative/results/neighborhood/neighborhood-per-snp.csv",
+                 col_types = cols())                         # per-SNP unrecovered-neighbor load
+pl <- bind_rows(lapply(list.files(PILE, "vrf-pileup-.*\\.csv$", full.names = TRUE),
+                       read_csv, col_types = cols())) %>%
+  left_join(select(nbps, caller, divergence, snp_pos, iteration, nb_unrec = n_unrecovered),
+            by = c("caller", "divergence", "snp_pos", "iteration")) %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         f_alt = ifelse(n_true_alt > 0, (ex_alt + sh_alt) / n_true_alt, NA_real_),
+         called = recovered == 1)
+mkpairs <- function(k) inner_join(filter(pl, iteration == k), filter(pl, iteration == k + 1),
+                                  by = c("caller", "divergence", "snp_pos"), suffix = c("_a", "_b"))
+pairs <- bind_rows(mkpairs(1), mkpairs(2)) %>%
+  filter(!is.na(f_alt_a), !is.na(f_alt_b)) %>%
+  mutate(grp = case_when(!called_a &  called_b ~ "flip (→called)",
+                          called_a &  called_b ~ "stayed called",
+                         !called_a & !called_b ~ "stayed not-called",
+                          TRUE ~ "lost (called→not)"),
+         grp = factor(grp, levels = FATES),
+         fbin_a = cut(f_alt_a, breaks = seq(0, 1, 0.2), include.lowest = TRUE, labels = BINS),
+         # mismapped-OUT: reads whose TRUE span covers p but are mapped elsewhere/unmapped -- the
+         # mirror of mismapped-in (foreign reads AT p). From the truth-centric ledger cells.
+         mmout_a = mm_clip_a + mm_noclip_a + dc_a + un_a,
+         mmout_b = mm_clip_b + mm_noclip_b + dc_b + un_b)
+flip <- filter(pairs, grp == "flip (→called)")
+
+# per-SNP distribution boxplots by fate, for one divergence (depth included; a SEPARATE figure per D
+# rather than another facet dimension, which would be too busy)
+METS <- c("depth at p", "f_alt", "ref reads at p", "mismapped-in ref", "mismapped-out",
+          "mean MAPQ at p", "neighbor unrec SNPs (±200bp)")
+distfig <- function(dd) {
+  d1 <- filter(pairs, grp %in% FATES, divergence == dd) %>% mutate(id = row_number())
+  bind_rows(
+    d1 %>% transmute(id, caller, grp, metric = "depth at p",       before = depth_p_a,   after = depth_p_b),
+    d1 %>% transmute(id, caller, grp, metric = "f_alt",            before = f_alt_a,      after = f_alt_b),
+    d1 %>% transmute(id, caller, grp, metric = "ref reads at p",   before = ref_p_a,      after = ref_p_b),
+    d1 %>% transmute(id, caller, grp, metric = "mismapped-in ref", before = mmin_ref_p_a, after = mmin_ref_p_b),
+    d1 %>% transmute(id, caller, grp, metric = "mismapped-out",    before = mmout_a,      after = mmout_b),
+    d1 %>% transmute(id, caller, grp, metric = "mean MAPQ at p",   before = mapq_p_a,     after = mapq_p_b),
+    d1 %>% transmute(id, caller, grp, metric = "neighbor unrec SNPs (±200bp)", before = nb_unrec_a, after = nb_unrec_b)) %>%
+    pivot_longer(c(before, after), names_to = "state", values_to = "value") %>%
+    mutate(state = factor(state, levels = c("before", "after")), metric = factor(metric, levels = METS)) %>%
+    ggplot(aes(state, value, fill = caller)) +
+    geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2, linewidth = 0.28,
+                 position = position_dodge(0.8), width = 0.7) +
+    facet_grid(metric ~ grp, scales = "free_y") +
+    scale_fill_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+    labs(x = "earlier → later iteration", y = NULL,
+         title = sprintf("Per-SNP pileup DISTRIBUTIONS by fate — s01, D=%s", format(dd))) +
+    bartheme() +
+    theme(strip.text.y = element_text(angle = 0), panel.spacing = unit(0.85, "lines"),
+          panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+          strip.background = element_rect(fill = "grey92", color = "grey75", linewidth = 0.4))
+}
+
+# mean trend across divergences for ONE fate (a compact direction-of-change view; one figure per fate)
+labA <- c(depth = "depth at p", ref = "ref reads at p", mminref = "mismapped-in ref",
+          mmout = "mismapped-out", mapq = "mean MAPQ at p", falt = "f_alt",
+          nbunrec = "neighbor unrec SNPs (±200bp)")
+meantrend <- function(g) {
+  filter(pairs, grp == g) %>% group_by(caller, divergence) %>%
+    summarize(depth_a = mean(depth_p_a), depth_b = mean(depth_p_b), ref_a = mean(ref_p_a), ref_b = mean(ref_p_b),
+              mminref_a = mean(mmin_ref_p_a), mminref_b = mean(mmin_ref_p_b),
+              mmout_a = mean(mmout_a), mmout_b = mean(mmout_b), mapq_a = mean(mapq_p_a), mapq_b = mean(mapq_p_b),
+              falt_a = mean(f_alt_a), falt_b = mean(f_alt_b),
+              nbunrec_a = mean(nb_unrec_a), nbunrec_b = mean(nb_unrec_b), .groups = "drop") %>%
+    pivot_longer(matches("_(a|b)$"), names_pattern = "(.+)_([ab])$", names_to = c("metric", ".value")) %>%
+    mutate(metric = factor(labA[metric], levels = unname(labA))) %>%
+    pivot_longer(c(a, b), names_to = "state", values_to = "value") %>%
+    mutate(state = factor(ifelse(state == "a", "earlier", "later"), levels = c("earlier", "later"))) %>%
+    ggplot(aes(state, value, group = caller, color = caller)) +
+    geom_line(linewidth = 0.85) + geom_point(size = 2.2) +
+    facet_grid(metric ~ divergence, scales = "free_y", labeller = labeller(divergence = label_both)) +
+    scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+    labs(x = NULL, y = "group mean", title = sprintf("MEAN pileup by divergence — %s", g)) +
+    bartheme() +
+    theme(strip.text.y = element_text(angle = 0), panel.spacing = unit(1, "lines"),
+          panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+          strip.background = element_rect(fill = "grey92", color = "grey75", linewidth = 0.4))
+}
+```
+
+**Per-SNP distributions** (boxplots, not means), one figure **per divergence** for the three fates.
+Each box is the spread of that pileup axis over all SNPs in the fate at the earlier vs later iteration;
+the median line and IQR show how wide the variation really is behind any single mean. `depth at p` is
+included and is roughly flat across the flip — foreign reads leave *as* the true reads arrive.
+
+```{r vrf-decomp-d06, out.width="100%", fig.width=11, fig.height=11.5}
+distfig(0.06)
+```
+
+```{r vrf-decomp-d08, out.width="100%", fig.width=11, fig.height=11.5}
+distfig(0.08)
+```
+
+```{r vrf-decomp-d10, out.width="100%", fig.width=11, fig.height=11.5}
+distfig(0.10)
+```
+
+The **mean trend across divergences**, one figure per fate — the compact direction-of-change view
+(each point a group mean; the boxplots above show the spread). In **flips** every contamination axis
+falls while `f_alt`/MAPQ rise; **stayed called** is flat and clean at every divergence; **stayed
+not-called** stays contaminated throughout — the sites iteration cannot fix.
+
+```{r vrf-decomp-mt-flip, out.width="100%", fig.width=9.5, fig.height=10.5}
+meantrend("flip (→called)")
+```
+
+```{r vrf-decomp-mt-scall, out.width="100%", fig.width=9.5, fig.height=10.5}
+meantrend("stayed called")
+```
+
+```{r vrf-decomp-mt-snc, out.width="100%", fig.width=9.5, fig.height=10.5}
+meantrend("stayed not-called")
+```
+
+Finally, the flips by **starting `f_alt` bin** (D=0.10, group means). Left: `f_alt` before vs after —
+the top bin is flat while low bins **migrate up** (alt support re-anchors). Right: the mismapped-in ref
+contamination that clears, present in every bin.
+
+```{r vrf-decomp-figB, out.width="100%", fig.width=10, fig.height=4.2}
+labB <- c(falt = "f_alt (before vs after)", mminref = "mismapped-in ref reads at p")
+flip %>% filter(divergence == 0.10) %>% group_by(caller, fbin_a) %>%
+  summarize(falt_a = mean(f_alt_a), falt_b = mean(f_alt_b),
+            mminref_a = mean(mmin_ref_p_a), mminref_b = mean(mmin_ref_p_b), .groups = "drop") %>%
+  pivot_longer(c(falt_a, falt_b, mminref_a, mminref_b),
+               names_pattern = "(.+)_([ab])$", names_to = c("metric", ".value")) %>%
+  mutate(metric = factor(labB[metric], levels = unname(labB))) %>%
+  pivot_longer(c(a, b), names_to = "state", values_to = "value") %>%
+  mutate(state = factor(ifelse(state == "a", "before (uncalled)", "after (called)"),
+                        levels = c("before (uncalled)", "after (called)"))) %>%
+  ggplot(aes(fbin_a, value, color = caller, linetype = state, group = interaction(caller, state))) +
+  geom_line(linewidth = 0.85) + geom_point(size = 2.1) +
+  facet_wrap(~ metric, scales = "free_y") +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "caller") +
+  scale_linetype_manual(values = c("before (uncalled)" = "22", "after (called)" = "solid"), name = NULL) +
+  labs(x = "starting f_alt bin (iteration where still uncalled)", y = NULL,
+       title = "Flip SNPs by starting f_alt bin (D=0.10, group means)") +
+  bartheme() +
+  theme(panel.spacing = unit(1.4, "lines"),
+        panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+        strip.background = element_rect(fill = "grey92", color = "grey75", linewidth = 0.4))
+```
+
+#### The gatk signature: flips with an unchanged pileup
+
+The most striking pattern is **gatk**: almost nothing about the pileup at `p` changes when a gatk SNP
+flips to called. Two ways to see it (D=0.10). First, how often the pileup was *already* clean before
+the flip (clean = `f_alt≥0.8`, `≤2` ref reads, `MAPQ≥50`, `≤2` mismapped-in — indistinguishable from a
+called site):
+
+```{r vrf-decomp-gatksig1}
+pairs %>% filter(divergence == 0.10, grp == "flip (→called)") %>%
+  mutate(already_clean = f_alt_a >= 0.8 & ref_p_a <= 2 & mapq_p_a >= 50 & mmin_ref_p_a <= 2) %>%
+  group_by(caller) %>%
+  summarize(`n flips` = n(),
+            `pileup already clean before flip` = sprintf("%.0f%%", 100 * mean(already_clean)),
+            .groups = "drop") %>%
+  kable(caption = "Fraction of flip SNPs whose pileup at p already looked called-ready before the flip.",
+        table.attr = 'class="center"')
+```
+
+Second, how much each axis actually moves across the flip (mean absolute change):
+
+```{r vrf-decomp-gatksig2}
+pairs %>% filter(divergence == 0.10, grp == "flip (→called)") %>%
+  group_by(caller) %>%
+  summarize(`Δ depth` = round(mean(abs(depth_p_b - depth_p_a)), 1),
+            `Δ ref` = round(mean(abs(ref_p_b - ref_p_a)), 1),
+            `Δ mismap-in` = round(mean(abs(mmin_ref_p_b - mmin_ref_p_a)), 1),
+            `Δ MAPQ` = round(mean(abs(mapq_p_b - mapq_p_a)), 1),
+            `Δ f_alt` = round(mean(abs(f_alt_b - f_alt_a)), 2), .groups = "drop") %>%
+  kable(caption = "Mean absolute change in each pileup axis across the flip.",
+        table.attr = 'class="center"')
+```
+
+For **~65% of gatk flips the pileup at `p` is already clean before the flip** and barely moves (MAPQ
+shifts ~2.6, `f_alt` ~0.05) — versus ~1% for the pileup callers, whose flips move everything (MAPQ ~31,
+`f_alt` ~0.37). gatk is *not* freed by a better pileup at the SNP; its reads were presentable all along.
+Recovery must come from **off `p`** — the reference-anchored reassembler finally closing the local
+haplotype once the surrounding consensus has converged, a change invisible to any at-`p` measurement
+(quantified next).
+
+#### What changes off p: the local unrecovered-SNP load
+
+If the change is in the neighborhood, we can measure it. For each SNP we count the **other true hom-div
+SNPs within ±200 bp** (roughly HaplotypeCaller's active-region + assembly window) that are **not yet
+recovered** into the consensus at that iteration — the local mismatch load the reference-anchored
+reassembler must bridge to find shared exact k-mers and close a haplotype
+(`scripts/neighborhood_assembly.py`, `results/neighborhood/`).
+
+```{r vrf-decomp-neigh, out.width="100%", fig.width=9.5, fig.height=3.6}
+nb <- read_csv("analyses/s01-baseline-iterative/results/neighborhood/neighborhood-summary.csv",
+               col_types = cols())
+fcol <- c("stayed called" = "#4d9221", "flip (→called)" = "#e08214", "stayed not-called" = "#b2182b")
+nb %>% filter(divergence == 0.10, fate %in% c("flip", "stayed_notcalled", "stayed_called")) %>%
+  transmute(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+            fate = factor(fate, levels = c("stayed_called", "flip", "stayed_notcalled"),
+                          labels = names(fcol)),
+            before = mean_unrecovered_before, after = mean_unrecovered_after) %>%
+  pivot_longer(c(before, after), names_to = "state", values_to = "unrec") %>%
+  mutate(state = factor(state, levels = c("before", "after"))) %>%
+  ggplot(aes(state, unrec, color = fate, group = fate)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.8) +
+  facet_wrap(~ caller) +
+  scale_color_manual(values = fcol, name = "fate") +
+  labs(x = "earlier → later iteration", y = "unrecovered neighbor\nhom-div SNPs (±200 bp)",
+       title = "The assemblable neighborhood: local unrecovered-SNP load, D=0.10") +
+  bartheme() + theme(plot.title = element_text(size = 11))
+```
+
+**This is the answer.** For **flips** the local unrecovered-SNP load **collapses** — gatk 25→6 at D=0.10
+— into the range where already-called sites live (~4), while **stayed-not-called** neighborhoods stay
+cluttered (31→30) and never assemble, which is exactly why they never flip. The *same* collapse drives
+the pileup callers' flips (20→3): the common upstream cause is the **local consensus converging**, which
+lowers the neighborhood's divergence to the reference. It simply acts through a different bottleneck —
+**assembly** for gatk (whose reads at `p` were already presentable), **read placement** for
+bcftools/freebayes (letting the contaminating reads at `p` map to their true homes). One cause, two
+effects — the assembler-vs-alignment split, measured directly.
+
+**Interpretation.** First the caution the distributions make plain (Figure 1): these groups are
+strongly **right-skewed**, so means overstate the typical SNP — the bcftools flip group *averages*
+~8 ref reads at D=0.10 but the **median flip SNP has 5 (IQR 0–15)**, and many start with none. With
+that in mind the **three fates** separate cleanly:
+
+- **stayed called** (the large control): clean at both iterations — ~0 ref reads, `f_alt`≈1. These
+  were never contaminated; nothing needs to change.
+- **flip (→called)**: contaminated → clean. Ref reads at `p` clear (median 5→0) and, in lockstep, the
+  **mismapped-out** reads that *belong* at `p` come home (5→0) — the SNP's own reads return as the
+  foreign ref reads leave, and MAPQ rises. The ref reads are almost entirely **mismapped-in**
+  (foreign): the mismapped-in count tracks the ref count nearly one-to-one.
+- **stayed not-called**: the contamination **persists** — ref reads stay ~15, mismapped-out stays ~17,
+  `f_alt` stays ≈0 across the iteration. These are the genuinely hard sites (repetitive / multi-mapping
+  neighborhoods, or phantom alt-absent — see the note below) the consensus can't disentangle, which is
+  *why* they never flip.
+
+So a flip is exactly the event where a contaminated pileup **resolves** — foreign reads out, true reads
+in — while stayed-not-called SNPs are where it doesn't. By starting `f_alt` bin (Figure 3) the flips
+split into two routes: **top-bin flips** keep `f_alt` flat and are pure *contamination cleanup*;
+**low-bin flips migrate up in `f_alt`** as their true-alt reads re-anchor. **gatk** shows the smallest
+pileup changes and the largest `f_alt` migration — its deficit is the reassembler (freed by a converged
+neighborhood), whereas **bcftools/freebayes** are freed chiefly by the pileup clearing. (Script:
+`scripts/vrf_pileup_decomp.R`; `--pileup` columns `depth_p, ref_p, alt_p, oth_p, mapq_p, mapq20_p` and
+mismapped-in `mmin_p, mmin_ref_p, mmin_alt_p`; mismapped-out = `mm_clip+mm_noclip+dc+un`.)
+
+*Note on the `f_alt≈0` not-called band:* a small, divergence-scaled fraction of "hom-div" truth SNPs
+were never simulated into the reads (dense-cluster **phantom** sites — see the phantom-truth note
+under SNP recovery); these are unrecoverable and sit permanently in the lowest-`f_alt` not-called band,
+so they never appear in the flip group above.
+
 # Heterozygous site recovery
 
 Het sites (true `0/1`) are the classic allelic-dropout target of reference bias: when a
@@ -334,13 +859,22 @@ het's alt-bearing reads map poorly, the site looks homozygous-reference. They ar
 baked into the (haploid) consensus, so this is scored from the **raw per-iteration caller
 VCF** vs truth — `het_tp / n_truth_het`.
 
+**The D = 0 point is the germline-calling baseline.** At zero divergence the task reduces to ordinary
+diploid variant calling against a matching reference — the well-benchmarked regime — with only het
+sites and sequencing error in play. Our pipeline hits **~99% het recall with ~150 false positives**
+there (see the `divergence = 0` column below), a sane germline anchor and the point where the sim can
+eventually be checked against real-data truth (Genome-in-a-Bottle; logged as a separate calibration).
+Everything to the right of it is the **reference-bias departure** from that baseline as divergence
+grows. (Divergence recall necessarily starts at D > 0 — at D = 0 there are no divergent sites to
+recover — and the near-0 anchors 0.001/0.005 extend that curve toward the origin.)
+
 ```{r het-by-iter, out.width="95%", fig.height=3.5}
-ggplot(hets, aes(x = divergence, y = m, color = iteration)) +
+ggplot(hets, aes(x = factor(divergence), y = m, color = iteration)) +
   geom_line(aes(group = divergence), color = "grey65", size = 0.6) +
   geom_errorbar(aes(ymin = m - s, ymax = m + s), width = 0.0015) +
   geom_point(size = 2.6) +
   facet_wrap(~caller) +
-  scale_x_continuous(breaks = unique(hets$divergence)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
   scale_y_continuous(labels = scales::percent) +
   scale_color_manual(values = cols, name = "Iteration") +
   xlab("Simulated divergence (D)") + ylab("Heterozygous-site recall") +

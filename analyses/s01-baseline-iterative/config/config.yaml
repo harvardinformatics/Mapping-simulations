@@ -31,7 +31,7 @@ results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations
 # SNP-only is the deliberate BASELINE: other parameters (indels, SV, het,
 # heterogeneous divergence) are added in s02 and measured RELATIVE to this.
 covs:  ["30"]
-divs:  ["0.00", "0.02", "0.04", "0.06", "0.08", "0.10"]   # fixed divergence D
+divs:  ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]   # fixed divergence D (0.00 control + 0.001/0.005 near-0 anchors)
 het:   "0.005"               # single heterozygosity value (held fixed in s01)
 indel_divergence:  0.0       # BASELINE = no indels
 indel_heterozygosity: 0.0

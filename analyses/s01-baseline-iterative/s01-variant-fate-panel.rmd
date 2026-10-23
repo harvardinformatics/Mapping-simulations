@@ -1,0 +1,94 @@
+---
+title: "s01 — variant read-fate panel (direct per-SNP visibility, iter1→2→3)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: false
+    code_folding: hide
+    self_contained: true
+---
+
+```{=html}
+<style>
+.main-container { max-width: 1600px !important; width: 98% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+/* these alluvials are dense -- allow them well past the usual 900px cap */
+img { max-width: 1300px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr); library(ggalluvial)
+source("analyses/lib/design.r")
+```
+
+This is the full panel of the per-variant read-fate flow, split into **separate large plots** (one per
+caller × divergence) so each is legible. It uses the **direct per-SNP visibility** measure, not the
+read's dominant class: each SNP is labeled by the plurality state of its covering reads —
+
+- **visible** — the SNP's own reference position is aligned in the read (base presented to the caller)
+- **clipped/del** — read at the right locus but the SNP position is soft-clipped over or deleted (base *not* presented at its coordinate)
+- **mismapped** — read placed at the wrong locus
+- **unmapped**
+
+Restricted to the SNPs each caller **newly recovers by iteration 3**, traced across iterations 1 → 2 → 3.
+The flow into *visible* is recovery via better alignment; a *visible → visible* band is a SNP whose base
+was already presented but the caller (gatk's reassembler) missed anyway until effective divergence fell.
+
+```{r load}
+pcl   <- c("p_visible", "p_clipdel", "p_mismap", "p_unmap")
+pnice <- c(p_visible = "visible", p_clipdel = "clipped/del", p_mismap = "mismapped", p_unmap = "unmapped")
+pcols <- c(visible = "#009E73", `clipped/del` = "#E69F00", mismapped = "#D55E00", unmapped = "#999999")
+plev  <- names(pcols)
+
+vf <- bind_rows(lapply(c("0.04","0.06","0.08","0.10"), function(d)
+  read_csv(sprintf("analyses/s01-baseline-iterative/results/s01-varfate-%s.csv", d),
+           col_types = cols()))) %>% mutate(divergence = as.numeric(divergence))
+traj <- vf %>% group_by(caller, divergence, snp_pos) %>%
+  summarize(r1 = recovered[iteration == 1], r3 = recovered[iteration == 3], .groups = "drop") %>%
+  mutate(new = r1 == 0 & r3 == 1)
+vf <- vf %>% left_join(select(traj, caller, divergence, snp_pos, new),
+                       by = c("caller", "divergence", "snp_pos"))
+vf$pdom <- factor(pnice[pcl[max.col(as.matrix(vf[, pcl]), ties.method = "first")]], levels = plev)
+
+flow3 <- function(cc, dd) {
+  vf %>% filter(caller == cc, divergence == dd, new, n_reads > 0) %>%
+    select(snp_pos, iteration, pdom) %>%
+    pivot_wider(names_from = iteration, values_from = pdom) %>%
+    rename(i1 = `1`, i2 = `2`, i3 = `3`) %>% filter(!is.na(i1), !is.na(i2), !is.na(i3)) %>%
+    count(i1, i2, i3, name = "nsnp")
+}
+```
+
+```{r panel, results='asis', fig.width=9.5, fig.height=5}
+for (cc in c("gatk", "bcftools", "freebayes")) {
+  cat(sprintf("\n\n# %s\n\n", cc))
+  for (dd in c(0.04, 0.06, 0.08, 0.10)) {
+    w3 <- flow3(cc, dd)
+    cat(sprintf("\n\n## %s — D = %s  (%d newly-recovered SNPs)\n\n", cc, format(dd), sum(w3$nsnp)))
+    if (nrow(w3) == 0 || sum(w3$nsnp) == 0) { cat("_none_\n\n"); next }
+    p <- ggplot(w3, aes(axis1 = i1, axis2 = i2, axis3 = i3, y = nsnp)) +
+      geom_alluvium(aes(fill = i1), alpha = 0.85) +
+      geom_stratum(width = 0.3, fill = "grey92", color = "grey55") +
+      geom_text(stat = "stratum", size = 3,
+                aes(label = ifelse(after_stat(count) >= max(3, 0.03 * sum(w3$nsnp)),
+                                   as.character(after_stat(stratum)), ""))) +
+      scale_x_discrete(limits = c("iter1", "iter2", "iter3"), expand = c(0.06, 0.06)) +
+      scale_fill_manual(values = pcols, name = "iter1 state", drop = FALSE) +
+      labs(x = NULL, y = "newly-recovered SNPs",
+           title = sprintf("%s, D = %s — per-SNP base visibility across iterations", cc, format(dd))) +
+      bartheme()
+    print(p)
+    cat("\n\n")
+  }
+}
+```
