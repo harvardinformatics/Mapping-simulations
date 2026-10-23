@@ -1,0 +1,258 @@
+---
+title: "s04 — does disabling soft-clipping change SNP recovery? (chr19)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file. Keep in sync
+     with analyses/lib/notebook.css. Raw {=html} block so pandoc passes it through. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+img { max-width: 900px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+table.center { margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr); library(knitr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Does gatk's high-divergence SNP loss come from soft-clipped bases being ignored?** A read that
+carries divergent bases toward its end is often soft-clipped there by the aligner; those bases stay
+in the BAM but a caller may or may not use them. One hypothesis for why gatk (HaplotypeCaller)
+recovers fewer divergent SNPs than bcftools/freebayes is that soft-clipping *starves* it of the alt
+allele. This section tests that hypothesis directly, and in isolation.
+
+**The test is paired on a single BAM.** For each divergence we take the **existing s01 iter-1 gatk
+BAM** (SNP-only data, seed 42, 30×) and run HaplotypeCaller on it **twice**:
+
+- `gatk_default` — HaplotypeCaller's default, which **uses** soft-clipped bases.
+- `gatk_nosoftclip` — the same command plus `--dont-use-soft-clipped-bases`, which **ignores** them.
+
+Because both calls see the *identical* alignment (same reads, same clips, same mapping), any
+difference in recovery is attributable to the flag alone — nothing else changes. We score each call
+against the controlled truth with `analyses/lib/compare_vcfs.py` (match on POS/REF/ALT after
+`bcftools norm`), and read out SNP-divergence recall (`div_tp / n_truth_div`) and het recall
+(`het_tp / n_truth_het`). Driver: `analyses/s04-softclip/run_softclip_toggle.sh <DIV>`.
+
+**Scope & assumptions.**
+
+- Two divergences, **D ∈ {0.06, 0.10}** — the regime where gatk's deficit is largest and where a
+  clipping effect, if any, should be most visible. H = 0.005, 30×, iteration 1 only (single-shot;
+  this is a caller-flag test, not an iteration test).
+- Only **gatk** is toggled — it is the caller with the deficit; the flag is a HaplotypeCaller option.
+- **Prediction** from the assembler-not-clipping account (see the s01/s02 read-fate sections: the
+  SNPs gatk misses mostly *have the base present at their position* — they are assembler-limited, not
+  alignment/clipping-limited): recall should **barely move**.
+
+```{r load}
+res <- "analyses/s04-softclip/results/"
+sc <- bind_rows(lapply(c("0.06", "0.10"), function(d)
+        read_csv(paste0(res, "softclip-toggle-", d, ".csv"), col_types = cols()))) %>%
+  mutate(mode = sub("gatk_", "", caller),                       # default | nosoftclip
+         mode = factor(mode, levels = c("default", "nosoftclip")),
+         div_recall = div_tp / n_truth_div,                     # SNP divergence recall
+         het_recall = het_tp / n_truth_het)                     # SNP het recall
+```
+
+# Result: disabling soft-clipping does not recover the missed SNPs
+
+```{r recall-fig, out.width="100%", fig.width=9, fig.height=4.4}
+sc %>%
+  select(divergence, mode, `SNP divergence` = div_recall, `SNP het` = het_recall) %>%
+  pivot_longer(c(`SNP divergence`, `SNP het`), names_to = "site", values_to = "recall") %>%
+  ggplot(aes(factor(divergence), recall, fill = mode)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.62, color = "grey30", linewidth = 0.15) +
+  geom_text(aes(label = sprintf("%.1f%%", 100 * recall)),
+            position = position_dodge(width = 0.7), vjust = -0.4, size = 3) +
+  facet_wrap(~ site) +
+  scale_fill_manual(values = corecol(pal = "wilke", numcol = 2),
+                    labels = c("default (uses clipped bases)", "--dont-use-soft-clipped-bases"),
+                    name = "HaplotypeCaller") +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = "divergence (D)", y = "recall (of true sites)",
+       title = "Soft-clip toggle on the SAME BAM: recall is essentially unchanged") +
+  bartheme()
+```
+
+The bars are visually indistinguishable. The change from *disabling* soft-clipped bases, in the
+paired counts, is:
+
+```{r delta-table}
+sc %>%
+  group_by(divergence) %>%
+  summarize(
+    `div recall default`    = sprintf("%.2f%%", 100 * div_recall[mode == "default"]),
+    `div recall nosoftclip` = sprintf("%.2f%%", 100 * div_recall[mode == "nosoftclip"]),
+    `Δ div_tp (sites)`      = div_tp[mode == "nosoftclip"] - div_tp[mode == "default"],
+    `het recall default`    = sprintf("%.2f%%", 100 * het_recall[mode == "default"]),
+    `Δ het_tp (sites)`      = het_tp[mode == "nosoftclip"] - het_tp[mode == "default"],
+    `Δ false positives`     = fp[mode == "nosoftclip"] - fp[mode == "default"],
+    .groups = "drop") %>%
+  kable(caption = "Effect of --dont-use-soft-clipped-bases (nosoftclip − default). Negative Δ = disabling clipped bases HURTS.",
+        table.attr = 'class="center"', format.args = list(big.mark = ","))
+```
+
+**Interpretation.** Ignoring soft-clipped bases does **not** rescue the SNPs gatk misses — it moves
+recall by a fraction of a percent, and in the wrong direction:
+
+- **D = 0.06:** div recall 90.04% → 90.04% (Δ = +107 sites, +0.003%). No effect.
+- **D = 0.10:** div recall 70.34% → **69.96%** (Δ = −23,464 sites, −0.5% relative). Disabling clipped
+  bases *slightly lowers* recall, and het recall likewise (68.9% → 67.8%). The one thing that
+  improves is false positives (fewer, because fewer bases means fewer calls).
+
+If soft-clipping were starving the caller of the alt allele, removing the (already-used) clipped
+bases could only make things worse, and *using* them should be what helps — which is exactly the sign
+we see, but the magnitude is tiny. The decisive point is the **null**: the ~30% of divergent SNPs
+gatk fails to recover at D = 0.10 are **not** hiding in soft-clipped bases. Toggling how the caller
+treats those bases recovers essentially none of them. This is a fourth independent line — alongside
+the caller-swap (bcftools/freebayes recover gatk's misses from the same BAMs), the caller-independent
+read classification, and the per-variant read-fate result (gatk's not-called SNPs mostly have the
+base already aligned at their position) — that gatk's high-divergence deficit is its
+**reference-anchored local reassembler failing on divergent sequence**, not soft-clipping upstream.
+
+# Does it hold across iterations?
+
+The test above is iteration 1 — deliberately, because that is where soft-clipping is **maximal**: the
+reads are mapped against the raw reference at full divergence. As iteration proceeds the consensus
+converges toward the sample, the effective divergence to the mapping target drops, and soft-clipping
+falls with it (the read-fate sections show gatk's called-SNP clipping collapsing across iterations).
+So iter 1 is the strongest possible test — but we confirm the toggle stays inert once clipping has
+mostly disappeared.
+
+**How iter ≥ 2 is scored.** At iteration *k* the gatk BAM is mapped to `consensus_{k-1}`, so we call
+HaplotypeCaller against that consensus (default vs `--dont-use-soft-clipped-bases`) and score the
+**cumulative recovered set** the way the s01 pipeline defines it: `recovered_k` = the set already
+baked into `consensus_{k-1}` (identical for both arms) **∪** the new hom-alt SNP calls. Only iter-*k*
+calling is toggled, so any difference is the flag alone. (s01 is SNP-only, so the consensus keeps
+reference coordinates — no liftover. Driver: `run_softclip_toggle_iter.sh <DIV> <ITER>`.)
+
+```{r sweep-load}
+iters <- c(1, 2, 3)
+sweep <- bind_rows(lapply(c("0.06", "0.10"), function(d)
+  bind_rows(lapply(iters, function(k) {
+    f <- if (k == 1) paste0(res, "softclip-toggle-", d, ".csv")
+         else        paste0(res, "softclip-toggle-", d, "-iter", k, ".csv")
+    read_csv(f, col_types = cols())                       # fails loudly if a run is missing
+  })))) %>%
+  mutate(mode = factor(sub("gatk_", "", caller), levels = c("default", "nosoftclip")),
+         div_recall = div_tp / n_truth_div)
+```
+
+```{r sweep-fig, out.width="100%", fig.width=9, fig.height=4.4}
+ggplot(sweep, aes(iteration, div_recall, color = mode, group = mode)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.6) +
+  facet_wrap(~ divergence, labeller = label_both) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 2),
+                     labels = c("default", "--dont-use-soft-clipped-bases"), name = "HaplotypeCaller") +
+  scale_x_continuous(breaks = iters) + scale_y_continuous(labels = scales::percent) +
+  labs(x = "mapping iteration", y = "cumulative SNP divergence recall",
+       title = "Soft-clip toggle stays inert as iteration converges the consensus") +
+  bartheme()
+```
+
+```{r sweep-delta}
+sweep %>% group_by(divergence, iteration) %>%
+  summarize(`div recall default`    = sprintf("%.2f%%", 100 * div_recall[mode == "default"]),
+            `div recall nosoftclip` = sprintf("%.2f%%", 100 * div_recall[mode == "nosoftclip"]),
+            `Δ div_tp (sites)`      = div_tp[mode == "nosoftclip"] - div_tp[mode == "default"],
+            .groups = "drop") %>%
+  kable(caption = "Soft-clip toggle effect on cumulative div recall, by iteration (nosoftclip − default).",
+        table.attr = 'class="center"', format.args = list(big.mark = ","))
+```
+
+**Interpretation.** Iteration lifts recall enormously (D=0.10: 70% → 81% — the point of the whole
+project), while the soft-clip toggle stays within **±0.5% at every iteration**. Its effect is not just
+small but *inconsistent in sign*: at D=0.10 disabling clipped bases costs 23k sites single-shot
+(−0.38% of truth), then flips to a negligible +2.8k / +7.2k (+0.05% / +0.12%) at iterations 2–3, and at
+D=0.06 it is a trivial positive throughout. That is the opposite of what a real clipping limitation
+would look like — a consistent, sizable gain from *using* the clipped bases. A sign-flipping,
+noise-level wobble is what you see when the flag simply doesn't matter. The conclusion is
+iteration-independent: soft-clipping is not what limits gatk's divergent-SNP recovery, single-shot or
+iterated; iteration, not the caller's clip policy, is the lever that moves recall.
+
+# The toggle is gatk-specific: bcftools and freebayes
+
+`--dont-use-soft-clipped-bases` is a **HaplotypeCaller option**, and there is no equivalent to run for
+the other two callers — not by omission, but by construction:
+
+- **bcftools** `mpileup` builds its pileup from the *aligned* portion of each read; soft-clipped bases
+  (CIGAR `S`) are simply not in the pileup. bcftools is therefore *already* in the "don't use
+  soft-clipped bases" regime, always.
+- **freebayes** assembles haplotypes from the aligned reads and likewise does not use soft-clipped
+  sequence; it exposes no soft-clip toggle.
+
+So there is nothing to toggle — and the existing evidence already settles the question for them. In
+the caller-swap result, bcftools and freebayes (which *never* use soft-clipped bases) recover ~99 % of
+the divergent SNPs gatk misses **from the same BAMs**. If ignoring soft-clipped bases were a
+recovery handicap, the callers that always ignore them could not be the ones that recover *more*.
+Where bcftools/freebayes *do* miss SNPs, the per-variant read-fate analysis shows the cause is
+**alignment**: the read is clipped *off* the site or mapped elsewhere, so the alt base isn't present
+at the position at all. That is an upstream *mapping* loss — the divergent bases were clipped away
+during alignment and aren't reliably placed at the site — not a caller policy of ignoring bases that
+are present. No soft-clip flag, on any caller, recovers a base that alignment removed. This is why
+iteration (which re-anchors those reads) is the lever that helps the pileup/haplotype callers, exactly
+as the read-fate sections show.
+
+# Summary
+
+- Re-calling the *same* iter-1 BAM with vs without `--dont-use-soft-clipped-bases` changes SNP
+  divergence recall by **+0.003% (D=0.06)** and **−0.5% (D=0.10)** — i.e. not at all, or slightly
+  worse.
+- The same holds at **iterations 2 and 3**: the toggle's effect stays a fraction of a percent as the
+  consensus converges and clipping falls, so the conclusion is iteration-independent.
+- The flag is **gatk-specific**; bcftools and freebayes never use soft-clipped bases yet recover most
+  of what gatk misses, so "not using clipped bases" is not a recovery handicap. Their residual misses
+  are alignment-limited (base clipped-off / mismapped), upstream of any caller flag.
+- Soft-clipping is therefore **not** the mechanism behind gatk's high-divergence SNP loss; the
+  deficit is caller-side (assembler), consistent with the s01/s02 read-fate analyses.
+- Practical takeaway: `--dont-use-soft-clipped-bases` is not a useful lever for recovering divergent
+  SNPs here (it trades a sliver of recall for slightly fewer false positives).
+
+## Data dictionary
+
+`analyses/s04-softclip/results/softclip-toggle-<D>.csv` — two rows per file (`gatk_default`,
+`gatk_nosoftclip`), one `compare_vcfs.py` summary each, scored on the *same* BAM. Columns (SNP subset
+used here; indel columns are all zero because this is SNP-only s01 data):
+
+| column | meaning |
+|---|---|
+| `region, coverage, divergence, heterozygosity, seed` | simulation condition (chr19, 30×, D, H=0.005, seed 42) |
+| `caller` | `gatk_default` or `gatk_nosoftclip` (the toggle) |
+| `iteration` | mapping iteration (1 = single-shot) |
+| `n_truth_div` | number of true SNP divergence (1\|1) sites |
+| `div_tp` | divergence sites called hom-alt with matching allele (**recovered**) |
+| `div_het` | divergence sites called heterozygous |
+| `div_ref_or_absent` | divergence sites called hom-ref **or not called** — reference bias / loss |
+| `div_other` | divergence hom-alt wrong allele / edge case |
+| `n_truth_het` | number of true SNP het (0\|1) sites |
+| `het_tp` | het sites called heterozygous (**recovered**) |
+| `het_hom_alt` / `het_ref_or_absent` / `het_other` | het site miscall outcomes |
+| `fp` | called SNP variants matching no truth site (**false positives**) |
+| `n_called_snp` | total confident SNP calls |
+| `n_truth_indel_*`, `indel_*`, `fp_indel`, `n_called_indel` | indel counterparts (all 0 here) |
+
+Derived in this notebook: `div_recall = div_tp / n_truth_div`, `het_recall = het_tp / n_truth_het`,
+`mode` = the toggle parsed from `caller`.

@@ -1,0 +1,3 @@
+region,coverage,divergence,heterozygosity,seed,caller,iteration,n_truth_div,div_tp,div_het,div_ref_or_absent,div_other,n_truth_het,het_tp,het_hom_alt,het_ref_or_absent,het_other,fp,n_called_snp,n_truth_indel_div,indel_div_tp,indel_div_ref_or_absent,indel_div_other,n_truth_indel_het,indel_het_tp,indel_het_ref_or_absent,indel_het_other,fp_indel,n_called_indel
+19,30,0.06,0.005,42,gatk_default,3,3685200,3455505,0,229042,653,307100,0,486,306604,10,2132,3458123,0,0,0,0,0,0,0,0,0,0
+19,30,0.06,0.005,42,gatk_nosoftclip,3,3685200,3455693,0,228854,653,307100,0,488,306602,10,2129,3458310,0,0,0,0,0,0,0,0,0,0
