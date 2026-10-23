@@ -1,0 +1,1089 @@
+---
+title: "Reference bias and iterative mapping — key findings from the chr19 simulations"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: false
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout (same as analyses/synthesis/synthesis.rmd): wide content column plus a
+     sticky TOC on the left. Passed through pandoc verbatim via the {=html} raw block. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre { overflow-x: auto; display: block; }
+table { width: auto !important; margin-left: auto !important; margin-right: auto !important; }
+.kable-table { overflow-x: auto; }
+/* compact methods / key-terms boxes */
+.methodsbox { background: #f4f7fa; border: 1px solid #c9d6e3; border-left: 5px solid #4477AA;
+              border-radius: 5px; padding: 8px 16px 10px 16px; margin: 12px 0; font-size: 0.94em; }
+.methodsbox h4 { margin: 4px 0 6px 0; color: #2b4a6f; font-size: 1.02em; }
+.methodsbox ul { margin: 3px 0 2px 1.1em; } .methodsbox li { margin: 2px 0; }
+/* the one-sentence claim that heads each figure */
+.claim { font-size: 1.12em; font-weight: 600; color: #1d3557; margin: 6px 0 10px 0; }
+img { max-width: 1250px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+/* prominent data-source banner: what the simulation behind each plot contains */
+.datasrc { font-size: 1.15em; font-weight: 700; background: #fdf3d8;
+           border-left: 6px solid #C8A02A; color: #5a4708;
+           padding: 9px 14px; margin: 14px 0 10px 0; border-radius: 4px; }
+.datasrc .k { color: #7a5c10; font-weight: 800; letter-spacing: 0.3px; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+# Render from the project root (all paths below are relative to it):
+#   conda run -n renv Rscript -e 'rmarkdown::render("analyses/synthesis/brief.rmd", knit_root_dir = getwd())'
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr); library(ggalluvial)
+source("analyses/lib/design.r")
+
+# --- callers: order and the display names used in every facet strip --------------------------
+callers <- c("gatk", "bcftools", "freebayes")
+caller_names <- c(gatk = "GATK HaplotypeCaller", bcftools = "bcftools", freebayes = "freebayes")
+fac <- function(x) factor(caller_names[x], levels = caller_names)
+pct <- scales::percent
+
+# --- input tables (all already produced by the section pipelines s01-s08) ---------------------
+S01_SUMMARY  <- "analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv"
+S02_SUMMARY  <- "analyses/s02-indels/results/s02-indels-recovery-summary.csv"
+S05_SNP      <- "analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-iterative-summary.csv"
+S05_INDEL    <- "analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-indels-recovery-summary.csv"
+S05_LOCAL    <- "analyses/s05-heterogeneous-divergence/results/s05-realistic-local-recall.csv"
+S05_MVC      <- "analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv"
+S02_GTRAJ    <- "analyses/s02-indels/results/vrf-agg/vrf-agg-gatk-0.10-gtraj.csv"
+S06_SWEEP    <- "analyses/s06-filtering/results/s06-filter-sweep.csv"
+S07_SV       <- "analyses/s07-svs/results/s07-sv-confounder.csv"
+S08_MAP      <- "analyses/s08-mappability/results/s08-mappability-recovery.csv"
+FLIP_PILEUP  <- "analyses/s02-indels/results/vrf-pileup"                       # per-site read ledger (sample)
+FLIP_NEIGH   <- "analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv"  # uncalled neighbours
+FLIP_CALLMET <- "analyses/s02-indels/results/calling-metrics/calling-metrics-%s.csv"  # fixed context; %s = D
+
+# --- display choices (documented in each figure's caption) ------------------------------------
+PATCHY_FIELD    <- "L20000-S1.0-C0.20"  # Fig 1B: the realistic (patchy) field config, mean D = 0.03
+LOCAL_WINDOW    <- 150                  # Fig 1B: local-divergence half-window (bp), = read length
+LOCAL_MIN_SITES <- 500                  # Fig 1B: drop local-divergence bins with <= this many SNPs
+LOCAL_SPLIT     <- 0.10                 # Fig 1B: compare patchy vs uniform only below this local D
+MVC_MIN_SITES  <- 50     # Fig 3A: drop local-divergence bins with <= this many sampled sites
+MVC_MAX_LOCALD <- 0.25   # Fig 3A: x-axis limit (99.9th percentile of per-site local divergence)
+G_DIV          <- 0.10   # Fig 3B: divergence of the single G panel shown (s02, gatk)
+FLIP_DIV       <- "0.10" # Fig 3C: divergence of the what-changed summary (s02); file label, so a string
+INDEL_NEAR_BP  <- 10     # Fig 3C fixed-context row: "near an indel" = nearest truth indel within this many bp
+DIST_MAX       <- 1000   # Fig 3D: x-axis limit; larger distances (or no indel nearby) are plotted here
+DIST_BINS      <- c(-1, 2, 5, 10, 25, 50, 100, Inf)          # Fig 3D: rescue-rate distance bins (bp)
+DIST_LABS      <- c("0–2", "3–5", "6–10", "11–25", "26–50", "51–100", ">100")
+MAP_DIV        <- 0.06   # Fig 4A: divergence shown for the repeat (mappability) comparison
+SV_ITERS       <- c(1, 3)
+
+# --- figure output: every figure is also written as PNG (300 dpi) and PDF for separate use ----
+FIG_DIR <- "analyses/synthesis/figures/brief"
+dir.create(FIG_DIR, showWarnings = FALSE, recursive = TRUE)
+save_fig <- function(p, name, width, height) {
+  ggsave(file.path(FIG_DIR, paste0(name, ".png")), p, width = width, height = height, dpi = 300)
+  ggsave(file.path(FIG_DIR, paste0(name, ".pdf")), p, width = width, height = height,
+         device = cairo_pdf)                                  # cairo: keeps unicode (≥, →, –)
+  p                                                           # returned so knitr prints it
+}
+
+# --- shared theme: the repo theme plus a left-aligned claim title and a source caption --------
+brieftheme <- function() {
+  bartheme() + theme(
+    plot.title    = element_text(hjust = 0, face = "bold", size = 14, margin = margin(b = 4)),
+    plot.subtitle = element_text(hjust = 0, size = 11, colour = "grey30", margin = margin(b = 8)),
+    plot.caption  = element_text(hjust = 0, size = 9, colour = "grey35", margin = margin(t = 8)),
+    plot.title.position = "plot", plot.caption.position = "plot",
+    strip.text = element_text(size = 11.5, face = "bold"),
+    strip.background = element_blank(),
+    legend.position = "top", legend.title = element_text(size = 11),
+    panel.grid.major.y = element_line(colour = "grey92", linewidth = 0.4))
+}
+
+# --- recall helpers: recall = recovered true 1|1 sites / all true 1|1 sites --------------------
+snp_recall   <- function(d) d$div_tp / d$n_truth_div
+indel_recall <- function(d) d$indel_div_tp / d$n_truth_indel_div
+```
+
+# In one paragraph {#summary}
+
+We simulated reads from a sample that differs from the reference genome by a known set of
+variants, mapped them back, called variants with three common callers, and counted how many
+of the true differences were found. **The more the sample diverges from the reference, the more
+true differences are missed** (reference bias), and more so for indels than SNPs. When divergence
+is patchy along the genome, as in real genomes, the genome-wide average understates the loss:
+each region behaves like a uniform genome of its own divergence, so the loss is set by how much
+of the genome is highly diverged (Figure 1). **Iterative mapping** (map,
+call, write the calls into a new reference, map again) recovers a large part of the loss, most
+dramatically for bcftools indels and GATK SNPs, least for freebayes indels (Figure 2). The loss has **two causes**: reads that
+carry the variant don't map to the site, or they map but the caller doesn't call it; iteration
+reduces both because it lowers the sample's effective divergence (Figure 3). It cannot fix losses
+caused by the reference itself (repeats, structural variants), and hard filters on the calls
+can't recover any of it (Figure 4).
+
+::: {.methodsbox}
+#### Key terms
+- **Divergence (D):** share of genome positions where the sample carries a fixed (homozygous)
+  SNP difference from the reference. Indel sims also add 1–10 bp indels at 0.12 × D.
+- **Recall:** share of the true divergent sites (homozygous, 1|1) that a caller recovered with
+  the correct allele and genotype.
+- **Single-shot:** map once to the reference (= iteration 1). **Iterative:** iterations 2–3 map to a
+  consensus that already includes the variants called so far.
+- **Uniform vs patchy divergence:** uniform = every region equally diverged (the "homogeneous"
+  sims); patchy = divergence varies smoothly along the chromosome, with the chromosome mean
+  fixed to D (the "realistic heterogeneous" sims).
+- **Local divergence:** divergent SNPs per bp within ±150 bp of a site (one read length either
+  side, the site included). In a uniform genome it is ≈ D everywhere; in a patchy genome it
+  varies from site to site.
+- **Mapping-limited vs calling-limited** (Figure 3): a missed site is *mapping-limited* if fewer
+  than 2 reads carrying the variant aligned there, and *calling-limited* if ≥ 2 such reads were
+  in the alignment but the caller still didn't call it.
+:::
+
+::: {.methodsbox}
+#### Methods in brief (full detail: `analyses/synthesis/synthesis.html` and each section's notebook)
+- **Reference:** mouse mm39, chromosome 19 only (61 Mb). Truth variants written by
+  `make_truth_vcf.py`: divergent SNPs (1|1) at rate D with random alt alleles, heterozygous SNPs
+  (0|1) at 0.5 %, plus indels / SVs / a patchy divergence field depending on the simulation.
+- **Reads:** `mason_simulator`, 150 bp paired-end, 300 bp mean fragment, 30× coverage, seed 42
+  (s01 also seeds 43–44, averaged). Mason records each read's true origin, which is what lets us
+  tell mapping failures from calling failures.
+- **Mapping and iteration:** `bwa mem` to mm39; 3 rounds, each round calling variants, writing them
+  into a new reference with `bcftools consensus`, and remapping. Calls are lifted back to mm39
+  coordinates for scoring (Picard for VCFs).
+- **Calling:** GATK HaplotypeCaller, bcftools mpileup/call, freebayes, every iteration; minimum
+  read mapping quality 20 for all three; no hard filters unless stated (Figure 4C).
+:::
+
+# Figure 1 — The problem {#fig1}
+
+<p class="claim">The more the sample diverges from the reference, the more true differences are
+missed — more so for indels. At the same genome-wide average, a patchy genome loses more, because
+many of its variants sit in highly diverged regions.</p>
+
+## 1A — Recall vs divergence
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · single-shot (iteration 1) recall ·
+uniform divergence (grey): <b>s01</b> SNP-only sim (SNP recall, mean of 3 seeds) and <b>s02</b> SNP + indel sim (indel recall) ·
+patchy divergence (orange): <b>s05</b> realistic field, SNP-only sim (SNP recall) and SNP + indel sim (indel recall)</p>
+
+```{r fig1, fig.width=12, fig.height=7.2}
+# Single-shot recall vs divergence, by caller (columns) and variant type (rows).
+# Uniform: s01 (SNP-only; averaged over seeds 42-44) for SNPs, s02 (SNP + indel) for indels.
+# Patchy:  s05 realistic mean-sweep, SNP-only sim for SNPs, SNP + indel sim for indels.
+# D = 0 (no divergence -> recall undefined) is excluded.
+one_shot <- function(path, recall_fun, scenario, variant) {
+  d <- read_csv(path) %>% filter(iteration == 1, divergence > 0)
+  d %>% mutate(recall = recall_fun(d)) %>%
+    group_by(caller, divergence) %>% summarize(recall = mean(recall), .groups = "drop") %>%
+    mutate(scenario = scenario, variant = variant)
+}
+f1 <- bind_rows(
+  one_shot(S01_SUMMARY, snp_recall,   "uniform divergence",            "SNPs"),
+  one_shot(S02_SUMMARY, indel_recall, "uniform divergence",            "indels"),
+  one_shot(S05_SNP,     snp_recall,   "patchy divergence (realistic)", "SNPs"),
+  one_shot(S05_INDEL,   indel_recall, "patchy divergence (realistic)", "indels")) %>%
+  mutate(caller = fac(caller),
+         scenario = factor(scenario, levels = c("uniform divergence", "patchy divergence (realistic)")),
+         variant = factor(variant, levels = c("SNPs", "indels")))
+
+p1 <- ggplot(f1, aes(divergence, recall, colour = scenario)) +
+  geom_line(linewidth = 1) + geom_point(size = 1.8) +
+  scale_colour_manual(values = c(`uniform divergence` = "grey45",
+                                 `patchy divergence (realistic)` = "#D55E00"), name = NULL) +
+  scale_x_continuous(breaks = seq(0, 0.10, 0.02)) +
+  # full 0-100 % axis: bcftools uniform-divergence indel recall falls below 10 % at D >= 0.08
+  scale_y_continuous(labels = pct, limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  facet_grid(variant ~ caller) +
+  labs(title = "Reference bias: true differences are lost as divergence grows",
+       subtitle = "Single-shot mapping (map once to the reference). Each point = one simulated chr19 genome.",
+       x = "divergence from the reference, D (chromosome mean)",
+       y = "recall (true differences recovered)",
+       caption = paste("Data: mason2 simulations of mouse chr19 at 30×; bwa mem; recall = recovered / true homozygous differences.",
+                       "Uniform = s01 (SNPs, mean of 3 seeds) and s02 (indels); patchy = s05 realistic field (20 kb correlation, local D capped at 0.20).",
+                       sep = "\n")) +
+  brieftheme()
+save_fig(p1, "fig1-problem", 12, 7.2)
+```
+
+**How to read it.** Each panel is one caller (columns) and one variant type (rows); lower = more true
+differences missed. Grey lines: every region is equally diverged; orange lines: the same mean
+divergence, but concentrated in some regions (what real genomes look like).
+
+**What it shows.**
+
+- All callers lose true differences as D grows; GATK loses the most SNPs
+  (`r pct(1 - filter(f1, caller == caller_names["gatk"], variant == "SNPs", scenario == "uniform divergence", divergence == 0.10)$recall, 1)` missed at D = 0.10, uniform).
+- Indels are always recovered worse than SNPs. bcftools is worst on indels and collapses once
+  D passes ~0.04 (uniform: `r pct(filter(f1, caller == caller_names["bcftools"], variant == "indels", scenario == "uniform divergence", divergence == 0.10)$recall, 1)`
+  at D = 0.10).
+- At the same mean D, the patchy genome loses more than the uniform one in almost every panel.
+  Patchiness itself doesn't make any region harder (Figure 1B): the patchy genome puts many of
+  its variants in regions far more diverged than the mean, where recall falls steeply. The
+  exception is bcftools indels at D = 0.06, where both are already near the floor (~25 %).
+
+## 1B — Why the patchy genome loses more
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · single-shot SNP recall ·
+patchy (orange): <b>s05</b> realistic field, SNP-only sim, mean D = 0.03, seed 42, all ~1.84 million divergent SNPs binned by local divergence ·
+uniform (grey): <b>s01</b> SNP-only sims, mean of 3 seeds</p>
+
+```{r fig1b, fig.width=12, fig.height=7.5}
+# Is a patchy genome just a mix of regions that each behave like a uniform genome of their own
+# divergence? Overlay (a) the patchy genome's recall per local-divergence bin on (b) the uniform
+# genomes' recall vs D, and show where the patchy genome's SNPs sit.
+loc_all <- read_csv(S05_LOCAL) %>%
+  filter(field == PATCHY_FIELD, iteration == 1)
+n_patchy <- filter(loc_all, window == "all", caller == "gatk")$n_sites    # all divergent SNPs
+stopifnot(length(n_patchy) == 1)
+loc_bins <- filter(loc_all, window == as.character(LOCAL_WINDOW))
+loc <- filter(loc_bins, n_sites > LOCAL_MIN_SITES)
+n_dropped <- sum(filter(loc_bins, caller == "gatk")$n_sites) - sum(filter(loc, caller == "gatk")$n_sites)
+
+# uniform genomes: s01 single-shot SNP recall (mean of 3 seeds), placed at the local divergence a
+# site in a uniform genome sees on average, D + 1/(2W) (the window counts the site itself)
+unif <- read_csv(S01_SUMMARY) %>% filter(iteration == 1, divergence > 0) %>%
+  group_by(caller, divergence) %>% summarize(recall = mean(div_tp / n_truth_div), .groups = "drop") %>%
+  mutate(x = divergence + 1 / (2 * LOCAL_WINDOW))
+unif_max <- max(unif$x)
+stopifnot(LOCAL_SPLIT <= unif_max)                  # the comparison never extrapolates
+
+# share of the patchy genome's SNPs per bin (caller-independent, so taken from the gatk rows)
+share <- filter(loc, caller == "gatk") %>% select(locald_lo, locald_hi, n_sites) %>%
+  mutate(share = n_sites / n_patchy)
+
+LAB_UNIF   <- "uniform genome at that divergence (s01)"
+LAB_PATCHY <- "patchy genome, SNPs grouped by local divergence (s05)"
+f1b <- bind_rows(
+  transmute(unif, caller, x, y = recall, xmin = NA_real_, xmax = NA_real_, what = LAB_UNIF),
+  transmute(loc, caller, x = locald_mid, y = recall, xmin = locald_lo, xmax = locald_hi, what = LAB_PATCHY)) %>%
+  mutate(caller = fac(caller), what = factor(what, levels = c(LAB_UNIF, LAB_PATCHY)))
+f1b_share <- tidyr::crossing(share, caller = callers) %>% mutate(caller = fac(caller))
+beyond <- sum(share$share[share$locald_lo >= LOCAL_SPLIT])
+x_max  <- max(loc$locald_hi)
+
+# grey zone: beyond the most diverged uniform simulation (D <= 0.10), so no direct comparison
+zone <- tibble(xmin = LOCAL_SPLIT, xmax = Inf, ymin = -Inf, ymax = Inf)
+x_scale <- scale_x_continuous(limits = c(0, x_max), breaks = seq(0, 0.3, 0.05))
+
+# top: recall (horizontal bars on the patchy points = the span of each bin)
+p1b_top <- ggplot() +
+  geom_rect(data = zone, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = "grey92") +
+  annotate("text", x = 0.24, y = 0.80, vjust = 1, size = 3.3, colour = "grey35",   # clear of the curves
+           lineheight = 0.9, label = sprintf("beyond the uniform\nsimulations (D ≤ %.2f)", LOCAL_SPLIT)) +
+  geom_errorbarh(data = filter(f1b, what == LAB_PATCHY),
+                 aes(xmin = xmin, xmax = xmax, y = y, colour = what), height = 0, linewidth = 0.5, alpha = 0.6) +
+  geom_line(data = f1b, aes(x, y, colour = what), linewidth = 1) +
+  geom_point(data = f1b, aes(x, y, colour = what), size = 2) +
+  # named values + breaks: colours and legend order fixed by label, not by layer order
+  scale_colour_manual(values = setNames(c("grey45", "#D55E00"), c(LAB_UNIF, LAB_PATCHY)),
+                      breaks = c(LAB_UNIF, LAB_PATCHY), name = NULL) +
+  x_scale + scale_y_continuous(labels = pct) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = NULL, y = "recall") +
+  brieftheme() + theme(axis.text.x = element_blank(), plot.margin = margin(5, 5, 0, 5))
+
+# bottom: where the patchy genome's SNPs sit (same x axis, one copy per caller column)
+p1b_bot <- ggplot() +
+  geom_rect(data = zone, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = "grey92") +
+  geom_rect(data = f1b_share, aes(xmin = locald_lo, xmax = locald_hi, ymin = 0, ymax = share),
+            fill = "#D55E00", alpha = 0.55, colour = "white", linewidth = 0.3) +
+  x_scale + scale_y_continuous(labels = pct) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "divergence (uniform genomes: D; patchy genome: local divergence within ±150 bp of the SNP)",
+       y = "share of the patchy\ngenome's SNPs") +
+  brieftheme() + theme(strip.text = element_blank(), plot.margin = margin(0, 5, 5, 5))
+
+p1b <- patchwork::wrap_plots(p1b_top, p1b_bot, ncol = 1, heights = c(3, 1.2)) +
+  patchwork::plot_annotation(
+    title = "Each patchy region behaves like a uniform genome of its own divergence",
+    subtitle = sprintf(paste0("Single-shot SNP recall. %s of the patchy genome's SNPs lie in regions more diverged",
+                              " than %.2f (grey zone), where recall falls steeply."), pct(beyond, 1), LOCAL_SPLIT),
+    caption = paste0("Data: s05 realistic field (mean D = 0.03, 20 kb correlation, local D capped at 0.20) and s01 uniform sims; mouse chr19, 30×.\n",
+                     "Uniform points sit at D + 1/300, the average local divergence a site sees in a uniform genome. Patchy bins (bars = bin span): edges ",
+                     paste(sort(unique(c(loc$locald_lo, loc$locald_hi))), collapse = ", "), ";\n",
+                     "bins with ≤ ", LOCAL_MIN_SITES, " SNPs dropped (", format(n_dropped, big.mark = ","),
+                     " SNPs). Bottom row: share of all ", format(n_patchy, big.mark = ","),
+                     " divergent SNPs in each bin (bins have unequal widths)."),
+    theme = brieftheme())
+save_fig(p1b, "fig1b-local-divergence", 12, 7.5)
+```
+
+```{r fig1b-numbers}
+# observed vs predicted recall for patchy SNPs below LOCAL_SPLIT: predict each bin from the
+# uniform curve (linear interpolation at the bin midpoint; never extrapolated), weight by SNPs
+predict_unif <- function(cc, xx) {
+  u <- filter(unif, caller == cc)
+  approx(u$x, u$recall, xout = xx, rule = 1)$y
+}
+cmp <- loc %>% filter(locald_hi <= LOCAL_SPLIT) %>% rowwise() %>%
+  mutate(pred = predict_unif(caller, locald_mid)) %>% ungroup()
+stopifnot(!anyNA(cmp$pred))
+cmp_sum <- cmp %>% group_by(caller) %>%
+  summarize(observed = sum(n_recovered) / sum(n_sites),
+            predicted = sum(pred * n_sites) / sum(n_sites), .groups = "drop")
+# share of each caller's missed SNPs that sit above LOCAL_SPLIT (from all bins, none dropped)
+loss_beyond <- loc_bins %>% group_by(caller) %>%
+  summarize(share = sum((n_sites - n_recovered)[locald_lo >= LOCAL_SPLIT]) / sum(n_sites - n_recovered),
+            .groups = "drop")
+o <- function(cc, col) pct(filter(cmp_sum, caller == cc)[[col]], 0.1)
+knitr::kable(transmute(cmp_sum, caller = caller_names[caller],
+                       `observed recall` = pct(observed, 0.01), `predicted from uniform genomes` = pct(predicted, 0.01)),
+             caption = sprintf("Patchy-genome SNPs at local divergence < %.2f (%s of all its divergent SNPs), single-shot.",
+                               LOCAL_SPLIT, pct(1 - beyond, 1)))
+```
+
+**How to read it.** Top row: grey = uniform genomes (the whole chromosome at one divergence, as in
+Figure 1A); orange = the patchy genome's SNPs grouped by how diverged their own neighbourhood is.
+Bottom row: how many of the patchy genome's SNPs fall in each group. Grey zone: more diverged than
+any uniform genome we simulated.
+
+**What it shows.**
+
+- Where both exist (local divergence below `r sprintf("%.2f", LOCAL_SPLIT)`), the orange points sit on the grey
+  curve. Predicting the patchy genome's recall there from the uniform genomes gives
+  `r o("bcftools", "predicted")` for bcftools (observed `r o("bcftools", "observed")`) and
+  `r o("gatk", "predicted")` for GATK (observed `r o("gatk", "observed")`); see the table. Being in a
+  patchy genome doesn't make a region harder.
+- The patchy genome's extra loss comes from the `r pct(beyond, 1)` of its SNPs in regions above
+  `r sprintf("%.2f", LOCAL_SPLIT)`: they account for `r pct(filter(loss_beyond, caller == "bcftools")$share, 1)` of
+  bcftools' missed SNPs and `r pct(filter(loss_beyond, caller == "gatk")$share, 1)` of GATK's.
+- Practical consequence: the genome-wide average divergence is a poor guide to how much is lost.
+  What matters is how much of the genome is highly diverged.
+- Caveat: above `r sprintf("%.2f", LOCAL_SPLIT)` there is no uniform genome to compare with, so the match is shown
+  only below it (uniform sims at D = 0.15–0.20 would close the gap).
+
+# Figure 2 — The fix: iterative mapping {#fig2}
+
+<p class="claim">Iterative mapping recovers lost differences for every caller, in both kinds of
+genome — dramatically for bcftools indels and GATK SNPs, least for freebayes indels.</p>
+
+## 2A — Patchy (realistic) divergence
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · patchy (realistic) divergence ·
+<b>s05</b> SNP-only sim (SNP recall) and SNP + indel sim (indel recall) · seed 42 · iterations 1–3</p>
+
+```{r fig2, fig.width=12, fig.height=7.2}
+# Recall by iteration, by caller (columns) and variant type (rows). Shared by 2A (patchy) and 2B
+# (uniform). The shaded band = recall gained between iteration 1 and iteration 3.
+by_iter <- function(path, recall_fun, variant) {
+  d <- read_csv(path) %>% filter(divergence > 0)            # D = 0: recall undefined
+  d %>% mutate(recall = recall_fun(d)) %>%
+    group_by(caller, divergence, iteration) %>%
+    summarize(recall = mean(recall), .groups = "drop") %>%   # mean over seeds (s01 has 3; others 1)
+    mutate(variant = variant)
+}
+prep_iter <- function(f) {
+  mutate(f, caller = fac(caller), variant = factor(variant, levels = c("SNPs", "indels")),
+         iter_lab = factor(iteration, levels = 1:3,
+                           labels = c("iteration 1 (single-shot)", "iteration 2", "iteration 3")))
+}
+gain_band <- function(f) {
+  f %>% select(caller, variant, divergence, iteration, recall) %>%
+    pivot_wider(names_from = iteration, values_from = recall, names_prefix = "it")
+}
+fix_plot <- function(f, band, x_breaks, subtitle, caption) {
+  ggplot(f, aes(divergence, recall)) +
+    geom_ribbon(data = band, aes(x = divergence, ymin = it1, ymax = it3), inherit.aes = FALSE,
+                fill = "#2171B5", alpha = 0.13) +
+    geom_line(aes(colour = iter_lab, linetype = iter_lab), linewidth = 1) +
+    geom_point(aes(colour = iter_lab), size = 1.8) +
+    scale_colour_manual(values = c("grey45", "#6BAED6", "#08519C"), name = NULL) +
+    scale_linetype_manual(values = c("22", "solid", "solid"), name = NULL) +
+    scale_x_continuous(breaks = x_breaks) +
+    scale_y_continuous(labels = pct, limits = c(0, 1), breaks = seq(0, 1, 0.2)) +   # same axis as Fig 1
+    facet_grid(variant ~ caller) +
+    labs(title = "Iterative mapping recovers much of the loss", subtitle = subtitle,
+         x = "divergence from the reference, D (chromosome mean)",
+         y = "recall (true differences recovered)", caption = caption) +
+    brieftheme()
+}
+CAPTION_ITER <- paste("each iteration remaps to a consensus built from the previous iteration's calls",
+                      "(bcftools consensus); calls scored in mm39 coordinates.")
+
+f2 <- prep_iter(bind_rows(by_iter(S05_SNP, snp_recall, "SNPs"),
+                          by_iter(S05_INDEL, indel_recall, "indels")))
+band <- gain_band(f2)
+p2 <- fix_plot(f2, band, seq(0.01, 0.06, 0.01),
+               "Shaded band = recall gained from iteration 1 to iteration 3. Patchy (realistic) divergence.",
+               paste0("Data: s05 realistic-field simulations of mouse chr19 at 30× (seed 42);\n", CAPTION_ITER))
+save_fig(p2, "fig2-fix", 12, 7.2)
+```
+
+```{r fig2-gains}
+# the two headline gains quoted in the text, computed from the plotted data
+g_bcf_ind <- filter(band, caller == caller_names["bcftools"], variant == "indels", divergence == 0.06)
+g_gatk_snp <- filter(band, caller == caller_names["gatk"], variant == "SNPs", divergence == 0.06)
+```
+
+**How to read it.** Same layout as Figure 1, patchy scenario only. Dashed grey = single-shot (the
+orange lines of Figure 1A); dark blue = after 3 iterations.
+
+**What it shows.**
+
+- Every caller improves, and most of the gain comes in the first extra round (iteration 2).
+- The biggest rescue is bcftools on indels: at D = 0.06, `r pct(g_bcf_ind$it1, 1)` →
+  `r pct(g_bcf_ind$it3, 1)`. GATK SNPs at D = 0.06: `r pct(g_gatk_snp$it1, 1)` → `r pct(g_gatk_snp$it3, 1)`.
+- Iteration does not reach 100 % at high divergence; Figures 3 and 4 show what is left.
+
+## 2B — Uniform divergence
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · uniform divergence ·
+<b>s01</b> SNP-only sim (SNP recall, mean of seeds 42–44) and <b>s02</b> SNP + indel sim (indel recall, seed 42) · iterations 1–3</p>
+
+```{r fig2b, fig.width=12, fig.height=7.2}
+# Same figure on the uniform-divergence sims: s01 (SNP-only, mean of 3 seeds; seed-to-seed SD of
+# recall <= ~0.1 point, so no error bars) for SNPs, s02 (SNP + indel) for indels.
+f2b <- prep_iter(bind_rows(by_iter(S01_SUMMARY, snp_recall, "SNPs"),
+                           by_iter(S02_SUMMARY, indel_recall, "indels")))
+band_b <- gain_band(f2b)
+p2b <- fix_plot(f2b, band_b, seq(0, 0.10, 0.02),
+                "Shaded band = recall gained from iteration 1 to iteration 3. Uniform divergence.",
+                paste0("Data: s01 (SNPs, mean of 3 seeds) and s02 (indels, seed 42) uniform-divergence simulations of mouse chr19 at 30×;\n",
+                       CAPTION_ITER))
+save_fig(p2b, "fig2b-fix-uniform", 12, 7.2)
+```
+
+```{r fig2b-gains}
+# numbers quoted in the text, at the highest uniform divergence
+gb <- function(cc, vv) filter(band_b, caller == caller_names[cc], variant == vv, divergence == 0.10)
+```
+
+**How to read it.** Same as 2A, but every region of the chromosome is equally diverged; D runs to
+0.10. Dashed grey = the grey lines of Figure 1A.
+
+**What it shows.**
+
+- **SNPs:** bcftools and freebayes already find ~98–99 % single-shot, so there is little to
+  recover. GATK gains the most: `r pct(gb("gatk", "SNPs")$it1, 1)` → `r pct(gb("gatk", "SNPs")$it3, 1)`
+  at D = 0.10.
+- **Indels:** bcftools goes from almost none to most: `r pct(gb("bcftools", "indels")$it1, 1)` →
+  `r pct(gb("bcftools", "indels")$it3, 1)` at D = 0.10. GATK gains
+  `r round(100 * (gb("gatk", "indels")$it3 - gb("gatk", "indels")$it1))` points. freebayes gains least
+  (`r pct(gb("freebayes", "indels")$it1, 1)` → `r pct(gb("freebayes", "indels")$it3, 1)`): most of its
+  indel loss is not fixed by iteration, in uniform and patchy genomes alike.
+- Same pattern as 2A: most of the gain comes at iteration 2.
+
+# Figure 3 — Why: two kinds of failure {#fig3}
+
+<p class="claim">A true difference is missed either because the reads carrying it never map to the
+site (mapping-limited) or because they map but the caller doesn't call it (calling-limited).
+Iteration reduces both.</p>
+
+## 3A — Which failure, as local divergence rises
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s05</b> realistic (patchy) field, SNP-only sim, mean D = 0.03 · seed 42 ·
+read-level ledger on a systematic sample of ~51,000 divergent SNPs (every ~36th along chr19) · iterations 1 and 3</p>
+
+```{r fig3a, fig.width=12, fig.height=7}
+# Share of divergent SNPs in each outcome, binned by LOCAL divergence (divergent truth SNPs per
+# bp within +/-150 bp of the site, i.e. what a read covering the site sees). Each bar spans its
+# bin; the three outcomes stack to 100 % in each bin.
+mvc <- read_csv(S05_MVC) %>%
+  filter(window == 150, iteration %in% c(1, 3),
+         n_sites > MVC_MIN_SITES, locald_mid <= MVC_MAX_LOCALD)
+bin_edges <- sort(unique(c(mvc$locald_lo, mvc$locald_hi)))
+
+f3a <- mvc %>%
+  transmute(caller = fac(caller), locald_lo, locald_hi, n_sites,
+            iter_lab = factor(paste("iteration", iteration),
+                              levels = c("iteration 1", "iteration 3"),
+                              labels = c("iteration 1 (single-shot)", "iteration 3")),
+            recovered = frac_recovered, `calling-limited` = frac_calling,
+            `mapping-limited` = frac_mapping) %>%
+  pivot_longer(c(recovered, `calling-limited`, `mapping-limited`),
+               names_to = "outcome", values_to = "frac") %>%
+  mutate(outcome = factor(outcome, levels = c("recovered", "calling-limited", "mapping-limited"))) %>%
+  arrange(caller, iter_lab, locald_lo, outcome) %>%
+  group_by(caller, iter_lab, locald_lo) %>%                  # stack: recovered at the bottom
+  mutate(ymax = cumsum(frac), ymin = ymax - frac) %>% ungroup()
+
+p3a <- ggplot(f3a) +
+  geom_rect(aes(xmin = locald_lo, xmax = locald_hi, ymin = ymin, ymax = ymax, fill = outcome),
+            colour = "white", linewidth = 0.3) +
+  scale_fill_manual(values = c(recovered = "#4477AA", `calling-limited` = "#CCBB44",
+                               `mapping-limited` = "#AA3377"),
+                    labels = c(recovered = "recovered",
+                               `calling-limited` = "missed: reads mapped, not called (calling-limited)",
+                               `mapping-limited` = "missed: reads did not map (mapping-limited)"),
+                    name = NULL) +
+  scale_x_continuous(breaks = seq(0, 0.25, 0.05)) +
+  scale_y_continuous(labels = pct) +
+  facet_grid(iter_lab ~ caller) +
+  labs(title = "Two failure modes: calling fails first, then mapping",
+       subtitle = "Each bar = all sampled divergent SNPs whose surrounding 300 bp is diverged to that degree; bars stack to 100 %.",
+       x = "local divergence around the site (divergent SNPs per bp within ±150 bp)",
+       y = "share of divergent SNPs",
+       caption = paste0("Data: s05 realistic field, mean D = 0.03, mason true read origins (variant_read_fate.py --pileup).\n",
+                        "Bin edges: ", paste(bin_edges, collapse = ", "), "; bins with ≤ ", MVC_MIN_SITES,
+                        " sites dropped; x cut at ", MVC_MAX_LOCALD, " (99.9th percentile).\n",
+                        "Mapping-limited = < 2 variant-carrying reads aligned at the site; calling-limited = ≥ 2 present but not called.")) +
+  brieftheme()
+save_fig(p3a, "fig3a-mapping-vs-calling", 12, 7)
+```
+
+**How to read it.** The x axis is how diverged the immediate neighbourhood of a site is (not the
+genome mean): in a patchy genome most sites sit below 0.10, a few much higher. Blue = found;
+yellow and magenta = missed, split by cause. Top row single-shot, bottom row after 3 iterations.
+
+**What it shows.**
+
+- **Calling-limited (yellow)** loss is mostly GATK's: from moderate local divergence (~0.05) the
+  reads are there but its local re-assembly fails. bcftools and freebayes, which call directly
+  from the aligned reads, barely show it.
+- **Mapping-limited (magenta)** loss is a wall for every caller at high local divergence
+  (≳ 0.15): a 150 bp read with that many mismatches no longer aligns.
+- **Iteration shrinks both** (bottom row): writing the recovered variants into the reference lowers
+  the effective divergence, so more reads map and GATK's re-assembly succeeds more often. Example:
+  bcftools in the 0.16–0.20 bin goes from
+  `r pct(filter(mvc, caller == "bcftools", iteration == 1, locald_lo == 0.16)$frac_recovered, 1)` to
+  `r pct(filter(mvc, caller == "bcftools", iteration == 3, locald_lo == 0.16)$frac_recovered, 1)` recovered.
+
+## 3B — One example, site by site
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> SNP + indel sim · uniform divergence, D = 0.10 · seed 42 ·
+GATK HaplotypeCaller · all ~6.1 million divergent SNPs on chr19 · iterations 1–3</p>
+
+```{r fig3b, fig.width=11, fig.height=7.5}
+# Per-site flow ("G plot"): every divergent SNP is placed, at each iteration, in the CALLED or
+# MISSED box and coloured by how much of its read evidence arrived (f_alt = reads aligned at the
+# site showing the alt base / reads that truly carry it, known from mason). Flows link the same
+# SNPs across iterations. Input is the aggregated trajectory table from variant_read_fate.py;
+# adapted from analyses/lib/vrf_G_figs.R with plain-language labels and band annotations.
+BIN      <- c("0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0")   # f_alt bins, low -> high
+BIN_LAB  <- c("0–20 %", "20–40 %", "40–60 %", "60–80 %", "80–100 %")
+FB_COL   <- setNames(hcl.colors(length(BIN), "Viridis"), BIN)
+GAP_FRAC <- 0.03; BOX_HALFW <- 0.22; STRAT_W <- 0.44; FLOW_A <- 0.4
+LEV <- c(paste("missed", BIN, sep = " · "), "gap", paste("called", BIN, sep = " · "))
+
+gt_all <- read_csv(S02_GTRAJ, col_types = cols(divergence = "d", .default = "c")) %>%
+  mutate(n_snps = as.numeric(n_snps))
+stopifnot(all(gt_all$divergence == G_DIV), all(gt_all$caller == "gatk"))
+# sites with no simulated covering read have no f_alt ("nocov"); they are excluded and counted
+gt <- filter(gt_all, fb1 %in% BIN, fb2 %in% BIN, fb3 %in% BIN)
+n_nocov <- sum(gt_all$n_snps) - sum(gt$n_snps)
+
+lodes <- gt %>% mutate(id = row_number()) %>%
+  pivot_longer(c(s1, fb1, s2, fb2, s3, fb3),
+               names_to = c(".value", "iter"), names_pattern = "([a-z]+)([0-9])") %>%
+  transmute(id, n = n_snps, iter,
+            status = ifelse(s == "not_called", "missed", "called"),
+            fb = factor(fb, levels = BIN),
+            state = factor(paste(status, fb, sep = " · "), levels = LEV), is_gap = FALSE)
+gap_n <- round(GAP_FRAC * sum(gt$n_snps))                       # invisible spacer between boxes
+lodes <- bind_rows(lodes, tibble(id = max(lodes$id) + 1, n = gap_n, iter = c("1", "2", "3"),
+                                 status = "gap", fb = factor(NA, levels = BIN),
+                                 state = factor("gap", levels = LEV), is_gap = TRUE))
+
+# outline boxes: CALLED at the bottom, MISSED above the gap (strata stack in LEV order, top down)
+box <- lodes %>% filter(!is_gap) %>% group_by(iter, status) %>% summarize(n = sum(n), .groups = "drop") %>%
+  group_by(iter) %>% mutate(ncall = sum(n[status == "called"])) %>% ungroup() %>%
+  mutate(pos = as.integer(iter), xmin = pos - BOX_HALFW, xmax = pos + BOX_HALFW,
+         ymin = ifelse(status == "called", 0, ncall + gap_n),
+         ymax = ifelse(status == "called", ncall, ncall + gap_n + n),
+         yc = (ymin + ymax) / 2,
+         lab = sprintf("%s\n%s", status, pct(n / sum(gt$n_snps), 0.1)))
+
+# annotate the two key bands inside the iteration-1 MISSED box: within a box the bins run from
+# 80-100 % at the bottom to 0-20 % at the top, so the bands' y-ranges follow from the counts
+b1 <- filter(box, iter == "1", status == "missed")
+n_hi <- sum(filter(lodes, iter == "1", status == "missed", fb == "0.8-1.0")$n)
+n_lo <- sum(filter(lodes, iter == "1", status == "missed", fb == "0.0-0.2")$n)
+ann <- tibble(x = 1 - BOX_HALFW - 0.05,
+              y = c(b1$ymin + n_hi / 2, b1$ymax - n_lo / 2),
+              lab = c("missed, but the reads were there\n→ calling-limited",
+                      "missed, the reads never arrived\n→ mapping-limited"))
+
+p3b <- ggplot(lodes, aes(x = iter, stratum = state, alluvium = id, y = n, fill = fb, alpha = is_gap)) +
+  geom_flow() +
+  geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE, fill = "white") +
+  geom_stratum(colour = NA, width = STRAT_W) +
+  geom_rect(data = box, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE, fill = NA, colour = "grey15", linewidth = 0.9) +
+  geom_text(data = box, aes(x = pos, y = yc, label = lab), inherit.aes = FALSE,
+            size = 4, fontface = "bold", colour = "grey10", lineheight = 0.9) +
+  geom_text(data = ann, aes(x = x, y = y, label = lab), inherit.aes = FALSE,
+            hjust = 1, size = 3.6, colour = "grey15", lineheight = 0.9) +
+  scale_alpha_manual(values = c(`FALSE` = FLOW_A, `TRUE` = 0), guide = "none") +
+  scale_fill_manual(values = FB_COL, labels = BIN_LAB, limits = BIN, drop = FALSE,
+                    na.value = "white", na.translate = FALSE,
+                    name = "share of the site's\nvariant-carrying reads\nthat aligned there") +
+  scale_x_discrete(labels = c("iteration 1\n(single-shot)", "iteration 2", "iteration 3"),
+                   expand = expansion(add = c(1.6, 0.35))) +             # room for the band labels
+  labs(title = sprintf("Following every SNP through the iterations (GATK, D = %.2f, SNPs + indels)", G_DIV),
+       subtitle = "Height = number of SNPs. Flows connect the same SNPs between iterations.",
+       x = NULL, y = sprintf("divergent SNPs on chr19 (%s)", format(sum(gt$n_snps), big.mark = ",")),
+       caption = paste0("Data: s02 uniform-divergence SNP + indel simulation, D = ", sprintf("%.2f", G_DIV),
+                        ", GATK HaplotypeCaller; mason true read origins (variant_read_fate.py).\n",
+                        format(n_nocov, big.mark = ","), " SNPs with no simulated covering reads excluded.")) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid = element_blank(), axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 11, colour = "grey20"),
+        plot.title = element_text(face = "bold", size = 14), plot.title.position = "plot",
+        plot.subtitle = element_text(size = 11, colour = "grey30"),
+        plot.caption = element_text(hjust = 0, size = 9, colour = "grey35"),
+        plot.caption.position = "plot")
+save_fig(p3b, "fig3b-per-site-flow", 11, 7.5)
+```
+
+```{r fig3b-numbers}
+# numbers quoted in the text, from the same trajectory table as the panel
+tot_n   <- sum(gt$n_snps)
+miss1   <- sum(gt$n_snps[gt$s1 == "not_called"]) / tot_n          # missed at iteration 1
+miss3   <- sum(gt$n_snps[gt$s3 == "not_called"]) / tot_n          # missed at iteration 3
+by_bin1 <- gt %>% filter(s1 == "not_called") %>% group_by(fb1) %>%
+  summarize(tot = sum(n_snps), rescued3 = sum(n_snps[s3 == "called"]) / tot, .groups = "drop") %>%
+  mutate(share = tot / sum(tot))                                   # share of iteration-1 misses
+dark3   <- gt %>% filter(s3 == "not_called") %>%
+  summarize(s = sum(n_snps[fb3 == "0.0-0.2"]) / sum(n_snps)) %>% pull(s)
+hi <- filter(by_bin1, fb1 == "0.8-1.0"); lo <- filter(by_bin1, fb1 == "0.0-0.2")
+```
+
+**How to read it.** Each column is one iteration; the lower box holds the SNPs GATK called, the
+upper box those it missed (percent = share of all SNPs). Colour = how much of a site's read
+evidence reached it: **yellow** = the reads carrying the variant aligned there (so a miss is the
+caller's fault), **dark purple** = they didn't (a mapping failure). Ribbons show where the same
+SNPs go in the next iteration; a ribbon can change colour when more of a site's reads map after
+iteration.
+
+**What it shows.** This is a hard case on purpose (D = 0.10 with indels), so both bands are visible.
+
+- Single-shot GATK misses `r pct(miss1, 1)` of the SNPs. Of those misses, `r pct(hi$share, 1)` are
+  yellow (calling-limited) and `r pct(lo$share, 1)` dark (mapping-limited); the rest are in between.
+- Iteration rescues `r pct(hi$rescued3, 1)` of the yellow misses by iteration 3 but only
+  `r pct(lo$rescued3, 1)` of the dark ones (overall misses fall to `r pct(miss3, 1)`).
+- So dark, mapping-limited sites make up a growing share of what is left (`r pct(lo$share, 1)` of
+  misses at iteration 1, `r pct(dark3, 1)` at iteration 3). Here the nearby indels are what stop
+  the reads aligning, and iteration only partly clears them.
+
+## 3C — What changed for the SNPs that iteration rescued
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> SNP + indel sim · uniform divergence, D = 0.10 · seed 42 ·
+read-level ledger on a systematic sample of ~30,000 divergent SNPs · consecutive iterations (1 → 2 and 2 → 3, pooled)</p>
+
+```{r fig3c, fig.width=13.5, fig.height=6}
+# One summary of the synthesis notebook's per-site "flip" analysis: for SNPs that were NOT called
+# in one iteration, what changed by the next iteration -- for those that became called ("rescued")
+# versus those that stayed uncalled ("still missed")? Only factors that CAN change between
+# iterations are shown (read placement, uncalled neighbourhood); fixed sequence context can't
+# change, so the one fixed feature that matters (a nearby indel) is shown separately in Fig 3D.
+
+# --- per-site data: read ledger (sample) + uncalled neighbours, every iteration ------------------
+pile <- bind_rows(lapply(list.files(FLIP_PILEUP, sprintf("-%s\\.csv$", FLIP_DIV), full.names = TRUE),
+                         read_csv, col_types = cols(caller = "c", ref = "c", alt = "c", .default = "d")))
+neigh <- read_csv(FLIP_NEIGH, col_types = cols(caller = "c", .default = "d")) %>%
+  filter(divergence == as.numeric(FLIP_DIV))
+sites <- pile %>%
+  left_join(select(neigh, caller, snp_pos, iteration, nb_snp = n_unrecovered, nb_indel = n_unrecovered_indel),
+            by = c("caller", "snp_pos", "iteration")) %>%
+  filter(n_true_alt > 0) %>%                                   # no simulated covering read: no f_alt
+  mutate(f_alt  = 100 * (ex_alt + sh_alt) / n_true_alt,         # % of its variant reads aligned at p
+         mm_out = 100 * (mm_clip + mm_noclip + dc + un) / n_true_alt)  # % placed elsewhere / unmapped
+stopifnot(!anyNA(select(sites, nb_snp, nb_indel, depth_p, mapq_p)))
+
+# --- factors that change between iterations: column, plain label, direction that is "better" -----
+flip_factors <- tribble(
+  ~col,         ~label,                                             ~better, ~group,
+  "f_alt",      "% of the variant's reads aligned at the site",      +1, "Reads at the site\n(mapping)",
+  "depth_p",    "read depth at the site",                            +1, "Reads at the site\n(mapping)",
+  "mapq_p",     "mean mapping quality at the site",                  +1, "Reads at the site\n(mapping)",
+  "mm_out",     "% of its reads placed elsewhere or unmapped",       -1, "Reads at the site\n(mapping)",
+  "mmin_ref_p", "misplaced reference-allele reads at the site",      -1, "Reads at the site\n(mapping)",
+  "nb_snp",     "uncalled divergent SNPs nearby (±200 bp)",          -1, "Neighbourhood\n(calling)",
+  "nb_indel",   "uncalled indels nearby (±200 bp)",                  -1, "Neighbourhood\n(calling)")
+
+# --- pair each SNP with itself one iteration later; keep SNPs uncalled in the earlier one ---------
+pair_iter <- function(k) {
+  inner_join(filter(sites, iteration == k) %>% select(caller, snp_pos, recovered, all_of(flip_factors$col)),
+             filter(sites, iteration == k + 1) %>% select(caller, snp_pos, recovered, all_of(flip_factors$col)),
+             by = c("caller", "snp_pos"), suffix = c("_before", "_after"))
+}
+all_pairs <- bind_rows(pair_iter(1), pair_iter(2))
+flips <- all_pairs %>%
+  filter(recovered_before == 0) %>%
+  mutate(fate = ifelse(recovered_after == 1, "rescued", "still missed"))
+
+# group means before and after. Colour = change in the mean, oriented so > 0 = improved, scaled by
+# the largest absolute change in the same row (factors have different units, so only within-row
+# comparison is meaningful): 1 = the biggest improvement seen for that factor.
+flip_sum <- flips %>%
+  pivot_longer(c(ends_with("_before"), ends_with("_after")) & !starts_with("recovered"),
+               names_pattern = "(.+)_(before|after)$", names_to = c("col", "when")) %>%
+  group_by(caller, fate, col, when) %>% summarize(m = mean(value), n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = when, values_from = m) %>%
+  left_join(flip_factors, by = "col") %>%
+  mutate(change = better * (after - before)) %>%
+  group_by(col) %>% mutate(rel = change / max(abs(change))) %>% ungroup() %>%
+  mutate(caller = fac(caller),
+         label = factor(label, levels = rev(flip_factors$label)),
+         group = factor(group, levels = unique(flip_factors$group)),
+         txt = sprintf("%s → %s", signif(before, 2), signif(after, 2)),
+         comp = factor(fate, levels = c("rescued", "still missed")))
+stopifnot(all(is.finite(flip_sum$rel)))
+# one x level per caller x fate so each column header can carry its own SNP count
+flip_sum <- mutate(flip_sum, xkey = factor(paste(caller, fate), levels = unique(paste(caller, fate)[order(caller, comp)])))
+
+flip_xlabs <- distinct(flip_sum, xkey, fate, n) %>%
+  { setNames(sprintf("%s\n(n = %s)", .$fate, trimws(format(.$n, big.mark = ","))), .$xkey) }
+
+p3c <- ggplot(flip_sum, aes(xkey, label, fill = rel)) +
+  geom_tile(colour = "white", linewidth = 0.8) +
+  geom_text(aes(label = txt, colour = abs(rel) > 0.55), size = 3.1) +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey15"), guide = "none") +
+  scale_fill_gradient2(low = "#B2182B", mid = "grey97", high = "#2166AC", midpoint = 0,
+                       limits = c(-1, 1), breaks = c(-1, 0, 1),
+                       labels = c("got worse", "no change", "largest gain"),
+                       name = "change in the average,\nrelative to the largest\nchange in the same row") +
+  guides(fill = guide_colourbar(barheight = unit(5.5, "cm"), title.theme = element_text(size = 10.5, margin = margin(b = 16)))) +
+  scale_x_discrete(labels = flip_xlabs, position = "top") +
+  facet_grid(group ~ caller, scales = "free", space = "free", switch = "y",
+             labeller = labeller(caller = c(`GATK HaplotypeCaller` = "GATK", bcftools = "bcftools",
+                                            freebayes = "freebayes"))) +
+  labs(title = "What changed for the SNPs that iteration rescued",
+       subtitle = paste("SNPs not called in one iteration: those called in the next ('rescued') vs those still not called.",
+                        "Each cell: average before → after one more iteration; blue = improved.", sep = "\n"),
+       x = NULL, y = NULL,
+       caption = paste0("Data: s02 uniform SNP + indel simulation, D = ", FLIP_DIV, "; systematic sample of ",
+                        format(n_distinct(sites$snp_pos), big.mark = ","), " divergent SNPs (mason true read origins).\n",
+                        "Pairs = the same SNP in consecutive iterations (1 → 2 and 2 → 3 pooled), kept if not called in the earlier one; ",
+                        "n = SNP-iteration pairs.\n",
+                        "Colour = change in the group average divided by the largest change in that row (rows have different units), ",
+                        "signed so blue = better\n(more reads / higher quality, or fewer misplaced reads / uncalled neighbours).")) +
+  brieftheme() +
+  theme(axis.text.x.top = element_text(size = 9, lineheight = 0.9), axis.text.y = element_text(size = 10.5),
+        axis.line = element_blank(), axis.ticks = element_blank(), panel.grid.major.y = element_blank(),
+        strip.placement = "outside", strip.text.y.left = element_text(angle = 0, hjust = 1, size = 10.5),
+        legend.position = "right")
+save_fig(p3c, "fig3c-what-changed", 13.5, 6)
+```
+
+```{r fig3c-numbers}
+# values quoted in the text
+fv <- function(cc, ff, cl) filter(flip_sum, caller == caller_names[cc], fate == ff, col == cl)
+fx <- function(cc, ff, cl) { r <- fv(cc, ff, cl); sprintf("%s → %s", signif(r$before, 2), signif(r$after, 2)) }
+```
+
+**How to read it.** Each row is something that can change when a SNP is re-mapped against an
+updated reference. For each caller, the left column follows SNPs that were missed and then called
+one iteration later; the right column follows SNPs that were missed and stayed missed. Each cell
+gives the group's average before → after that iteration. Blue means it got better (more of the
+variant's reads, higher quality, fewer misplaced reads or uncalled neighbours). Because each row has
+its own units, the colour is relative within a row: the darkest cell in a row is the biggest change
+seen for that factor; grey means little change. Fixed features of the site (sequence context)
+can't change between iterations, so they aren't in this figure; the one that matters, a nearby
+indel, is in Figure 3D.
+
+**What it shows.**
+
+- **GATK's rescued SNPs were rescued by their neighbourhood.** Uncalled SNPs nearby fell
+  `r fx("gatk", "rescued", "nb_snp")` (still-missed: `r fx("gatk", "still missed", "nb_snp")`), and
+  uncalled indels nearby `r fx("gatk", "rescued", "nb_indel")`. Their reads changed much less
+  (`r fx("gatk", "rescued", "f_alt")` % of variant reads aligned), because they were mostly
+  there already. Once the surrounding variants are in the reference, GATK's local re-assembly works.
+- **bcftools' and freebayes' rescued SNPs were rescued by their reads.** The share of variant reads
+  aligned at the site went `r fx("bcftools", "rescued", "f_alt")` % (bcftools) and
+  `r fx("freebayes", "rescued", "f_alt")` % (freebayes), and mapping quality
+  `r fx("bcftools", "rescued", "mapq_p")` and `r fx("freebayes", "rescued", "mapq_p")`. Their neighbourhood
+  cleared as well, as the neighbours' reads also started mapping.
+- **Still-missed SNPs change much less**, for every caller. For GATK almost nothing moves,
+  including the neighbourhood (`r fx("gatk", "still missed", "nb_snp")` uncalled SNPs nearby). For
+  bcftools their reads improve somewhat (`r fx("bcftools", "still missed", "f_alt")` % aligned) but
+  not enough to be called. For freebayes the uncalled indels nearby barely clear
+  (`r fx("freebayes", "still missed", "nb_indel")`), in line with its indels improving least (Figure 2B).
+- The same split holds in the SNP-only simulation (s01) and the synthesis notebook's
+  per-divergence figures; this is their summary at D = `r FLIP_DIV`.
+
+## 3D — Closeness to an indel and rescue
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> SNP + indel sim · uniform divergence, D = 0.10 · seed 42 ·
+same SNP-iteration pairs as Figure 3C · distance from each divergent SNP to the nearest truth indel</p>
+
+```{r fig3d, fig.width=12, fig.height=8}
+# The fixed-context row of Fig 3C in full: (top) how close the nearest indel is, for SNPs called
+# both times / rescued / still missed; (bottom) the rescue rate -- share of missed SNPs called one
+# iteration later -- by distance to the nearest indel. Same SNP-iteration pairs as Fig 3C
+# (all_pairs / flips from the fig3c chunk), joined to their fixed sequence context.
+
+# fixed context (calling_metrics.py, per divergent SNP): distance to the nearest truth indel, etc.
+cmet_flip <- read_csv(sprintf(FLIP_CALLMET, FLIP_DIV), col_types = cols(.default = "d")) %>%
+  select(snp_pos, dist_to_indel, indel_density, homopolymer_frac, snp_density, het_density)
+near <- function(df) {
+  out <- left_join(df, cmet_flip, by = "snp_pos")
+  stopifnot(!anyNA(out$dist_to_indel))
+  out
+}
+flips_ctx <- near(flips)
+ctx_pairs <- bind_rows(
+  mutate(near(filter(all_pairs, recovered_before == 1, recovered_after == 1)), fate = "called both times"),
+  flips_ctx) %>%
+  mutate(dist = pmin(dist_to_indel, DIST_MAX))            # no indel within DIST_MAX bp -> plotted at DIST_MAX
+stopifnot(all(ctx_pairs$dist >= 0))
+FATE_LEV <- c("called both times", "rescued", "still missed")
+FATE_COL <- c(`called both times` = "grey55", rescued = "#2166AC", `still missed` = "#E6550D")
+
+# top: cumulative share of each group's SNPs with an indel within x bp
+grid_x <- c(0:100, seq(110, DIST_MAX, 10))
+cum <- ctx_pairs %>% group_by(caller, fate) %>%
+  group_modify(function(df, key) tibble(x = grid_x, share = ecdf(df$dist)(grid_x))) %>% ungroup() %>%
+  mutate(caller = fac(caller), fate = factor(fate, levels = FATE_LEV))
+
+# bottom: rescue rate by distance bin, among SNPs missed in the earlier iteration
+rate <- flips_ctx %>%
+  mutate(bin = cut(dist_to_indel, DIST_BINS, labels = DIST_LABS)) %>%
+  group_by(caller, bin) %>% summarize(n = n(), rescue = mean(fate == "rescued"), .groups = "drop") %>%
+  mutate(lo = DIST_BINS[as.integer(bin)] + 1, hi = pmin(DIST_BINS[as.integer(bin) + 1], DIST_MAX),
+         mid = sqrt(pmax(lo, 0.5) * hi), caller = fac(caller))
+stopifnot(!anyNA(rate$bin))
+overall <- flips_ctx %>% group_by(caller) %>% summarize(rescue = mean(fate == "rescued"), .groups = "drop") %>%
+  mutate(caller = fac(caller))
+
+x_d <- scale_x_continuous(trans = scales::pseudo_log_trans(base = 10), limits = c(0, DIST_MAX),
+                          breaks = c(0, 2, 5, 10, 25, 50, 100, 1000))
+p3d_top <- ggplot(cum, aes(x, share, colour = fate)) +
+  geom_vline(xintercept = INDEL_NEAR_BP, linetype = "22", colour = "grey60") +
+  geom_line(linewidth = 1) +
+  scale_colour_manual(values = FATE_COL, name = NULL) +
+  x_d + scale_y_continuous(labels = pct, limits = c(0, 1)) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = NULL, y = "SNPs with an indel\nwithin x bp") +
+  brieftheme() + theme(axis.text.x = element_blank(), plot.margin = margin(5, 5, 0, 5))
+p3d_bot <- ggplot(rate) +
+  geom_hline(data = overall, aes(yintercept = rescue), linetype = "22", colour = "grey50") +
+  geom_errorbarh(aes(xmin = lo, xmax = hi, y = rescue), height = 0, colour = "#2166AC", alpha = 0.5) +
+  geom_line(aes(mid, rescue), colour = "#2166AC", linewidth = 1) +
+  geom_point(aes(mid, rescue), colour = "#2166AC", size = 2.2) +
+  x_d + scale_y_continuous(labels = pct, limits = c(0, NA)) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "distance from the SNP to the nearest indel (bp, log scale)",
+       y = "missed SNPs rescued\nat the next iteration") +
+  brieftheme() + theme(strip.text = element_blank(), plot.margin = margin(0, 5, 5, 5))
+
+p3d <- patchwork::wrap_plots(p3d_top, p3d_bot, ncol = 1, heights = c(1, 1)) +
+  patchwork::plot_annotation(
+    title = "The closer an indel, the less likely a missed SNP is rescued",
+    subtitle = paste0("Top: how close the nearest indel is, by group (dashed line = the ", INDEL_NEAR_BP,
+                      " bp cutoff in Fig 3C). Bottom: share of missed SNPs called one iteration later\n",
+                      "(dashed line = that caller's average rescue rate)."),
+    caption = paste0("Data: s02 uniform SNP + indel simulation, D = ", FLIP_DIV, "; SNP-iteration pairs (1 → 2 and 2 → 3 pooled) as in Fig 3C. ",
+                     "Distance = bp to the nearest truth indel (calling_metrics.py);\n",
+                     "distances above ", DIST_MAX, " bp (or no indel nearby) plotted at ", DIST_MAX, ". Bottom bins (bars = bin span): ",
+                     paste(DIST_LABS, collapse = ", "), " bp; SNPs per bin ",
+                     format(min(rate$n), big.mark = ","), "–", format(max(rate$n), big.mark = ","), "."),
+    theme = brieftheme())
+save_fig(p3d, "fig3d-indel-distance", 12, 8)
+```
+
+```{r fig3d-numbers}
+# values quoted in the text
+rr <- function(cc, b) pct(filter(rate, caller == caller_names[cc], bin == b)$rescue, 1)
+med <- ctx_pairs %>% group_by(caller, fate) %>% summarize(m = median(dist), .groups = "drop")
+md <- function(cc, ff) filter(med, caller == cc, fate == ff)$m
+# number of indels within +/-100 bp, holding the nearest indel > INDEL_NEAR_BP bp away
+MANY_INDELS <- 4
+cnt <- flips_ctx %>% filter(dist_to_indel > INDEL_NEAR_BP) %>%
+  mutate(many = round(indel_density * 200) >= MANY_INDELS) %>%        # density is per bp over 200 bp
+  group_by(caller, many) %>% summarize(rescue = mean(fate == "rescued"), n = n(), .groups = "drop")
+cr <- function(cc, m) pct(filter(cnt, caller == cc, many == m)$rescue, 1)
+# the other fixed factors, for the one-line "they don't differ" statement (all three groups)
+homo <- ctx_pairs %>% group_by(caller, fate) %>% summarize(h = mean(homopolymer_frac), .groups = "drop")
+homo_rng <- function(cc) pct(range(filter(homo, caller == cc)$h), 0.1)
+```
+
+**How to read it.** Both rows share the same x axis: distance from the SNP to the nearest indel,
+on a log scale. *Top:* for each group of SNPs, the share whose nearest indel is within *x* bp; a
+curve that rises early means that group's SNPs sit close to indels. *Bottom:* of the SNPs missed in
+one iteration, the share called in the next, for SNPs at each distance.
+
+**What it shows.**
+
+- **bcftools and freebayes:** still-missed SNPs sit right next to indels (median nearest indel
+  `r md("bcftools", "still missed")` and `r md("freebayes", "still missed")` bp), rescued ones a
+  little further (`r md("bcftools", "rescued")` and `r md("freebayes", "rescued")` bp), and SNPs called
+  both times much further (`r md("bcftools", "called both times")` bp). The rescue rate climbs with
+  distance: bcftools `r rr("bcftools", "0–2")` with an indel within 2 bp, `r rr("bcftools", "6–10")` at
+  6–10 bp, `r rr("bcftools", ">100")` beyond 100 bp (freebayes `r rr("freebayes", "0–2")`,
+  `r rr("freebayes", "6–10")`, `r rr("freebayes", ">100")`).
+- **GATK:** only an indel within a few bp hurts (rescue `r rr("gatk", "0–2")` at 0–2 bp,
+  `r rr("gatk", "3–5")` at 3–5 bp); beyond ~10 bp its rescue rate is flat at about
+  `r rr("gatk", "11–25")`, because its stuck SNPs are mostly held back by the uncalled neighbourhood
+  instead (Figure 3C).
+- The number of indels nearby matters less than the closest one (not plotted). Taking only SNPs
+  whose nearest indel is more than `r INDEL_NEAR_BP` bp away, the rescue rate with fewer than
+  `r MANY_INDELS` indels within ±100 bp vs `r MANY_INDELS` or more is `r cr("bcftools", FALSE)` vs
+  `r cr("bcftools", TRUE)` for bcftools, `r cr("freebayes", FALSE)` vs `r cr("freebayes", TRUE)` for
+  freebayes, and `r cr("gatk", FALSE)` vs `r cr("gatk", TRUE)` for GATK.
+- Of the fixed sequence features, closeness to an indel is the only one that separates the groups.
+  The others barely differ between SNPs called both times, rescued and still missed (homopolymer
+  fraction `r homo_rng("gatk")[1]`–`r homo_rng("gatk")[2]` for GATK,
+  `r homo_rng("bcftools")[1]`–`r homo_rng("bcftools")[2]` for bcftools), so they aren't shown.
+
+# Figure 4 — The limits {#fig4}
+
+<p class="claim">Iteration fixes loss caused by the sample's divergence. It cannot fix loss caused by
+the reference itself (repeats, structural variants), and filtering the calls can't recover any loss.</p>
+
+## 4A — Repetitive reference sequence
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s08</b> = <b>s01</b> SNP-only calls (seed 42), uniform divergence D = 0.06,
+stratified by reference mappability (GenMap, 100-mers, ≤ 2 mismatches)</p>
+
+```{r fig4a, fig.width=12, fig.height=5}
+# SNP recall by reference mappability bin, iteration 1 vs 3, at one divergence (MAP_DIV).
+# Mappability = GenMap value of the 100-mer starting at the SNP (1 = unique; <0.2 ~ >= 5 copies).
+f4a <- read_csv(S08_MAP) %>%
+  filter(divergence == MAP_DIV, iteration %in% c(1, 3)) %>%
+  mutate(caller = fac(caller),
+         map_bin = factor(map_bin, levels = c("unique (1.0)", "repetitive (0.2-1.0)", "highly repetitive (<0.2)"),
+                          labels = c("unique\n(mappability 1)", "repetitive\n(0.2–1)", "highly repetitive\n(< 0.2)")),
+         iter_lab = factor(iteration, levels = c(1, 3), labels = c("iteration 1 (single-shot)", "iteration 3")))
+share_rep <- f4a %>% filter(caller == caller_names["gatk"], iteration == 1) %>%
+  summarize(s = sum(n_sites[map_bin != levels(map_bin)[1]]) / sum(n_sites)) %>% pull(s)
+
+p4a <- ggplot(f4a, aes(map_bin, recall, fill = iter_lab)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.75) +
+  geom_text(aes(label = scales::percent(recall, 1)), position = position_dodge(width = 0.8),
+            vjust = -0.4, size = 3.2) +
+  scale_fill_manual(values = c("grey65", "#08519C"), name = NULL) +
+  scale_y_continuous(labels = pct, breaks = seq(0, 1, 0.25), expand = expansion(mult = c(0, 0.08))) +
+  coord_cartesian(ylim = c(0, 1.05)) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(title = "Repeats: a floor that iteration only partly lifts",
+       subtitle = sprintf("SNP recall by how unique the reference sequence is at the site (D = %.2f).", MAP_DIV),
+       x = "reference mappability at the SNP", y = "recall",
+       caption = sprintf(paste("Data: s01 SNP-only calls, uniform D = %.2f, binned by GenMap mappability (K = 100, E = 2) on mm39 chr19.",
+                               "%s of divergent SNPs fall in the two repetitive bins."), MAP_DIV, pct(share_rep, 0.1))) +
+  brieftheme()
+save_fig(p4a, "fig4a-repeats", 12, 5)
+```
+
+**What it shows.** In unique sequence bcftools and freebayes recover essentially everything. In
+repetitive sequence reads can't be placed uniquely (low mapping quality, then dropped), so recall is
+lower for every caller; iteration helps but leaves a gap. GATK is lower everywhere because of its
+calling-limited loss (Figure 3). The same pattern holds at D = 0.02 and 0.10 (synthesis notebook).
+
+## 4B — Structural variants
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s07</b> · ~1,000 SVs (50–5,000 bp; half deletions, half insertions)
+on a uniform SNP + indel background, D = 0.02 · seed 42 · iterations 1 and 3</p>
+
+```{r fig4b, fig.width=12, fig.height=5}
+# SNP recall vs distance to the nearest SV breakpoint (deletions: both ends; insertions: the
+# anchor). The last distance bin (>= 5 kb) is the SV-free baseline and is drawn as a dashed line.
+sv <- read_csv(S07_SV) %>%
+  filter(vtype == "snp", bptype == "any", iteration %in% SV_ITERS) %>%
+  mutate(caller = fac(caller),
+         iter_lab = factor(iteration, levels = SV_ITERS, labels = c("iteration 1 (single-shot)", "iteration 3")))
+sv_near <- filter(sv, dist_hi != -1)
+sv_base <- filter(sv, dist_hi == -1)
+sv_edges <- sort(unique(c(sv_near$dist_lo, sv_near$dist_hi)))
+
+p4b <- ggplot(sv_near, aes(dist_mid, recall, colour = iter_lab)) +
+  geom_hline(data = sv_base, aes(yintercept = recall, colour = iter_lab), linetype = "22", linewidth = 0.6) +
+  geom_line(linewidth = 1) + geom_point(size = 1.8) +
+  scale_colour_manual(values = c("grey50", "#08519C"), name = NULL) +
+  scale_x_log10(breaks = c(25, 100, 300, 1000, 3000), labels = scales::comma) +
+  scale_y_continuous(labels = pct) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(title = "Structural variants: a local blind spot that iteration doesn't fill",
+       subtitle = "SNP recall vs distance to the nearest SV breakpoint; dashed line = recall far (≥ 5 kb) from any SV.",
+       x = "distance to nearest SV breakpoint (bp, log scale; bin midpoints)", y = "SNP recall",
+       caption = paste0("Data: s07 SV simulation (none of the three callers calls SVs, so SVs are never written into the consensus).\n",
+                        "Distance bin edges (bp): ", paste(sv_edges, collapse = ", "), ", then ≥ 5,000 (baseline).")) +
+  brieftheme()
+save_fig(p4b, "fig4b-svs", 12, 5)
+```
+
+**What it shows.** None of these callers detects SVs, so the SVs themselves are never found and
+never written into the consensus. Within ~50 bp of a breakpoint SNP recall drops sharply (GATK
+`r pct(filter(sv_near, caller == caller_names["gatk"], iteration == 1, dist_lo == 0)$recall, 1)`
+vs `r pct(filter(sv_base, caller == caller_names["gatk"], iteration == 1)$recall, 1)` far away),
+and iteration barely changes it.
+
+## 4C — Filtering the calls
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s06</b> = hard-filter sweep on the <b>s01</b> SNP-only single-shot (iteration 1) calls ·
+uniform divergence D = 0.02–0.10 · seed 42</p>
+
+```{r fig4c, fig.width=12, fig.height=7}
+# Recall after keeping only calls with QUAL >= t (top) or mapping quality >= t (bottom;
+# INFO/MQ for GATK and bcftools, INFO/MQM for freebayes). t = 0 is unfiltered.
+f4c <- read_csv(S06_SWEEP) %>%
+  filter(vtype == "snp", axis %in% c("QUAL", "MQ")) %>%
+  mutate(caller = fac(caller),
+         axis = factor(axis, levels = c("QUAL", "MQ"),
+                       labels = c("filter on call quality (QUAL ≥ t)", "filter on mapping quality (MQ ≥ t)")),
+         divergence = factor(sprintf("%.2f", divergence)))
+div_cols <- scales::seq_gradient_pal("#FDBB84", "#7F0000")(seq(0, 1, length.out = nlevels(f4c$divergence)))
+
+p4c <- ggplot(f4c, aes(threshold, recall, colour = divergence)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.5) +
+  scale_colour_manual(values = div_cols, name = "divergence D") +
+  scale_y_continuous(labels = pct) +
+  # facet_wrap (not facet_grid) so each ROW gets its own x range: QUAL runs to 100, MQ to 60
+  facet_wrap(vars(axis, caller), nrow = 2, scales = "free_x") +
+  labs(title = "Filtering can't bring lost differences back — and filtering on mapping quality makes the bias worse",
+       subtitle = "Recall after a hard filter; t = 0 is unfiltered. A filter can only remove calls, so lines can only go down.",
+       x = "filter threshold t (keep calls with value ≥ t)", y = "recall",
+       caption = paste("Data: s06 sweep on s01 single-shot SNP calls. Thresholds: QUAL 0, 10, 20, 30, 50, 100; MQ 0, 20, 30, 40, 50, 60",
+                       "(MQ = INFO/MQ for GATK and bcftools, INFO/MQM for freebayes).", sep = "\n")) +
+  brieftheme() + theme(legend.position = "right")
+save_fig(p4c, "fig4c-filtering", 12, 7)
+```
+
+```{r fig4c-numbers}
+# the MQ >= 60 cost quoted in the text, per divergence, for bcftools
+mq_cost <- read_csv(S06_SWEEP) %>%
+  filter(vtype == "snp", axis == "MQ", caller == "bcftools", threshold %in% c(0, 60)) %>%
+  select(divergence, threshold, recall) %>%
+  pivot_wider(names_from = threshold, values_from = recall, names_prefix = "t") %>%
+  mutate(cost = t0 - t60)
+```
+
+**What it shows.**
+
+- **Top row:** call-quality filters leave recall almost unchanged, because the missing
+  differences were never called in the first place; the gap between the colours (divergence)
+  is untouched. (These filters do raise precision, mainly by removing freebayes false calls.)
+- **Bottom row:** mapping-quality filters *widen* the gap. Reads from diverged regions map with
+  lower quality, so the filter preferentially removes the hardest-won calls: MQ ≥ 60 costs bcftools
+  `r round(100 * filter(mq_cost, divergence == 0.02)$cost, 1)` recall points at D = 0.02 but
+  `r round(100 * filter(mq_cost, divergence == 0.10)$cost, 1)` points at D = 0.10.
+
+# Take-aways {#takeaways}
+
+- **Reference bias is real and caller-dependent**; it is worse for indels and for realistic, patchy
+  divergence than a uniform SNP-only simulation suggests.
+- **Iterative mapping works** for all three callers, and it works because it lowers the sample's
+  effective divergence, which helps both reads mapping and the caller calling.
+- **What's left is mostly about the reference** (repeats, SVs), not the sample; iteration can't
+  fix that, and **hard filters only make it worse** (mapping quality) or leave it unchanged.
+
+# Figure files {#files}
+
+Every figure above is also saved, at 300 dpi PNG and as vector PDF, in
+`analyses/synthesis/figures/brief/` (rewritten each time this notebook is rendered):
+
+```{r files, echo=FALSE}
+knitr::kable(tibble::tibble(
+  figure = c("1A", "1B", "2A", "2B", "3A", "3B", "3C", "3D", "4A", "4B", "4C"),
+  file   = paste0(c("fig1-problem", "fig1b-local-divergence", "fig2-fix", "fig2b-fix-uniform",
+                    "fig3a-mapping-vs-calling", "fig3b-per-site-flow", "fig3c-what-changed", "fig3d-indel-distance",
+                    "fig4a-repeats", "fig4b-svs", "fig4c-filtering"), ".png / .pdf"),
+  source = c("s01, s02, s05 summaries", "s05 realistic local recall + s01 summary", "s05 summaries",
+             "s01, s02 summaries",
+             "s05 mapping-vs-calling (capped)",
+             "s02 vrf-agg gatk D = 0.10", "s02 vrf-pileup + neighborhood, D = 0.10", "s02 vrf-pileup + calling-metrics, D = 0.10",
+             "s08 mappability", "s07 SV confounder", "s06 filter sweep")))
+```

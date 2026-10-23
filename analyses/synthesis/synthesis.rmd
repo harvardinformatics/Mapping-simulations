@@ -1,0 +1,786 @@
+---
+title: "Synthesis — reference bias, its mechanism, and iterative mapping (s01–s08)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre { overflow-x: auto; display: block; }
+/* centre the styled table: width:auto overrides bootstrap .table{width:100%} so margin:auto bites */
+table { width: auto !important; margin-left: auto !important; margin-right: auto !important; }
+.kable-table { overflow-x: auto; }
+/* compact methods boxes */
+.methodsbox { background: #f4f7fa; border: 1px solid #c9d6e3; border-left: 5px solid #4477AA;
+              border-radius: 5px; padding: 8px 16px 10px 16px; margin: 12px 0; font-size: 0.94em; }
+.methodsbox h4 { margin: 4px 0 6px 0; color: #2b4a6f; font-size: 1.02em; }
+.methodsbox ul { margin: 3px 0 2px 1.1em; } .methodsbox li { margin: 2px 0; }
+img { max-width: 1050px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+/* prominent data-source banner: what the simulation for this section / plot includes */
+.datasrc { font-size: 1.15em; font-weight: 700; background: #fdf3d8;
+           border-left: 6px solid #C8A02A; color: #5a4708;
+           padding: 9px 14px; margin: 14px 0 10px 0; border-radius: 4px; }
+.datasrc .k { color: #7a5c10; font-weight: 800; letter-spacing: 0.3px; }
+.datasrc .d { font-weight: 600; color: #6b5a2a; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")
+callers <- c("gatk", "bcftools", "freebayes")
+fac <- function(x) factor(x, levels = callers)
+pct <- scales::percent
+```
+
+# The one idea {#spine}
+
+This document pulls the eight sections (s01–s08) onto a single spine so the whole argument
+is visible in one place. The spine is:
+
+> **Reference bias is two failures — reads that don't *map*, and reads that map but don't get
+> *called*. Divergence, indels, heterozygosity, and the spatial structure of divergence all
+> shift the balance between those two. Iterative mapping fixes the parts that are about the
+> *sample's divergence* (by baking recovered variants into the consensus, lowering the
+> effective divergence), and it cannot fix the parts that are about the *reference's structure*
+> (structural variants, repeats).**
+
+Everything below is an instance of that sentence:
+
+| section | what it adds | which failure | iteration? |
+|---|---|---|---|
+| s01 | SNP divergence (baseline) | both | recovers |
+| s02 | indels | mostly mapping (spanning reads) | recovers, most of all |
+| s03 | heterozygosity | mapping (alt-read exclusion) | corrects allele balance |
+| s05 | heterogeneous divergence | redistributes along local D; *the* mapping-vs-calling split | mechanism unchanged (separable) |
+| s06 | variant filtering | acts on *emitted* calls only | can't recover un-emitted loss |
+| s07 | structural variants | reference-structure mapping loss | **cannot** (blind spot) |
+| s08 | reference repeats | reference-structure mapping loss | **partly** |
+
+All results are chr19, 30×, `mason` simulation → `bwa` → gatk / bcftools / freebayes, scored
+against a controlled truth. Single seed unless noted (s01 showed aggregate recall is
+near-deterministic across seeds).
+
+# Methods — how the simulations were done {#methods}
+
+Brief but complete: everything needed to reproduce the pipeline. Each box is one stage; the
+per-plot **SIM DATA** banners state which variants a given figure's simulation contained.
+
+::: {.methodsbox}
+#### 1 · Simulation — controlled truth, then `mason2` reads
+- **Reference:** mouse **mm39** (GRCm39), **chr19 only** (for speed, per the project guide).
+- **Truth variants** written by `make_truth_vcf.py` onto the reference:
+  - **Divergent SNPs** at rate **D** — fixed differences, genotype **1|1**, with independent random
+    alt alleles (the sample-vs-reference divergence axis).
+  - **Heterozygous SNPs** at **0.5%** (genotype 0|1) — held fixed throughout.
+  - **Indels** (added in s02, s05): 1–10 bp, 50/50 insertion/deletion, indel:SNP ratio ≈ **0.12**,
+    so indel load scales with D on one axis.
+  - **Structural variants** (s07 only): larger insertions/deletions placed first to reserve their
+    spans, on a low SNP+indel background.
+  - **Heterogeneous divergence** (s05 only): a continuous autocorrelated field (FFT-smoothed,
+    weighted sampling) sets *where* the fixed differences fall, with the genome-wide **mean pinned to
+    D** so only the spatial structure differs from a homogeneous run.
+- **Reads:** `mason_simulator` applies the truth VCF to the reference and simulates **150 bp
+  paired-end** reads, **fragment mean 300 bp**, **30×** coverage, **seed 42** (s01 also 43/44 for
+  error bars). Mason's `-oa` output records each read's true origin — the ground truth for the ledger.
+:::
+
+::: {.methodsbox}
+#### 2 · Mapping & iterative refinement (pseudo-it style)
+- Reads mapped to the mm39 reference with **`bwa mem`**.
+- **Iterative mapping, 3 rounds:** each round calls variants, bakes the recovered variants into the
+  reference with **`bcftools consensus`**, and remaps to that consensus; coordinates are lifted back
+  to reference space for scoring. **Iteration 1 = single-shot** (standard mapping to the original
+  reference); iterations 2–3 map to the progressively updated consensus.
+- Because indels shift downstream coordinates, s02+ lift every consensus back to reference
+  coordinates before scoring (**Picard** for VCFs, **point-lift** for BAMs).
+:::
+
+::: {.methodsbox}
+#### 3 · Variant calling & scoring
+- **Three callers, every iteration:** **GATK HaplotypeCaller** (scatter 8), **bcftools**
+  (mpileup/call), **freebayes**. Read **MAPQ floor 20** for all three.
+- A truth variant is **recovered** if the caller emitted the matching genotype (position + allele;
+  indels normalized/lifted). **Recall = recovered / truth 1|1 sites** (the divergence-recovery axis).
+:::
+
+::: {.methodsbox}
+#### 4 · Per-variant mapping-vs-calling ledger
+- `variant_read_fate.py` joins each divergent SNP's **call fate** to its **read-placement fate**,
+  using the `mason -oa` truth BAM to know which reads *should* cover the site (arrived / soft-clipped
+  / mismapped / unmapped).
+- `--pileup` classifies each unrecovered site: **calling-limited** (≥2 alt reads present at the site
+  but not emitted) vs **mapping-limited** (alt reads never placed).
+- Calling-side context: **static** per-site covariates (`calling_metrics.py`, ±100 bp) and the
+  **dynamic** local unrecovered-neighbour load (`neighborhood_assembly.py`, ±200 bp, per iteration).
+:::
+
+::: {.methodsbox}
+#### 5 · Section-specific setups
+- **s01** baseline (SNPs only) · **s02** + indels · **s03** heterozygous-site allele bias (reuses the
+  s01/s02 BAMs) · **s05** heterogeneous divergence field (mean pinned to D) · **s06** hard-filter
+  sweep on the existing s01/s02 calls · **s07** structural variants · **s08** recovery stratified by
+  reference mappability (**GenMap**, K=100, E=2).
+:::
+
+# The problem: divergence loses true variants {#problem}
+
+Recall of true fixed differences falls as the sample diverges from the reference — this is
+reference bias. It is caller-dependent, and in a *realistic* (spatially heterogeneous,
+capped, with correlated heterozygosity) genome it is markedly worse than the homogeneous
+number suggests.
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · single-shot recall · <b>SNPs</b> (solid) &amp; <b>indels</b> (dashed) · homogeneous (grey): <b>s01</b> SNP / <b>s02</b> indel · realistic-heterogeneous capped (orange): <b>s05</b> SNP mean-sweep + indel mean-sweep</p>
+
+```{r problem, fig.width=12, fig.height=4.5}
+# homogeneous SNP recall (s01, pure baseline) and homogeneous INDEL recall (s02, the SNP+indel sim)
+snp_homog <- read_csv("analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv") %>%
+  filter(iteration == 1, divergence > 0) %>%
+  group_by(caller, divergence) %>% summarize(recall = mean(div_tp / n_truth_div), .groups = "drop") %>%
+  mutate(scenario = "homogeneous", variant = "SNP")
+ind_homog <- read_csv("analyses/s02-indels/results/s02-indels-recovery-summary.csv") %>%
+  filter(iteration == 1, divergence > 0) %>%
+  group_by(caller, divergence) %>%
+  summarize(recall = mean(indel_div_tp / n_truth_indel_div), .groups = "drop") %>%
+  mutate(scenario = "homogeneous", variant = "indel")
+# realistic (heterogeneous, capped) SNP recall (s05 SNP-only mean-sweep) and INDEL recall
+# (s05 realistic mean-sweep WITH indels, job 39190833) -- same field, indels on the field
+snp_real <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-iterative-summary.csv") %>%
+  filter(iteration == 1) %>%
+  group_by(caller, divergence) %>% summarize(recall = mean(div_tp / n_truth_div), .groups = "drop") %>%
+  mutate(scenario = "realistic (heterogeneous)", variant = "SNP")
+ind_real <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-indels-recovery-summary.csv") %>%
+  filter(iteration == 1) %>%
+  group_by(caller, divergence) %>%
+  summarize(recall = mean(indel_div_tp / n_truth_indel_div), .groups = "drop") %>%
+  mutate(scenario = "realistic (heterogeneous)", variant = "indel")
+
+prob <- bind_rows(snp_homog, ind_homog, snp_real, ind_real) %>%
+  mutate(caller = fac(caller),
+         scenario = factor(scenario, levels = c("homogeneous", "realistic (heterogeneous)")),
+         variant = factor(variant, levels = c("SNP", "indel")))
+ggplot(prob, aes(divergence, recall, color = scenario, linetype = variant,
+                 group = interaction(scenario, variant))) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.4) +
+  scale_color_manual(values = c(homogeneous = "grey40",
+                                `realistic (heterogeneous)` = corecol(pal="wilke",numcol=5)[1]), name = NULL) +
+  scale_linetype_manual(values = c(SNP = "solid", indel = "22"), name = NULL) +
+  scale_y_continuous(labels = pct) + facet_wrap(~caller, nrow = 1) +
+  labs(x = "mean SNP divergence", y = "single-shot recall") +
+  bartheme() + theme(legend.position = "top")
+```
+
+**Read:** loss grows with divergence; gatk loses most. **Two axes each make it worse, and they
+stack.** In *both* scenarios, **indels (dashed) are recovered worse than SNPs (solid)** — dramatically
+so for bcftools, which collapses on them; and in *both* variant types the **realistic-heterogeneous
+curve (orange) sits below the homogeneous one (grey)**. So the true worst case — realistic
+divergence *with* indels (orange dashed) — is far below what a homogeneous, SNP-only view would
+suggest. That stacked gap is the first reason the rest of the paper matters.
+
+# The fix: iterative mapping {#fix}
+
+Iteration maps to a consensus that has absorbed the divergence recovered so far, lowering the
+*effective* divergence each round. It recovers both failure modes from the spine — the sites a caller
+could not emit (better local assembly) and the divergence-driven sites whose reads would not place
+(reads now map). Recall rises and converges by ~iteration 3, most for the caller that was worst
+(gatk). *Why* it works — which reads and calls change — is the mechanism dissected in the next section.
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s01</b> · SNPs only · homogeneous divergence</p>
+
+```{r fix, fig.width=12, fig.height=4.5}
+gains <- read_csv("analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv") %>%
+  filter(divergence > 0) %>%
+  group_by(caller, divergence, iteration) %>%
+  summarize(recall = mean(div_tp / n_truth_div), .groups = "drop") %>%
+  mutate(caller = fac(caller), iteration = factor(iteration))
+ggplot(gains, aes(divergence, recall, color = iteration)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.3) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "iteration") +
+  scale_y_continuous(labels = pct) + facet_wrap(~caller, nrow = 1) +
+  labs(x = "mean SNP divergence", y = "SNP recall") +
+  bartheme() + theme(legend.position = "top")
+```
+
+**Read:** gatk gains most (e.g. +10 pt at D = 0.10), pulling toward the pileup callers; bcftools/
+freebayes start near the ceiling. The per-fate read-level decomposition (next section) shows *why*:
+the sites that flip to called are exactly those whose reads improve across iterations.
+
+# The mechanism: mapping vs. calling {#mechanism}
+
+The crux. A lost variant is lost for one of two reasons — the alt-carrying reads never **map** to
+the site (clipped/mismapped, so the evidence is absent = **mapping-limited**), or they map but the
+caller doesn't **call** the variant (the alt *is* in the pileup = **calling-limited**). Which one
+dominates differs by caller and by regime, and it is the through-line of every section. `y` below
+is the **share of divergent sites** in each bin falling in each outcome (the three sum to 100 %).
+
+## Quantified: two regimes
+
+The read-level ledger (`variant_read_fate.py --pileup`) classifies every divergent site. On
+**homogeneous** divergence (s01, ≤ 0.10) the loss is almost entirely **calling-limited** — even at
+D = 0.10 the reads still place; it is gatk's reassembler that fails (mapping-limited stays ~1 %):
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s01</b> · SNPs only · homogeneous divergence</p>
+
+```{r mvc-s01, fig.width=12, fig.height=6}
+s01mvc <- read_csv("analyses/synthesis/s01-mapping-vs-calling.csv") %>%
+  mutate(caller = fac(caller), iteration = factor(paste("iter", iteration)),
+         class = factor(class, levels = c("recovered","calling-limited","mapping-limited")))
+ggplot(s01mvc, aes(factor(divergence), frac, fill = class)) +
+  geom_col(width = 0.9) +
+  scale_fill_manual(values = c(recovered="#4477AA", `calling-limited`="#CCBB44",
+                               `mapping-limited`="#AA3377"), name = NULL) +
+  scale_y_continuous(labels = pct) + facet_grid(iteration ~ caller) +
+  labs(x = "divergence (homogeneous)", y = "share of divergent sites, by outcome") +
+  bartheme() + theme(legend.position = "top")
+```
+
+The **mapping-limited** wall appears only at the high *local* divergences that spatial
+heterogeneity produces (s05) — where a 150 bp read carries too many mismatches to place at all. Before
+reading the realistic capped run on that axis, look at how divergence is actually distributed in it.
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s05</b> · same realistic capped config (mean D = 0.03) — per-read &amp; per-site divergence QC</p>
+
+```{r mvc-divdist, echo=FALSE, results='asis'}
+cat(sprintf('<img src="%s" style="max-width:100%%"/>',
+    knitr::image_uri("analyses/s05-heterogeneous-divergence/results/capped-divergence-distribution.png")))
+```
+
+*(Both panels are the actual simulated data. **A** — per-read divergence (BAM edit distance / read
+length); mean **0.038** ≈ the field mean 0.03 (reads sample the genome ~uniformly; the small excess
+is mason's sequencing error). Smooth decay, only 0.74 % of reads exceed 0.20, no pile-up at the cap.
+**B** — per-site local divergence at divergent SNPs; mean **0.069**, more than **2× the field mean of
+0.03**. That gap is size-biased sampling (the inspection paradox): a randomly chosen divergent SNP
+preferentially sits in a dense, high-divergence neighbourhood, so conditioning on "being a SNP"
+inflates the local mean well above the genome-wide field mean. 97 % of sites are ≤ 0.20, p99.9 = 0.25,
+with a thin dense-cluster tail to 0.30 — the site counts fall steeply toward higher local divergence,
+which is why the mapping-vs-calling plot's high-divergence bins below, though ~100 % mapping-limited,
+contain very few sites. The cap is shaping the field correctly; the mvc axis below is drawn to 0.25
+(the 99.9th percentile).)*
+
+Now the mapping-vs-calling split across that **read-scale local-divergence** axis — the **actual
+realistic capped run** (mean D = 0.03), not a truncated characterization plot. The dashed line at 0.20
+is the divergence-**field** cap (the read-scale axis runs a little past it, as the distribution above
+shows). The full transition is visible (iterations 1/2/3 as rows):
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s05</b> · SNPs + het on a heterogeneous (autocorrelated) divergence field · realistic capped config, mean D = 0.03 (SNP-only; the indel version is running)</p>
+
+```{r mvc, fig.width=13, fig.height=9}
+mvc <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv") %>%
+  filter(window == 150, iteration %in% c(1, 2, 3), n_sites > 50, locald_mid <= 0.25) %>%
+  transmute(caller = fac(caller), iteration = factor(paste("iter", iteration)), locald_mid,
+            recovered = frac_recovered, `calling-limited` = frac_calling,
+            `mapping-limited` = frac_mapping) %>%
+  pivot_longer(c(recovered, `calling-limited`, `mapping-limited`),
+               names_to = "class", values_to = "frac") %>%
+  mutate(class = factor(class, levels = c("recovered","calling-limited","mapping-limited")))
+ggplot(mvc, aes(locald_mid, frac, fill = class)) +
+  geom_area(color = "white", linewidth = 0.1) +
+  geom_vline(xintercept = 0.20, linetype = "dashed", color = "grey20") +
+  scale_fill_manual(values = c(recovered="#4477AA", `calling-limited`="#CCBB44",
+                               `mapping-limited`="#AA3377"), name = NULL) +
+  scale_y_continuous(labels = pct) + facet_grid(iteration ~ caller) +
+  labs(x = "local divergence (±150 bp)", y = "share of divergent sites, by outcome") +
+  bartheme() + theme(legend.position = "top")
+```
+
+*(The calling→mapping crossover (~0.16) matches the uncapped characterization config (s05 notebook),
+confirming the split is a property of the caller + read length, not the field. Beyond ~0.18 is the
+mapping wall, where reads stop placing for every caller.)*
+
+**Read.** *Columns (callers):* bcftools/freebayes loss is ~entirely **mapping-limited** (the amber
+calling band is absent); **gatk** adds a wide **calling-limited** band. *Rows (iterations):* the
+coloured bands shrink and blue "recovered" grows — iteration lowers effective divergence so reads
+place (mapping) and the reassembly becomes tractable (calling). *The two regimes:* homogeneous
+≤ 0.10 lives in the calling-limited zone; the mapping-limited wall needs the high local divergences
+heterogeneity creates. This split is the project's unifying lens — s02/s03 losses are
+mapping-limited (spanning reads, alt-read exclusion), and the off-axis limits (s07 SVs, s08 repeats)
+are mapping-limited failures the sample's divergence can't explain.
+
+## Per variant: the G plots (full sweep)
+
+The joint-state flow diagrams show the same split one SNP at a time — each site's *called /
+not-called* state coloured by **f_alt** (how strongly the alt is present in its reads, i.e. whether
+the evidence arrived), flowing across the three iterations. **Yellow in the "not called" box =
+calling-limited** (evidence present, uncalled); **dark = mapping-limited** (evidence absent). Full
+sweep, every caller (rows) × divergence (columns):
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s01</b> (SNPs only) vs <b>s02</b> (SNPs + indels) · both homogeneous divergence</p>
+
+```{r g-grids, echo=FALSE, results='asis'}
+# embed the montage grids as base64 data URIs (robust to pandoc's image-path handling)
+gimg <- function(p) sprintf('<img src="%s" style="max-width:100%%"/>', knitr::image_uri(p))
+cat("**SNP-only (s01):**\n\n", gimg("analyses/s01-baseline-iterative/results/vrf-viz-full/G_grid.png"),
+    "\n\n**With indels (s02):**\n\n", gimg("analyses/s02-indels/results/vrf-viz-G/G_grid.png"))
+```
+
+**Read.** In **s01** the "not called" box is dominated by **yellow** — gatk's calling-limited
+deficit, which grows with divergence and which iteration flows down into "called." Adding **indels
+(s02)** injects a large **dark** band into the not-called box (indel-spanning reads clip, so the alt
+evidence is absent) that **persists across iterations** — a visible shift from calling-limited
+toward mapping-limited. That is why indels are the harder problem: they move loss into the mode
+iteration can't fully rescue. (Do indels change the G plots? Yes — the not-called box goes from
+yellow to part-dark.)
+
+## Per variant: the read-level decomposition
+
+Zooming into the reads at each site — the companion decomposition. Distributions and mean trends
+of pileup depth, alt-read support (f_alt), MAPQ, mismapped-in/out reads, and local unrecovered-
+neighbour load, split by whether a site is **called**, **stays not-called**, or **flips to called**
+across an iteration (s01). Each metric row is tagged by which failure mode it diagnoses: the
+read-placement metrics (**· mapping ·** — depth, f_alt, ref reads, mismapped-in/out, MAPQ) say
+whether the alt reads *arrived*; the assemblable-neighbourhood load (**· CALLING ·** — unrecovered
+neighbour SNPs) says whether gatk's reassembler could *act*.
+
+### Per-SNP metric dictionary {#metric-dict}
+
+Every per-SNP metric used in the decomposition (plus the neighbour-indel metric from the Indels section). **Dynamic**
+metrics are recomputed per caller × iteration (they *move* as iteration re-maps and re-calls) and
+appear in the before→after boxplots/means; **static** metrics are fixed properties of the site (they
+never change across iterations) and appear in the fate-grouped figures. The **Caller most affected**
+and **Iteration helps?** columns summarise which caller each factor hits hardest and whether iteration
+mitigates it (green = yes, amber = partial, red = no, grey = n/a).
+
+```{r metric-dict, echo=FALSE}
+library(kableExtra)
+# columns: Mode (failure mode) · Window · Caller (which caller the factor hits hardest) ·
+# Iter (does iteration help, and how the value moves) with IterCat driving its colour · Definition
+md <- tibble::tribble(
+  ~Metric, ~Mode, ~Window, ~Caller, ~Iter, ~IterCat, ~Definition,
+  "depth at p", "mapping", "at p", "all ~equally (shared mapping)", "yes — rises", "yes",
+    "Total reads covering the SNP position p. Low depth = reads failed to place.",
+  "f_alt", "mapping", "at p", "all ~equally (shared mapping)", "yes — rises", "yes",
+    "Fraction of the site's true alt reads that arrived at p and support alt. The core \"did the evidence arrive?\" measure.",
+  "ref reads at p", "mapping", "at p", "all ~equally", "yes — falls", "yes",
+    "Reads at p supporting the reference allele. High ref with low alt at a divergent site = reference bias.",
+  "mismapped-in ref", "mapping", "at p", "all ~equally", "yes — falls", "yes",
+    "Foreign reads mismapped into p carrying the reference allele — contamination that dilutes alt support.",
+  "mismapped-out", "mapping", "at p", "all ~equally", "yes — falls", "yes",
+    "The site's own true alt reads that went missing — mapped to another locus/chromosome, or unmapped.",
+  "mean MAPQ at p", "mapping", "at p", "all ~equally", "yes — rises", "yes",
+    "Mean mapping quality of reads at p. Low MAPQ = ambiguous placement in a divergent/repetitive region.",
+  "neighbor unrec SNPs (±200bp)", "CALLING", "±200 bp", "gatk most (its assembler)", "yes — falls (the rescue)", "yes",
+    "Neighbour divergent SNPs not yet recovered by this caller at this iteration. Falls as iteration bakes neighbours into the consensus — the assemblable context that lets gatk call.",
+  "neighbor unrec indels (±200bp)", "CALLING", "±200 bp", "bcftools worst single-shot; freebayes stuck", "partial — big residual", "partial",
+    "Indel analogue of the row above (see the Indels section). Falls with iteration but leaves a much larger residual than SNPs — indels are cleared less completely.",
+  "homopolymer frac (≥5bp)", "CALLING", "±100 bp", "gatk only (its assembler)", "no — sequence, not divergence", "no",
+    "Fraction of the window inside a homopolymer run ≥5 bp (e.g. AAAAA). Low-complexity sequence that stalls gatk's reassembler.",
+  "indel density (/bp)", "mapping", "±100 bp", "all; bcftools worst", "partial — cleared incompletely", "partial",
+    "Indel truth sites per bp in the window. Nearby indels defeat placement (spanning reads clip); iteration only partly clears them.",
+  "div-SNP density (/bp)", "mapping", "±100 bp", "all callers", "yes — effective D drops", "yes",
+    "Divergent (1|1) truth SNPs per bp, incl. self. TOTAL local divergence load; iteration lowers the effective divergence.",
+  "het-SNP density (/bp)", "CALLING", "±100 bp", "minimal (flat here)", "n/a — inactive at 0.5% het", "na",
+    "Heterozygous truth SNPs per bp. Local genotyping/phasing complexity (flat at this project's 0.5% het rate)."
+)
+# colour the failure-mode tag (amber = CALLING, blue = mapping) and the iteration verdict
+md$Mode <- cell_spec(paste0("· ", md$Mode, " ·"), color = "white", bold = TRUE,
+                     background = ifelse(md$Mode == "CALLING", "#C8A02A", "#5A7FB0"))
+itcol <- c(yes = "#2E7D32", partial = "#B8860B", no = "#B03030", na = "#777777")
+md$Iter <- cell_spec(md$Iter, color = itcol[md$IterCat], bold = TRUE)
+md$IterCat <- NULL
+kbl(md, escape = FALSE, align = c("l", "c", "c", "l", "l", "l"),
+    col.names = c("Metric (row label)", "Mode", "Window",
+                  "Caller most affected", "Iteration helps?", "Definition — and what it proxies")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, position = "center", font_size = 13) %>%
+  column_spec(1, bold = TRUE, width = "14em") %>%
+  column_spec(2, width = "9em") %>%
+  column_spec(3, width = "5em") %>%
+  column_spec(4, width = "13em") %>%
+  column_spec(5, width = "12em") %>%
+  column_spec(6, width = "34em") %>%
+  row_spec(0, bold = TRUE, background = "#f0f0f0") %>%
+  pack_rows("Dynamic — recomputed per caller × iteration (before→after boxplots / means)", 1, 8,
+            label_row_css = "background:#eef3f8; color:#2b4a6f; font-weight:bold;") %>%
+  pack_rows("Static — fixed site property, never changes across iterations (fate-grouped figures)", 9, 12,
+            label_row_css = "background:#faf5e6; color:#7a5c10; font-weight:bold;")
+```
+
+*Fate categories used to split the plots.* **Iteration fate** (before→after boxplots/means, and the
+iteration-fate figure): *stayed not-called* / *flip (→called)* / *stayed called* across iterations
+1→2. **Single-shot fate** (the mapping-vs-calling figure and calling-covariate-by-fate figure):
+*recovered* (called) / *calling-limited* (≥2 alt reads present at *p* but not emitted) /
+*mapping-limited* (alt reads never placed, < 2 present).
+
+```{r decomp-setup, echo=FALSE}
+source("analyses/lib/decomp_figs.R")
+pairs <- decomp_load("analyses/s01-baseline-iterative/results/vrf-pileup",
+                     "analyses/s01-baseline-iterative/results/neighborhood/neighborhood-per-snp.csv")
+```
+
+**Distributions by fate (boxplots), across divergence:**
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s01</b> · SNPs only · homogeneous divergence · 0.5% het — dynamic read-level metrics (this boxplot and the means below)</p>
+
+```{r decomp-box, fig.width=11, fig.height=11, echo=FALSE, results='asis'}
+for (dd in c(0.06, 0.08, 0.10)) { print(decomp_distfig(pairs, dd, tag = TRUE)); cat("\n\n") }
+```
+
+**Mean direction-of-change, per fate:**
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s01</b> · SNPs only · homogeneous divergence · 0.5% het</p>
+
+```{r decomp-mean, fig.width=9.5, fig.height=10, echo=FALSE, results='asis'}
+for (g in c("flip (→called)", "stayed not-called", "stayed called")) {
+  print(decomp_meantrend(pairs, g, tag = TRUE)); cat("\n\n")
+}
+```
+
+**Read:** sites that *flip to called* are exactly those where, between iterations, the pileup at the
+site cleans up — alt-read support and MAPQ rise and the local load of *unrecovered* neighbouring
+SNPs falls — while *stayed-not-called* sites don't improve on those axes, and *stayed-called* sites
+were already clean. That is iteration lowering the effective divergence around each site until the
+caller can act: the mechanism of the fix, measured read by read.
+
+**What makes a site calling-limited vs mapping-limited.** The plots above track pileup metrics that
+*move* across iterations. But some determinants are **static** — intrinsic sequence/variant context
+that never changes with iteration — so they are read on the single-shot three-way fate instead:
+**recovered** / **calling-limited** (≥2 alt reads present but never emitted) / **mapping-limited**
+(alt reads never placed). Computed on **s02** (indels present, the key calling stressor) over a
+±100 bp window per divergent SNP by
+[`calling_metrics.py`](../lib/calling_metrics.py); each metric row is again tagged by the failure
+mode it separates. Shown as **means with 95% CIs** (not boxplots): these covariates are
+zero-inflated and right-skewed, so the calling signal lives in the *upper tail* — it moves the mean
+but not the median, and a boxplot's median/IQR would hide it entirely (verified directly).
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> · SNPs + indels · homogeneous divergence · 0.5% het — static calling covariates (this figure and the iteration-fate one below)</p>
+
+```{r decomp-calling, fig.width=11, fig.height=8, echo=FALSE}
+decomp_callingfig("analyses/s02-indels/results/calling-metrics/calling-metrics-by-fate.csv", tag = TRUE)
+```
+
+**Read:** the two failure modes have *different* local fingerprints. **Homopolymer/low-complexity
+content (· CALLING ·)** is elevated specifically at **gatk's calling-limited** sites — the alt reads
+are present, but low-complexity sequence stalls gatk's local reassembler — and the gap over recovered
+sites *widens* with divergence (+0.0025 → +0.0046 → +0.0082 from D = 0.06 → 0.10), while bcftools and
+freebayes (which call straight from the pileup) show no such separation. **Indel and div-SNP density
+(· mapping ·)** instead peak at **mapping-limited** sites for *every* caller — dense divergence and
+nearby indels defeat *placement*, upstream of calling. Het density is flat: at a 0.5 % het rate this
+calling axis is inactive. This turns the single "unrecovered-neighbour SNPs" calling metric into a
+three-axis calling-side picture — assembly load (variants), resolvability (sequence), and genotyping
+(haplotypes) — and confirms the spine at the level of *why an individual site* lands in each bin.
+
+**Does static context predict what iteration can rescue?** The same covariates, now grouped by the
+**iteration** fate (does a site *stay not-called*, *flip to called*, or *stay called* from iter 1 →
+2) rather than the single-shot fate. These are static properties, so there is no before/after — but
+the grouping asks a sharp question: is a site's rescuability written into its local context?
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> · SNPs + indels · homogeneous divergence · 0.5% het</p>
+
+```{r decomp-calling-iter, fig.width=11, fig.height=8, echo=FALSE}
+decomp_callingfig_iter("analyses/s02-indels/results/calling-metrics/calling-metrics-by-iterfate.csv", tag = TRUE)
+```
+
+**Read:** yes — and the two axes split by *rescuability*. **div-SNP density (· mapping ·) peaks at
+the sites that flip to called**: divergence-dense neighbourhoods are exactly what iteration fixes, by
+lowering the effective divergence until reads place. But **indel density (· mapping ·) and
+homopolymer content (· CALLING ·) are highest at the sites that stay not-called** — for gatk,
+homopolymer falls monotonically 0.040 (stayed not-called) → 0.037 (flip) → 0.032 (stayed called).
+Those are the failures iteration *cannot* touch: it changes the effective divergence, not the
+reference's indels or its low-complexity sequence. So iteration's ceiling is set by static context —
+it clears the divergence-driven loss and leaves the structure/sequence-driven loss behind, the same
+boundary the s07 (SVs) and s08 (repeats) limits sit on.
+
+# What each axis does to the picture {#axes}
+
+The scenarios are not separate stories — each just shifts the same mapping/calling balance.
+
+## Indels — worse loss, bigger rescue (s02)
+
+Indels are the worst mapping case (a read spanning an unrepresented indel clips), so single-shot
+indel recovery is very low — and iteration rescues them *more* than SNPs (the caller-flip):
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> · SNPs + indels · homogeneous divergence · 0.5% het</p>
+
+```{r indels, fig.width=12, fig.height=4.2}
+s02 <- read_csv("analyses/s02-indels/results/s02-indels-recovery-summary.csv") %>%
+  filter(divergence == "0.06") %>%
+  transmute(caller = fac(caller), iteration = factor(iteration),
+            SNP = div_tp / n_truth_div, indel = indel_div_tp / n_truth_indel_div) %>%
+  pivot_longer(c(SNP, indel), names_to = "vtype", values_to = "recall") %>%
+  mutate(vtype = factor(vtype, levels = c("SNP","indel")))
+ggplot(s02, aes(iteration, recall, fill = vtype)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = corecol(pal="wilke",numcol=2), name = NULL) +
+  scale_y_continuous(labels = pct) + facet_wrap(~caller, nrow = 1) +
+  labs(x = "iteration", y = "recall (D = 0.06)") +
+  bartheme() + theme(legend.position = "top")
+```
+
+**Read:** at single-shot, bcftools calls almost no indels (it collapses on them) while gatk/
+freebayes do better; iteration rescues whichever caller is weak, and all converge by iter 3.
+Reference bias is *worse* for indels, and ignoring indels understates SNP bias too (s02).
+
+**What iteration clears from the neighbourhood — SNPs vs indels (granular, per site).** The bars above
+are per-site recall; the mechanism is the local *assemblable neighbourhood* (the read-level decomposition). Here is the
+neighbour-unrecovered metric for **indels** shown exactly like its SNP counterpart in the read-level decomposition — per-site,
+split by fate, before→after iteration — with the neighbour-SNP row above the neighbour-indel row for
+direct comparison (±200 bp window around each divergent SNP; same tool,
+[`neighborhood_assembly.py`](../lib/neighborhood_assembly.py); indel recovery is scored by position
+match of normalized truth vs recovered indels, so it is a slight lower bound).
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> · SNPs + indels · homogeneous divergence · 0.5% het</p>
+
+```{r nb-indel-setup, echo=FALSE}
+pairs02 <- decomp_load("analyses/s02-indels/results/vrf-pileup",
+                       "analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv")
+```
+
+**Distributions by fate (boxplots), across divergence:**
+
+```{r nb-indel-box, fig.width=10, fig.height=5, echo=FALSE, results='asis'}
+for (dd in c(0.06, 0.08, 0.10)) { print(decomp_neighbox(pairs02, dd, tag = TRUE)); cat("\n\n") }
+```
+
+**Mean direction-of-change, per fate:**
+
+```{r nb-indel-mean, fig.width=9.5, fig.height=5, echo=FALSE, results='asis'}
+for (g in c("flip (→called)", "stayed not-called", "stayed called")) {
+  print(decomp_neighmean(pairs02, g, tag = TRUE)); cat("\n\n")
+}
+```
+
+**Read:** the neighbour-indel row behaves like the SNP row, but weaker. At *flip* sites both loads
+fall earlier→later (the rescue); *stayed-not-called* sites barely move; *stayed-called* were already
+low — the same fate signature as every other dynamic metric in the read-level decomposition. The difference is that indels are
+cleared *less completely*: the later-iteration (residual) neighbour-indel load stays proportionally
+higher than for SNPs, and it is caller-dependent — **bcftools** carries the highest single-shot indel
+load (consistent with its near-total single-shot indel miss), while **gatk** carries the highest SNP
+load (its assembler signature). That residual indel load is the divergence iteration cannot bake into
+the consensus — why indels are the harder problem.
+
+## Heterozygosity — reference bias as allele imbalance (s03)
+
+At heterozygous sites the alt allele maps worse, so the pileup skews toward the reference
+(ref-allele fraction > 0.5). Iteration corrects it back toward 0.5:
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s03</b> · heterozygous sites measured on the <b>s01</b> (SNP-only) and <b>s02</b> (SNP + indel) BAMs · homogeneous divergence</p>
+
+```{r het, fig.width=12, fig.height=4.2}
+ab <- read_csv("analyses/s03-heterozygosity/results/s03-s01-allele-balance-summary.csv") %>%
+  mutate(caller = fac(caller), iteration = factor(iteration))
+ggplot(ab, aes(divergence, mean_raf, color = iteration)) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey50") +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.3) +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 3), name = "iteration") +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "divergence", y = "mean ref-allele fraction at het sites") +
+  bartheme() + theme(legend.position = "top")
+```
+
+**Read:** single-shot RAF rises above 0.5 with divergence (alt reads excluded = mapping-limited);
+iteration pulls it back to unbiased. Same mechanism, measured on the allele-balance axis.
+
+## Heterogeneous divergence — it's separable (s05)
+
+Clustering divergence does not create a new phenomenon: recovery vs *local* divergence in a
+heterogeneous genome (even with indels co-clustered) lies on top of recovery vs *mean* divergence
+in a homogeneous genome. Heterogeneity only *redistributes* sites along the curve.
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s02</b> (SNPs + indels) and <b>s05</b> (heterogeneous divergence field) · recovery vs measured local divergence</p>
+
+```{r separable, fig.width=13, fig.height=4.6}
+het <- read_csv("analyses/s05-heterogeneous-divergence/results/s05-hetindel-local-recovery.csv") %>%
+  filter(iteration == 3, n_sites > 500) %>%
+  mutate(caller = fac(caller), vtype = factor(ifelse(vtype=="snp","SNP","indel"), levels=c("SNP","indel")))
+hom <- read_csv("analyses/s02-indels/results/s02-indels-recovery-summary.csv") %>%
+  filter(iteration == 3, divergence != "0.00") %>%
+  mutate(caller = fac(caller), divergence = as.numeric(divergence),
+         SNP = div_tp/n_truth_div, indel = indel_div_tp/n_truth_indel_div) %>%
+  select(caller, divergence, SNP, indel) %>%
+  pivot_longer(c(SNP,indel), names_to="vtype", values_to="recall") %>%
+  mutate(vtype = factor(vtype, levels=c("SNP","indel")))
+ggplot() +
+  geom_line(data = hom, aes(divergence, recall, color = "homogeneous (vs mean D)"), linewidth=0.5) +
+  geom_point(data = hom, aes(divergence, recall, color = "homogeneous (vs mean D)"), size=1.8) +
+  geom_line(data = het, aes(locald_mid, recall, color = "heterogeneous (vs local D)"), linewidth=1) +
+  scale_color_manual(values = c(`homogeneous (vs mean D)`="grey35",
+                                `heterogeneous (vs local D)`=corecol(pal="wilke",numcol=5)[3]), name=NULL) +
+  scale_y_continuous(labels = pct) + coord_cartesian(xlim = c(0,0.15)) +
+  facet_grid(vtype ~ caller) +
+  labs(x = "divergence (mean for homogeneous points; local for heterogeneous line)",
+       y = "recall (iteration 3)") +
+  bartheme() + theme(legend.position = "top")
+```
+
+**Read:** the curves coincide → **separable**. The practical payoff: recovery under *any*
+landscape is predictable from the homogeneous recall-vs-divergence curve plus the local-
+divergence distribution. No per-landscape simulation needed, and the mechanism above carries
+over unchanged.
+
+# The limits: what iteration cannot fix {#limits}
+
+Two failure modes are **off the divergence axis** — they are about the reference, not the
+sample — so lowering effective divergence doesn't touch them, and filtering can't recover them.
+
+## You can't filter your way out (s06)
+
+Hard filters only *remove* calls, so recall can only fall — the lost variants are un-emitted, not
+low-quality entries. Filtering buys precision (mostly for freebayes' over-calls), never recall,
+and aggressive MAPQ filtering *amplifies* bias by deleting the diverged reads.
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s06</b> · SNP filters on <b>s01</b> (SNP-only), indel filters on <b>s02</b> (SNP + indel) · homogeneous divergence · hard-filter sweep</p>
+
+**How to read the QUAL panel.** It is a recall–precision *trace*, not a threshold-on-x plot: the
+filter threshold is encoded along each path. One point = one QUAL cutoff from the sweep
+{0, 10, 20, 30, 50, 100} (keep calls with `QUAL >= threshold`; 0 = unfiltered), one line = one
+divergence level, connected in order of increasing cutoff. Hollow point = unfiltered (the
+right-hand end of every path); the arrowhead is the strictest cutoff (QUAL ≥ 100). Because a
+filter can only delete calls, every path must travel **left** (recall down) and **up**
+(precision up) — so the question is only *how far left* it drags you. Endpoint labels are drawn
+for the highest-divergence path only, to keep the panel readable.
+
+Two axis cautions. First, the axes are different quantities: x is recovery of true
+homozygous-divergent sites (`div_tp / n_truth_div`, the reference-bias axis) while y is
+`tp_any / n_called`. Second, x is shared across panels but **y is free per caller and heavily
+zoomed** (gatk spans only 99.6–100 %, freebayes 94–100 %), because the precision motion is
+otherwise too small to see next to freebayes' unfiltered over-calling. Vertical motion is
+therefore visually exaggerated, and y-distances are *not* comparable between panels; x-distances
+are.
+
+```{r filter, fig.width=10, fig.height=4.4}
+# QUAL sweep as a recall-precision path. Points are ordered by increasing threshold so
+# geom_path draws in sweep order and the arrow marks the strict-filter end.
+fs <- read_csv("analyses/s06-filtering/results/s06-filter-sweep.csv") %>%
+  filter(vtype == "snp", axis == "QUAL") %>%
+  mutate(caller = fac(caller), divergence = factor(divergence)) %>%
+  arrange(caller, divergence, threshold)
+
+# endpoints used for annotation: hollow marker on the unfiltered point, text labels on the
+# two ends of the most-diverged path only (labelling all 5 paths overplots the facet)
+fs_unfilt <- filter(fs, threshold == 0)
+fs_lab    <- filter(fs, divergence == "0.1", threshold %in% c(0, 100)) %>%
+  mutate(lab = paste0("QUAL ", threshold))
+
+ggplot(fs, aes(recall, precision, color = divergence)) +
+  geom_path(linewidth = 0.8, arrow = arrow(length = unit(0.10, "cm"), type = "closed")) +
+  geom_point(size = 1) +
+  geom_point(data = fs_unfilt, shape = 21, fill = "white", size = 2.4, stroke = 0.8) +
+  ggrepel::geom_text_repel(data = fs_lab, aes(label = lab), size = 3, show.legend = FALSE,
+                           min.segment.length = 0, segment.size = 0.3, box.padding = 0.5) +
+  scale_color_manual(values = corecol(pal="wilke",numcol=5), name = "divergence") +
+  scale_x_continuous(labels = pct) +
+  scale_y_continuous(labels = function(x) scales::percent(x, accuracy = 0.01)) +
+  # free y: shared precision axis is dominated by freebayes' unfiltered 94%, which flattens
+  # every other path to a dot. x stays shared so the divergence spread is comparable.
+  facet_wrap(~caller, nrow = 1, scales = "free_y") +
+  labs(x = "recall (recovery of true divergent sites)", y = "precision",
+       title = "QUAL sweep: motion is vertical (precision), not horizontal (recall)",
+       subtitle = paste0("hollow point = unfiltered (QUAL 0); arrow points to QUAL >= 100\n",
+                         "y-axis free per caller and heavily zoomed; x-axis shared")) +
+  bartheme() + theme(legend.position = "right")
+```
+
+**Read:** every path is ~1 recall-point wide (e.g. gatk at divergence 0.10 moves 70.34 % →
+70.27 % recall across the whole QUAL sweep) while precision climbs. The large *horizontal*
+spread between colours is divergence, not filtering — no cutoff moves you across that gap,
+because the missing variants were never emitted in the first place. freebayes is the one caller
+where filtering does real work, and only on the y axis: its unfiltered precision is 94.2 % at
+divergence 0.02, and the very first cutoff (QUAL ≥ 10) restores it to ~99.98 % at no cost in
+recall.
+
+The MAPQ (`MQ`) axis is the case where filtering actively hurts, so it gets its own panel —
+here recall is plotted directly against the threshold, since that is the claim being made:
+
+```{r filter_mq, fig.width=10, fig.height=4.4}
+# MQ sweep: recall vs threshold. INFO/MQ for gatk & bcftools, INFO/MQM for freebayes.
+# Plotted in absolute recall so the fan-out with divergence (= the amplification) is visible.
+fm <- read_csv("analyses/s06-filtering/results/s06-filter-sweep.csv") %>%
+  filter(vtype == "snp", axis == "MQ") %>%
+  mutate(caller = fac(caller), divergence = factor(divergence)) %>%
+  arrange(caller, divergence, threshold)
+
+ggplot(fm, aes(threshold, recall, color = divergence)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  scale_color_manual(values = corecol(pal="wilke",numcol=5), name = "divergence") +
+  scale_y_continuous(labels = pct) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "MQ filter threshold (keep calls with MQ >= threshold)", y = "recall",
+       title = "MQ sweep: filtering on mapping quality amplifies reference bias",
+       subtitle = "curves fan out with divergence -- the strict cutoff costs the diverged sample far more") +
+  bartheme() + theme(legend.position = "right")
+```
+
+**Read:** the curves fan out. Going from unfiltered to MQ ≥ 60 costs bcftools 6.2 recall points
+at divergence 0.02 (99.27 % → 93.07 %) but 35.9 points at divergence 0.10 (97.70 % → 61.81 %);
+gatk loses 5.9 vs 23.8 points over the same span. Because diverged reads are exactly the reads
+that map with lower MAPQ, a hard MAPQ filter preferentially deletes the evidence for the
+variants that were hardest to recover — it makes the reference-bias gap wider, not narrower.
+
+## Structural variants — a permanent local blind spot (s07)
+
+Our callers cannot emit SVs, so they are a ~100 % blind spot; and their breakpoints punch a
+local hole in *small-variant* recovery that iteration cannot fill (the SV is never baked into
+the consensus). gatk's hole is deepest (its assembler again):
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s07</b> · structural variants on a low SNP + indel background · homogeneous divergence</p>
+
+```{r svs, fig.width=12, fig.height=4.2}
+sv <- read_csv("analyses/s07-svs/results/s07-sv-confounder.csv") %>%
+  filter(vtype == "snp", bptype == "any", iteration %in% c(1, 3)) %>%
+  mutate(caller = fac(caller), iteration = factor(iteration), dist_mid = as.numeric(dist_mid))
+ggplot(sv, aes(dist_mid, recall, color = iteration)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.2) + scale_x_log10() +
+  scale_color_manual(values = corecol(pal="wilke",numcol=3)[c(1,3)], name = "iteration") +
+  scale_y_continuous(labels = pct) + facet_wrap(~caller, nrow = 1) +
+  labs(x = "distance to nearest SV breakpoint (bp, log; last point ≈ baseline)",
+       y = "SNP recall") +
+  bartheme() + theme(legend.position = "top")
+```
+
+## Reference repeats — a graded penalty iteration only partly relieves (s08)
+
+Where the reference is repetitive, reads can't be uniquely placed (low MAPQ → filtered),
+independent of divergence. Iteration helps partway (lower effective divergence → higher MAPQ)
+but leaves an irreducible repeat floor:
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s08</b> · <b>s01</b> SNP-only calls, homogeneous divergence, stratified by reference mappability (GenMap)</p>
+
+```{r repeats, fig.width=12, fig.height=4.2}
+mp <- read_csv("analyses/s08-mappability/results/s08-mappability-recovery.csv") %>%
+  mutate(caller = fac(caller), iteration = factor(iteration), divergence = as.numeric(divergence),
+         map_bin = factor(map_bin, levels = c("unique (1.0)","repetitive (0.2-1.0)","highly repetitive (<0.2)")))
+ggplot(mp, aes(divergence, recall, color = map_bin, linetype = iteration)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  scale_color_manual(values = corecol(pal="wilke",numcol=3), name = "mappability") +
+  scale_linetype_manual(values = c(`1`="dashed",`3`="solid"), name = "iteration") +
+  scale_y_continuous(labels = pct) + facet_wrap(~caller, nrow = 1) +
+  labs(x = "mean SNP divergence", y = "SNP recall") +
+  bartheme() + theme(legend.position = "right")
+```
+
+# What this means for the paper {#paper}
+
+- **One mechanism unifies everything.** Reference bias = mapping loss + calling loss; the
+  mapping-vs-calling decomposition (and its per-variant G/decomposition views) is the intellectual
+  core. Every scenario is a shift of that balance.
+- **The fix is mechanistic, not a heuristic.** Iteration works by lowering effective divergence,
+  which is exactly why it recovers the calling-limited and divergence-driven mapping-limited losses.
+- **Separability is the structural gift.** It lets the paper carry the mechanism on clean
+  homogeneous divergence and treat heterogeneity as one "it generalizes + realistic magnitude"
+  result — you don't re-derive the mechanism per scenario.
+- **The honest boundary.** SVs (blind spot) and repeats (graded, partly relieved) are off-axis
+  reference-structure failures iteration can't fully address, and filtering can't recover any of
+  it — this bounds the claim and is a strength, not a caveat.
+
+*Candidate main-text arc:* (1) problem, (2) mechanism (the mapping-vs-calling split + one G
+panel), (3) fix (recall gains + the flow/decomposition), (4) generalization + hardest variants
+(separability + indels), (5) limits. Everything else (allele balance, soft-clip,
+amplitude/scale sweeps, filter axes, SV/repeat detail, replicate seeds) → supplement.
