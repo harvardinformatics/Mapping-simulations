@@ -1,0 +1,4 @@
+caller,n_fp,frac_fp_within_150bp,genomic_frac_within_150bp,enrichment
+gatk,25953,0.0194968,0.00739987,2.635
+bcftools,12415,0.0128071,0.00739987,1.731
+freebayes,231280,0.00538741,0.00739987,0.728

@@ -1,0 +1,140 @@
+---
+title: "s08 — the multi-mapping confounder: recovery vs reference mappability (chr19)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file. Keep in
+     sync with analyses/lib/notebook.css. Passed through pandoc verbatim via {=html}. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+img { max-width: 1000px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+There is a confounder that has nothing to do with how divergent the sample is: **where the
+reference itself is repetitive, a read cannot be uniquely placed.** In such regions a 150 bp
+read fits several locations, `bwa` assigns low MAPQ, the MQ ≥ 20 filter drops it, and the
+variant there cannot be called — *no matter how similar the sample is to the reference*. This
+is the mechanism behind segmental-duplication / "difficult region" variant-calling failures,
+and it is a property of the **reference**, not the sample. (It is *not* something a sample-side
+duplication reproduces: a duplication of unique sequence still maps uniquely to the single
+reference copy — multi-mapping requires the *reference* to contain the repeat.)
+
+We measure it directly with the real repeat structure of chr19:
+
+- **Mappability** (`GenMap`, K = 100, E = 2, computed on **chr19 alone** — reads are mapped to
+  chr19 only, so mappability must be chr19-internal): value = 1 / (number of near-identical
+  100-mer copies within chr19). **1.0 = unique, 0.5 ≈ 2 copies, < 0.2 ≈ ≥ 5 copies.** chr19 is
+  **94.5 % unique**; ~5.5 % is repetitive and **3.8 % is highly repetitive (< 0.2)** — a
+  minority of the genome, but a real one, and enriched for exactly the hard cases.
+- **Recovery** reuses the **s01** SNP-only calls (homogeneous divergence D ∈ {0.02, 0.06, 0.10},
+  30×, seed 42) so the divergence axis is clean. Each divergent SNP truth site is labeled with
+  the mappability at its position and its recovery is scored per caller × divergence × iteration
+  (`scripts/mappability_recovery.py`). Three bins: **unique / repetitive / highly repetitive.**
+
+```{r load}
+lev <- c("unique (1.0)", "repetitive (0.2-1.0)", "highly repetitive (<0.2)")
+mr <- read_csv("analyses/s08-mappability/results/s08-mappability-recovery.csv") %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         iteration = factor(iteration),
+         divergence = as.numeric(divergence),
+         map_bin = factor(map_bin, levels = lev))
+mcols <- setNames(corecol(pal = "wilke", numcol = 3), lev)
+```
+
+# Recovery falls with mappability, at every divergence {#confounder}
+
+Single-shot (iteration 1) SNP recall against divergence, split by local mappability. The three
+lines separate at *every* divergence — the gap is already open at D = 0.02, where reference bias
+is otherwise mild — so this is a genuine **mapping-ambiguity** effect, not a divergence effect.
+And the two stack: the worst case is repetitive **and** divergent.
+
+```{r confounder, fig.width=13, fig.height=5}
+ggplot(mr %>% filter(iteration == "1"),
+       aes(divergence, recall, color = map_bin)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.6) +
+  scale_color_manual(values = mcols, name = "reference\nmappability") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "mean SNP divergence", y = "SNP recall (iteration 1)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* In **unique** sequence recall is at the reference-bias baseline (pileup callers
+~100 % at low divergence). In **highly repetitive** sequence it is far lower — **~0.81 for the
+pileup callers even at D = 0.02**, falling to **~0.65 at D = 0.10** — because the reads there are
+ambiguous and get filtered, before divergence even enters. gatk is lower throughout (its
+divergence sensitivity in unique sequence plus the mappability penalty), so repetitive + divergent
+sequence is where it collapses hardest (0.52 at D = 0.10). The mappability penalty and the
+divergence penalty are **independent and additive**.
+
+# Iteration relieves it — but only the divergence part {#iteration}
+
+Unlike an SV breakpoint (a permanent blind spot), the mappability confounder is *partly*
+addressable by iteration. Comparing iteration 1 (dashed) to iteration 3 (solid):
+
+```{r iteration, fig.width=13, fig.height=5}
+ggplot(mr, aes(divergence, recall, color = map_bin, linetype = iteration)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.3) +
+  scale_color_manual(values = mcols, name = "reference\nmappability") +
+  scale_linetype_manual(values = c(`1` = "dashed", `3` = "solid"), name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "mean SNP divergence", y = "SNP recall") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* Iteration lifts the repetitive curves substantially (bcftools highly-repetitive
+0.81 → 0.95 at D = 0.02, 0.65 → 0.90 at D = 0.10). The reason is indirect: as the consensus
+absorbs recovered divergence, the *effective* divergence drops, so reads in semi-repetitive
+regions carry fewer mismatches and clear the MAPQ filter — the divergence-driven part of the
+ambiguity is relieved. But a **residual repeat floor remains** (highly-repetitive stays a few
+points below unique even at iteration 3), because a read that matches two *identical* copies is
+ambiguous regardless of divergence — that part iteration cannot touch.
+
+# Summary {#summary}
+
+- **A confounder independent of divergence.** Where chr19 is repetitive, reads can't be uniquely
+  placed, get MAPQ-filtered, and the variant is lost — visible even at D = 0.02 (~19 pt in
+  highly-repetitive sequence). It is a property of the **reference**, not the sample.
+- **It stacks with divergence.** Mappability and divergence penalties are independent and
+  additive; repetitive + divergent sequence is the worst case (recall ~0.5–0.65 at D = 0.10).
+- **Iteration helps partway.** It relieves the divergence-driven portion (higher effective MAPQ)
+  — bcftools highly-repetitive 0.65 → 0.90 — but leaves an irreducible repeat floor, because
+  identical-copy ambiguity is divergence-independent.
+- **Contrast with SVs (s07).** An SV breakpoint is a *permanent local blind spot* iteration
+  cannot touch; reference repetitiveness is a *graded* penalty iteration *partly* relieves. Both
+  are read-placement failures outside the divergence axis — the two ways the map itself, not the
+  sample, defeats recovery.
+- **Scope.** ~5.5 % of chr19 is affected — a minority, but the fraction where real variant
+  calling is hardest, and the simulation analog of GIAB's difficult-region stratification.
+
+*Data table + dictionary: `results/s08-mappability-recovery.csv`. GenMap K=100 E=2 on chr19;
+mappability at the SNP position. s01 SNP-only calls, seed 42.*

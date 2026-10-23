@@ -1,0 +1,59 @@
+#############################################################################
+# s07 — structural variants as a CONFOUNDER.
+#
+# SVs (large homozygous deletions + insertions) are placed in the truth alongside a
+# LOW-divergence SNP+indel background (D = 0.02), then the standard s02 indel+liftover
+# pipeline maps/calls/iterates. Our small-variant callers cannot call SVs, so the SVs
+# are never recovered; they enter only to DISRUPT read mapping in their neighborhood
+# (deletion = coverage gap, insertion = unmappable novel sequence, both = clipped
+# breakpoint reads). The analysis measures how small-variant (SNP/indel) recovery and
+# false positives behave as a function of DISTANCE from the nearest SV breakpoint.
+#
+# Low divergence (0.02) is deliberate: it keeps baseline small-variant recovery high
+# (~99%) so the SV footprint stands out as a local dropout rather than being buried in
+# divergence-driven loss. This is the "hard limit" section -- where the divergence
+# framework breaks (an SV is unmappability, not high local divergence) and iteration
+# cannot help (the SV is never called, so it is never baked into the consensus).
+#############################################################################
+
+## --- reference -----------------------------------------------------------
+ref_file:  /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa
+ref_index: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/reference-genomes/mm39/Mus_musculus.GRCm39.dna.primary_assembly.chromes.fa.fai
+ref_str:   mm39
+region:    "19"
+
+## --- paths ---------------------------------------------------------------
+scripts_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s07-svs/scripts
+lib_dir:     /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/lib
+data_dir:    /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/data/s07-svs
+results_dir: /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s07-svs/results
+
+## --- simulation (SNPs + indels + SVs) ------------------------------------
+covs:  ["30"]
+divs:  ["0.02"]              # low SNP-divergence background (isolate the SV footprint)
+het:   "0.005"
+indel_snp_ratio: 0.12
+min_indel_size: 1
+max_indel_size: 10
+indel_heterozygosity: 0.0
+seeds: ["42"]
+read_length: 150
+fragment_mean: 300
+
+## --- structural variants (the confounder) --------------------------------
+sv_count: 1000              # ~500 deletions + ~500 insertions on chr19 (spaced ~61 kb apart)
+sv_min_size: 50            # SV lower bound (bp)
+sv_max_size: 5000          # SV upper bound (bp); uniform; insertions get random novel sequence
+
+## --- mapping / iteration -------------------------------------------------
+n_iterations: 3
+
+## --- variant callers -----------------------------------------------------
+callers: ["gatk", "bcftools", "freebayes"]
+min_mapping_quality: 20
+gatk_scatter: 8
+
+## --- liftover ------------------------------------------------------------
+chainswap_env: chainswap
+
+run_tag: "svs"

@@ -1,0 +1,16 @@
+Data dictionary for analyses/s08-mappability/results/s08-mappability-recovery.csv
+
+s08 multi-mapping confounder: SNP recovery binned by local reference
+mappability (GenMap K=100 E=2 on chr19). One row per (caller, divergence,
+iteration, mappability bin). s01 SNP-only data.
+
+Fields:
+  caller, divergence, iteration : condition
+  map_bin   : mappability bin (1.0 = unique; 0.5 ~ 2 near-identical copies
+              within chr19; <0.2 ~ >=5 copies = highly repetitive)
+  map_rank  : 0..4 ordinal of the bin (0 = most repetitive, 4 = unique)
+  n_sites, n_recovered, recall : truth SNPs / recovered / recall in the bin
+
+Mappability is the value at the SNP position (the 100-mer starting there).
+Low mappability = reads there multi-map -> low MAPQ -> dropped -> uncallable,
+independent of divergence.

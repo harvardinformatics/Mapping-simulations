@@ -1,0 +1,21 @@
+Data dictionary for analyses/s06-filtering/results/s06-filter-sweep.csv
+
+s06 filtering sweep: recall of true divergence + precision vs hard-filter
+threshold, over the RAW single-shot (iter 1) SNP caller VCFs.
+
+Fields:
+  caller, divergence : condition (homogeneous; s01 = SNP-only, s02 = SNP+indel)
+  vtype     : snp | indel (indel rows only present when the run has indels, i.e. s02)
+  axis      : filter axis -- QUAL | DP (per-sample depth) | MQ (mapping quality;
+              INFO/MQ for gatk & bcftools, INFO/MQM for freebayes)
+  threshold : keep calls with axis >= threshold
+  n_truth_div : truth 1|1 SNP sites
+  div_tp    : hom-alt calls matching a truth 1|1 site (passing the filter)
+  n_called  : SNP calls passing the filter
+  tp_any    : calls matching ANY truth SNP site (correct locus+allele)
+  fp        : n_called - tp_any (false positives passing the filter)
+  recall    : div_tp / n_truth_div  (divergence recovery = the reference-bias axis)
+  precision : tp_any / n_called
+
+threshold=0 (or the axis minimum) = UNFILTERED. recall at threshold 0 is the
+ceiling; any filter can only lower it. Reference bias is the gap 1 - recall(0).

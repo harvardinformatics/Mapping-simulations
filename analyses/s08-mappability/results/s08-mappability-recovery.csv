@@ -1,0 +1,55 @@
+caller,divergence,iteration,map_bin,map_rank,n_sites,n_recovered,recall
+gatk,0.02,1,highly repetitive (<0.2),0,38278,29543,0.771801
+gatk,0.02,1,repetitive (0.2-1.0),1,29108,26671,0.916277
+gatk,0.02,1,unique (1.0),2,1161011,1148154,0.988926
+gatk,0.02,3,highly repetitive (<0.2),0,38278,35200,0.919588
+gatk,0.02,3,repetitive (0.2-1.0),1,29108,27946,0.96008
+gatk,0.02,3,unique (1.0),2,1161011,1154060,0.994013
+bcftools,0.02,1,highly repetitive (<0.2),0,38278,30968,0.809029
+bcftools,0.02,1,repetitive (0.2-1.0),1,29108,27655,0.950082
+bcftools,0.02,1,unique (1.0),2,1161011,1160814,0.99983
+bcftools,0.02,3,highly repetitive (<0.2),0,38278,36281,0.947829
+bcftools,0.02,3,repetitive (0.2-1.0),1,29108,28545,0.980658
+bcftools,0.02,3,unique (1.0),2,1161011,1160931,0.999931
+freebayes,0.02,1,highly repetitive (<0.2),0,38278,30585,0.799023
+freebayes,0.02,1,repetitive (0.2-1.0),1,29108,27629,0.949189
+freebayes,0.02,1,unique (1.0),2,1161011,1160832,0.999846
+freebayes,0.02,3,highly repetitive (<0.2),0,38278,36022,0.941063
+freebayes,0.02,3,repetitive (0.2-1.0),1,29108,28521,0.979834
+freebayes,0.02,3,unique (1.0),2,1161011,1160921,0.999922
+gatk,0.06,1,highly repetitive (<0.2),0,114861,80804,0.703494
+gatk,0.06,1,repetitive (0.2-1.0),1,87276,73023,0.83669
+gatk,0.06,1,unique (1.0),2,3483049,3164973,0.908679
+gatk,0.06,3,highly repetitive (<0.2),0,114861,100189,0.872263
+gatk,0.06,3,repetitive (0.2-1.0),1,87276,78800,0.902883
+gatk,0.06,3,unique (1.0),2,3483049,3277169,0.940891
+bcftools,0.06,1,highly repetitive (<0.2),0,114861,89443,0.778706
+bcftools,0.06,1,repetitive (0.2-1.0),1,87276,82364,0.943719
+bcftools,0.06,1,unique (1.0),2,3483049,3479161,0.998884
+bcftools,0.06,3,highly repetitive (<0.2),0,114861,107932,0.939675
+bcftools,0.06,3,repetitive (0.2-1.0),1,87276,85710,0.982057
+bcftools,0.06,3,unique (1.0),2,3483049,3481117,0.999445
+freebayes,0.06,1,highly repetitive (<0.2),0,114861,88668,0.771959
+freebayes,0.06,1,repetitive (0.2-1.0),1,87276,82292,0.942894
+freebayes,0.06,1,unique (1.0),2,3483049,3480134,0.999163
+freebayes,0.06,3,highly repetitive (<0.2),0,114861,107451,0.935487
+freebayes,0.06,3,repetitive (0.2-1.0),1,87276,85618,0.981003
+freebayes,0.06,3,unique (1.0),2,3483049,3481724,0.99962
+gatk,0.10,1,highly repetitive (<0.2),0,191243,99330,0.519392
+gatk,0.10,1,repetitive (0.2-1.0),1,145299,96848,0.666543
+gatk,0.10,1,unique (1.0),2,5805436,4127589,0.710987
+gatk,0.10,3,highly repetitive (<0.2),0,191243,142766,0.746516
+gatk,0.10,3,repetitive (0.2-1.0),1,145299,115386,0.794128
+gatk,0.10,3,unique (1.0),2,5805436,4719452,0.812937
+bcftools,0.10,1,highly repetitive (<0.2),0,191243,124225,0.649566
+bcftools,0.10,1,repetitive (0.2-1.0),1,145299,132580,0.912463
+bcftools,0.10,1,unique (1.0),2,5805436,5744447,0.989495
+bcftools,0.10,3,highly repetitive (<0.2),0,191243,171097,0.894658
+bcftools,0.10,3,repetitive (0.2-1.0),1,145299,142364,0.9798
+bcftools,0.10,3,unique (1.0),2,5805436,5792703,0.997807
+freebayes,0.10,1,highly repetitive (<0.2),0,191243,125978,0.658733
+freebayes,0.10,1,repetitive (0.2-1.0),1,145299,132875,0.914494
+freebayes,0.10,1,unique (1.0),2,5805436,5742545,0.989167
+freebayes,0.10,3,highly repetitive (<0.2),0,191243,172428,0.901617
+freebayes,0.10,3,repetitive (0.2-1.0),1,145299,142218,0.978795
+freebayes,0.10,3,unique (1.0),2,5805436,5796581,0.998475

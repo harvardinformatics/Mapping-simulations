@@ -1,0 +1,180 @@
+---
+title: "s07 — structural variants as a confounder (chr19; the hard limit)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file. Keep in
+     sync with analyses/lib/notebook.css. Passed through pandoc verbatim via {=html}. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+img { max-width: 1000px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Structural variants are where the whole framework breaks.** Everything up to here treated
+reference bias as a function of *divergence* — how different the sample is, base for base.
+An SV is not that: a deletion removes reference-orthologous sequence, an insertion adds
+sequence with no reference home. It is **unmappability**, not high local divergence, so the
+separable divergence model (s05) does not describe it.
+
+And there are two hard facts:
+
+- **Our callers cannot call SVs.** gatk / bcftools / freebayes are small-variant callers;
+  they do not emit large deletions/insertions. So SVs are a **~100 % blind spot**, and because
+  iteration only bakes in what gets *called*, iteration cannot recover them either.
+- **SVs still wreck the neighborhood.** Reads spanning a breakpoint clip or fail to map, so
+  *small-variant* recovery collapses locally around every SV.
+
+This section measures SVs purely **as a confounder of small-variant calling** (recovering the
+SVs themselves would need dedicated SV callers + SV-aware scoring — out of scope).
+
+- **Setup.** 1000 homozygous SVs (~500 deletions + ~500 insertions, 50–5000 bp, uniform;
+  insertions get random novel sequence) placed in the truth alongside a **low SNP+indel
+  background (D = 0.02)** — low on purpose, so baseline small-variant recovery is high (~99 %)
+  and the SV footprint stands out. Simulated (`mason`), mapped (`bwa`), called by all three
+  callers, iterated with the s02 indel+liftover pipeline (`workflow.smk`, `config-sv.yaml`).
+  chr19, 30×, seed 42.
+- **Measurement** (`scripts/sv_confounder.py`): every divergent SNP/indel truth site is binned
+  by its **distance to the nearest SV breakpoint** (deletions contribute both junctions,
+  insertions their anchor), and we score recovery (matched to the accumulated recovered set)
+  per caller × iteration. The far bin (> 5 kb) is the SV-free baseline.
+
+```{r load}
+sv <- read_csv("analyses/s07-svs/results/s07-sv-confounder.csv") %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         iteration = factor(iteration),
+         dist_mid = as.numeric(dist_mid))
+fp <- read_csv("analyses/s07-svs/results/s07-sv-confounder-fp.csv") %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")))
+cols_it <- corecol(pal = "wilke", numcol = 3)
+```
+
+# The SV footprint on small-variant recovery {#footprint}
+
+SNP recovery against distance from the nearest SV breakpoint (log scale; the rightmost point
+is the > 5 kb baseline). Every caller has a hole at the breakpoint that heals within ~one read
+length — but the **depth of the hole is a caller property**.
+
+```{r footprint, fig.width=13, fig.height=5}
+d <- sv %>% filter(vtype == "snp", bptype == "any")
+ggplot(d, aes(dist_mid, recall, color = iteration)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.4) +
+  scale_x_log10() +
+  scale_color_manual(values = cols_it, name = "iteration") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "distance to nearest SV breakpoint (bp, log scale; last point = >5 kb baseline)",
+       y = "SNP recall") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.*
+
+- **The pileup callers lose ~10 points** at the breakpoint (bcftools/freebayes 0.89 vs ~0.98
+  baseline, 0–50 bp) and heal by ~100 bp — only the reads that span the junction clip; the
+  clean flanking reads still call the nearby SNP.
+- **gatk loses ~40 points** (0.58 vs 0.97 baseline). Its reassembler is confounded by the
+  clipped/chimeric reads at the junction and fails to assemble the local haplotype — the same
+  calling-limited vulnerability seen throughout (s05), now triggered by SV breakpoints rather
+  than divergence.
+- **Iteration lifts the neighborhood but cannot close the breakpoint.** From iteration 1 → 3
+  the hole shrinks a little (gatk 0.58 → 0.64 at 0–50 bp) but a large residual remains, because
+  the SV is never called, never baked into the consensus, so breakpoint-spanning reads keep
+  clipping at every iteration. The dropout right at the junction is permanent.
+
+## Deletions vs. insertions
+
+Splitting by the type of the nearest breakpoint (iteration 1). Both punch a hole; insertions
+are marginally worse at the junction (fully unmappable novel sequence vs a deletion junction
+whose flanking reads still partly map).
+
+```{r delins, fig.width=13, fig.height=5}
+di <- sv %>% filter(vtype == "snp", bptype %in% c("del", "ins"), iteration == "1")
+ggplot(di, aes(dist_mid, recall, color = bptype)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 1.4) +
+  scale_x_log10() +
+  scale_color_manual(values = corecol(pal = "wilke", numcol = 2),
+                     name = NULL, labels = c(del = "deletion", ins = "insertion")) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = "distance to nearest SV breakpoint (bp, log scale)", y = "SNP recall (iteration 1)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+# SVs also create false positives near breakpoints {#fp}
+
+The other side of the confounder: clipped/chimeric reads at breakpoints don't just lose true
+calls, they spawn false ones. Enrichment = the fraction of a caller's single-shot false
+positives within 150 bp of a breakpoint, divided by the genomic fraction that close (0.74 %).
+
+```{r fp, fig.width=9, fig.height=4.5}
+ggplot(fp, aes(caller, enrichment, fill = caller)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey40") +
+  geom_text(aes(label = sprintf("%.1f×\n(%d FPs)", enrichment, n_fp)), vjust = -0.2, size = 3.4) +
+  scale_fill_manual(values = corecol(pal = "wilke", numcol = 3), guide = "none") +
+  labs(x = NULL, y = "FP enrichment within 150 bp of a breakpoint (× genomic)") +
+  bartheme()
+```
+
+*Interpretation.* **gatk (2.6×) and bcftools (1.7×) concentrate false positives at breakpoints**
+— the chimeric reads there generate spurious calls. **freebayes is the exception (0.7×)** not
+because it's clean but the opposite: it emits so many false positives *everywhere* (231 k, its
+complex/multiallelic floor from s02) that breakpoints don't stand out. So SVs degrade precision
+locally for the disciplined callers, and freebayes' FP problem swamps the signal.
+
+# The blind spot {#blindspot}
+
+Of the **1000 SVs**, the number recovered by small-variant calling + iteration is **0**
+(bcftools, gatk) or **1** (freebayes, an incidental large complex call — not systematic SV
+recovery). SVs are, by construction, invisible to this pipeline: the callers can't emit them
+and iteration can't bake in what was never called. This is the permanent blind spot — no amount
+of divergence-recovery machinery touches it.
+
+# Summary {#summary}
+
+- **SVs are off the divergence axis.** They are unmappability, not high local divergence, so the
+  separable model (s05) does not describe them — this is where the framework stops.
+- **A sharp local footprint on small-variant recovery.** SNP recovery craters within ~50 bp of a
+  breakpoint and heals by ~100 bp. The depth is caller-specific: **pileup callers −10 pt, gatk
+  −40 pt** (its reassembler fails on the junction reads — the calling-limited mechanism again).
+- **Iteration can't close it.** It lifts the neighborhood slightly but the breakpoint dropout is
+  permanent, because the SV is never called and so never enters the consensus.
+- **Precision suffers too.** False positives are enriched 1.7–2.6× at breakpoints for the
+  disciplined callers (freebayes' baseline FP flood hides it).
+- **The SVs themselves are a ~100 % blind spot.** Small-variant calling + iteration recover
+  essentially none of them.
+- **Bottom line — the hard limit.** Reference bias from SNPs and indels is a recall problem that
+  mapping quality and iteration can push back on. SVs are a different failure mode: a permanent,
+  local blind spot that iterative small-variant calling cannot address, only avoid. Recovering
+  them needs dedicated SV callers — a separate problem.
+
+*Data tables + dictionaries: `results/s07-sv-confounder.csv` (recovery vs distance) and
+`results/s07-sv-confounder-fp.csv` (FP enrichment). SVs on a D = 0.02 background, single seed 42.*

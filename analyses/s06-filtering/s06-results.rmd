@@ -1,0 +1,200 @@
+---
+title: "s06 — can you filter your way out of reference bias? (chr19, SNP-only)"
+author: "gwct"
+date: "`r format(Sys.time(), '%m/%d/%Y %H:%M %Z')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+    self_contained: true
+---
+
+```{=html}
+<!-- Notebook layout, EMBEDDED so this HTML is a single self-contained file. Keep in
+     sync with analyses/lib/notebook.css. Passed through pandoc verbatim via {=html}. -->
+<style>
+.main-container { max-width: 2200px !important; width: 97% !important;
+                  margin-left: auto !important; margin-right: auto !important; }
+body { font-size: 15px; line-height: 1.55; }
+pre, table, .kable-table { overflow-x: auto; display: block; }
+img { max-width: 1000px; height: auto; display: block; margin-left: auto; margin-right: auto; }
+@media (min-width: 992px) { .col-md-3 { width: 15%; } .col-md-9 { width: 85%; } }
+.tocify { position: fixed; top: 15px; width: 13%; max-height: 92vh; overflow-y: auto; }
+.tocify .tocify-item { font-size: 0.85em; }
+</style>
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+library(ggplot2); library(dplyr); library(tidyr); library(readr)
+source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
+```
+
+# Question & design
+
+**Can standard hard filters recover the divergence lost to reference bias — or do they only
+manage false positives?** A common reflex is to blame low recall on lenient calling and reach
+for quality/depth/mapping-quality filters. But a filter can only ever *remove* calls, so it can
+raise precision, never recall. This section makes that concrete, and turns up a sharper point:
+some filters actively **amplify** reference bias.
+
+- **Data (no new compute).** The **raw single-shot (iteration 1) caller VCFs**, `calls.norm`,
+  homogeneous divergence D ∈ {0.02…0.10}, 30×, seed 42 — the caller output already exists. Each
+  VCF is read once (`bcftools query`) and every threshold is swept in memory
+  (`analyses/s06-filtering/scripts/filter_sweep.py`). **SNP** filtering uses **s01** (SNP-only);
+  **indel** filtering uses **s02** (SNP + indel), scored separately by variant type.
+- **Filter axes**, one at a time:
+  **QUAL** (variant quality, column 6); **DP** (per-sample depth, `FMT/DP`); **MQ** (RMS mapping
+  quality — `INFO/MQ` for gatk & bcftools, `INFO/MQM` for freebayes). Keep calls with axis ≥ threshold.
+- **Metrics** (per filtered call set): **recall** = hom-alt calls matching a truth 1|1 site /
+  number of truth 1|1 sites (the divergence-recovery / reference-bias axis); **precision** =
+  calls matching any truth SNP site / calls passing the filter. `threshold = 0` is unfiltered, so
+  `recall(0)` is the ceiling and reference bias is `1 − recall(0)`.
+- **Single-shot only.** This asks what filtering the caller's output does; the iterative
+  interaction (filtering *during* iteration) is deferred — it would need re-running iteration.
+
+```{r load}
+prep <- function(path) read_csv(path) %>%
+  mutate(caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         axis   = factor(axis, levels = c("QUAL", "DP", "MQ")),
+         divergence = factor(divergence))
+# SNP filtering on s01 (SNP-only); indel filtering on s02 (SNP + indel)
+df <- prep("analyses/s06-filtering/results/s06-filter-sweep.csv") %>% filter(vtype == "snp")
+di <- prep("analyses/s06-filtering/results/s06-filter-sweep-s02.csv") %>% filter(vtype == "indel")
+dcols <- corecol(pal = "wilke", numcol = length(levels(df$divergence)))
+```
+
+# Recall is set by divergence, not the filter (SNPs) {#recall}
+
+Recall of true divergence against each filter threshold. Within a caller, the curves are
+**stacked by divergence and essentially flat in the filter** — the ceiling is set by how diverged
+the genome is (reference bias), and no threshold lifts it. The exception is *downward*: past a
+point, filtering starts deleting real calls.
+
+```{r recall-fig, fig.width=13, fig.height=7}
+ggplot(df, aes(threshold, recall, color = divergence)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  facet_grid(axis ~ caller, scales = "free_x") +
+  scale_color_manual(values = dcols, name = "divergence") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "filter threshold (keep calls with axis ≥ threshold)", y = "recall of true divergence") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.*
+
+- **QUAL:** recall is flat across the whole range — the lost variants are **not** low-quality
+  calls sitting in the VCF, they are *absent* (never emitted). gatk is perfectly flat; bcftools/
+  freebayes lose a point or two only at extreme QUAL.
+- **DP:** a mild, steady recall *cost* with no compensating benefit — depth filtering removes real
+  low-coverage calls.
+- **MQ — the cautionary one:** at high divergence, an aggressive MQ cut **collapses** recall
+  (freebayes drops from 0.98 to 0.62 at MQ ≥ 60, D = 0.10). This is reference bias *amplified*:
+  the diverged reads legitimately carry **lower** mapping quality (more mismatches), so an MQ
+  filter preferentially deletes exactly the variants we are trying to recover.
+
+# Filtering buys precision — mainly for the over-caller (SNPs) {#precision}
+
+The same sweep, for precision. Filtering's real value is on the false-positive side, and it is
+concentrated in the one caller that over-calls.
+
+```{r precision-fig, fig.width=13, fig.height=7}
+ggplot(df, aes(threshold, precision, color = divergence)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  facet_grid(axis ~ caller, scales = "free_x") +
+  scale_color_manual(values = dcols, name = "divergence") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "filter threshold (keep calls with axis ≥ threshold)", y = "precision") +
+  bartheme() + theme(legend.position = "right")
+```
+
+```{r pr-tradeoff, fig.width=13, fig.height=4.5}
+# the classic view: recall vs precision as QUAL sweeps (each point a threshold)
+ggplot(df %>% filter(axis == "QUAL"), aes(recall, precision, color = divergence)) +
+  geom_path(linewidth = 0.8) + geom_point(size = 1.2) +
+  facet_wrap(~caller, nrow = 1) +
+  scale_color_manual(values = dcols, name = "divergence") +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "recall of true divergence", y = "precision",
+       title = "Precision–recall as QUAL sweeps (each point a threshold)") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.* **gatk and bcftools are already ~99–100 % precise** — filtering does nothing
+useful, it can only trade away recall. **freebayes over-calls** (precision ~0.91–0.94 unfiltered),
+and a light QUAL ≥ 20 cut recovers it to ~0.95–0.97 at negligible recall cost — a real, worthwhile
+gain. But in the PR view the motion is **vertical** (precision up) with almost no horizontal
+travel (recall fixed): filtering moves you up the precision axis, never right along recall.
+
+# And with indels: filtering fails on both axes {#indels}
+
+Repeating the sweep on **indels** (s02, where the truth and callers carry indels) sharpens the
+message — for indels, filtering helps on *neither* recall nor precision.
+
+```{r indel-recall, fig.width=13, fig.height=7}
+ggplot(di, aes(threshold, recall, color = divergence)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  facet_grid(axis ~ caller, scales = "free_x") +
+  scale_color_manual(values = dcols, name = "divergence") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "filter threshold (keep calls with axis ≥ threshold)",
+       y = "recall of true indel divergence", title = "Indels — recall") +
+  bartheme() + theme(legend.position = "right")
+```
+
+```{r indel-precision, fig.width=13, fig.height=7}
+ggplot(di, aes(threshold, precision, color = divergence)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  facet_grid(axis ~ caller, scales = "free_x") +
+  scale_color_manual(values = dcols, name = "divergence") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "filter threshold (keep calls with axis ≥ threshold)",
+       y = "precision", title = "Indels — precision") +
+  bartheme() + theme(legend.position = "right")
+```
+
+*Interpretation.*
+
+- **Recall — same story, sometimes worse.** No filter recovers indel divergence (the losses are
+  un-emitted, as for SNPs). gatk is flat; **bcftools is actively harmed** — it already calls few
+  indels at divergence (it collapses on them, per s02), so a QUAL cut drops its indel recall
+  further (0.24 → 0.14 at D = 0.06). MQ again collapses recall at high divergence for the same
+  reason as SNPs (diverged reads carry lower MQ).
+- **Precision — filtering can't fix the over-caller here.** For **SNPs**, a light QUAL cut rescued
+  freebayes' precision. For **indels it does not**: freebayes' precision is stuck near 0.55 even at
+  QUAL ≥ 100 (≈ 251 k false indels remain at D = 0.10). Its **complex/multiallelic FP floor is
+  quality-inseparable** — the spurious indels carry the same QUAL as the real ones, so no threshold
+  distinguishes them. The one place filtering bought precision for SNPs, it fails for indels.
+
+So the reflex "just filter harder" is even weaker for indels: it can't recover the lost ones, and
+it can't clean up the false ones.
+
+# Summary {#summary}
+
+- **You cannot filter your way out of reference bias.** Recall of true divergence is set by the
+  divergence itself (the reference-bias floor), not by the filter — because the lost variants are
+  *un-emitted* (mapping-limited or never assembled; see s05's mapping-vs-calling split), not
+  low-quality entries a threshold could keep or drop.
+- **Filtering buys precision, and only where a caller over-calls — and only for SNPs.** freebayes
+  gains a few points from a light QUAL cut on SNPs; gatk and bcftools are already near-perfectly
+  precise and gain nothing. For **indels the precision buy disappears**: freebayes' complex/
+  multiallelic FP floor is quality-inseparable (precision stuck ~0.55 at any QUAL), and bcftools
+  barely calls indels at all, so filtering only removes more of the few it has.
+- **Some filters make it worse.** Depth filtering costs recall for no precision benefit, and
+  **aggressive mapping-quality filtering amplifies reference bias at high divergence** — the
+  diverged reads have lower MQ by construction, so an MQ cut deletes the very variants of interest.
+  This is a direct consequence of the mechanism: reference bias penalizes diverged reads at the
+  mapping step, and an MQ filter penalizes them again.
+- **Implication for practice:** filtering is for precision/FP control, not for recovering
+  divergence. The recall problem is upstream (mapping + assembly), which is exactly what iterative
+  mapping addresses and a filter cannot.
+
+*Data table + dictionary in `results/s06-filter-sweep.csv`. Single seed (42); s01 showed aggregate
+recall is near-deterministic across seeds. Iteration-1 (single-shot) raw caller calls.*

@@ -1,0 +1,17 @@
+Data dictionary for analyses/s07-svs/results/s07-sv-confounder-2caller.csv
+
+s07 SV-confounder: small-variant recovery vs distance from nearest SV
+breakpoint. One row per (caller, iteration, vtype, distance bin).
+
+Fields:
+  caller, iteration : condition (SNP div background = 0.02; SVs uncalled)
+  vtype     : snp | indel (GT 1|1 divergence truth sites)
+  bptype    : type of the NEAREST breakpoint -- any | del | ins (does a
+              deletion's coverage gap hurt more than an insertion's anchor?)
+  dist_lo/hi: distance-to-nearest-SV-breakpoint bin edges (bp); hi=-1 is the
+              far/SV-free baseline bin (>= 5000 bp)
+  dist_mid  : bin midpoint (plotting x); = dist_lo for the baseline bin
+  n_sites, n_recovered, recall : truth sites / recovered / recall in the bin
+
+SV breakpoints: deletions contribute both ends, insertions their anchor.
+Recovery should crater near 0 and rise to the baseline far away.
