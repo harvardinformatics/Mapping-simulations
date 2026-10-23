@@ -45,6 +45,10 @@ def parse_args():
     p.add_argument("--seed", required=True)
     p.add_argument("--caller", default="gatk", help="variant caller label for the summary row")
     p.add_argument("--iteration", default="1", help="mapping iteration label (1 = single-shot)")
+    p.add_argument("--extra", nargs="*", default=[], metavar="NAME=VALUE",
+                   help="optional extra identifier columns appended to the summary row "
+                        "(e.g. --extra field=L20000-S1.0). Omitting it leaves the header "
+                        "unchanged, so other sections' output is unaffected.")
     p.add_argument("--out-prefix", required=True)
     return p.parse_args()
 
@@ -196,6 +200,15 @@ def main():
             n["indel_div"], c["indel_div_tp"], c["indel_div_ref_or_absent"], c["indel_div_other"],
             n["indel_het"], c["indel_het_tp"], c["indel_het_ref_or_absent"], c["indel_het_other"],
             fp_indel, n_called_indel]
+
+    # optional extra identifier columns (e.g. s05 field tag); appended so the base
+    # header is unchanged when --extra is not given.
+    for kv in args.extra:
+        if "=" not in kv:
+            sys.exit("ERROR: --extra expects NAME=VALUE (got %r)" % kv)
+        name, value = kv.split("=", 1)
+        cols.append(name)
+        vals.append(value)
 
     csv_path = args.out_prefix + "-vcf-summary.csv"
     with open(csv_path, "w") as out:
