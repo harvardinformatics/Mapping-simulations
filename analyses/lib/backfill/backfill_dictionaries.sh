@@ -131,34 +131,9 @@ done
 conda run -n renv Rscript analyses/synthesis/scripts/s01_mapping_vs_calling.R --dict-only; step
 bash analyses/s02-indels/scripts/callvcf_composition.sh --dict-only; step
 
-# 6b. s01-varfate-<D>.csv: made by the 2026-08-04 version of variant_read_fate.py
-for D in 0.04 0.06 0.08 0.10; do
-    python analyses/lib/provenance.py --backfill --replace \
-        --table analyses/s01-baseline-iterative/results/s01-varfate-$D.csv \
-        --script analyses/s01-baseline-iterative/run_variant_read_fate.sh \
-        --command "cd analyses/s01-baseline-iterative && sbatch run_variant_read_fate.sh $D" \
-        --note "made 2026-08-04 with the variant_read_fate.py of that day, whose per-SNP output had the columns below; the current variant_read_fate.py writes a different, finer ledger, so re-running this command now gives a DIFFERENT table. That version was reconstructed from the session log (not re-executed); its header matches this table exactly." <<EOF
-s01 per-variant call fate x read-placement fate, D = $D: for ~8,000 true hom-div (1|1) SNPs (every
-len/8000-th, evenly spaced) and each caller x iteration 1-3, whether the SNP was recovered and where
-the reads that TRULY cover it (by their mason -oa truth-BAM span) were placed by bwa.
-
-Fields:
-  divergence, caller, iteration : condition (iteration 1 = single-shot)
-  snp_pos    : 1-based reference position of the SNP
-  alt        : truth alt allele
-  recovered  : 1 if (position, alt) is in that iteration's recovered VCF, else 0
-  n_reads    : reads truly covering the SNP (sum of the 7 placement classes)
-  exact, shifted, clipped, span_off, mismapped, diff_chr, unmapped : the reads' placement class,
-               as compare_bams.py defines it (tolerance 150 bp; end tolerance 10 bp)
-  p_visible  : reads at the right locus whose aligned blocks contain the SNP position (the caller
-               can see the SNP base)
-  p_clipdel  : reads at the right locus with the SNP position soft-clipped over or deleted
-  p_mismap   : reads placed at the wrong locus (mismapped or other contig)
-  p_unmap    : unmapped reads
-  (p_visible + p_clipdel + p_mismap + p_unmap = n_reads)
-EOF
-    step
-done
+# 6b. (removed) s01-varfate-<D>.csv: backfilled here on 2026-10-26, then regenerated the same day
+#     with the current variant_read_fate.py by run_variant_read_fate.sh, which writes its own
+#     dictionary (re-running the old step would overwrite it with the old column layout).
 
 # 6c. (removed) pileup_decomp_{summary,bybin}.csv: their dictionaries were backfilled here on
 #     2026-10-26; the tables were then deleted the same day (superseded, nothing read them).

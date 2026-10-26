@@ -53,4 +53,11 @@ for C in bcftools gatk freebayes; do
   if [ $first -eq 1 ]; then cp $WORK/vrf-$C.csv $OUT; first=0
   else tail -n +2 $WORK/vrf-$C.csv >> $OUT; fi
 done
+
+# data dictionary for the combined table: this script's provenance block + the per-SNP ledger
+# definitions variant_read_fate.py wrote for the per-caller tables (identical for every caller)
+sed -n '/^Sites      :/,$p' $WORK/vrf-bcftools.csv.dict.txt | \
+  python analyses/lib/provenance.py --table $OUT --script analyses/s01-baseline-iterative/run_variant_read_fate.sh \
+      --command "cd analyses/s01-baseline-iterative && sbatch run_variant_read_fate.sh $D" \
+      --note "rows of the three per-caller tables $WORK/vrf-{bcftools,gatk,freebayes}.csv concatenated, in that order"
 echo "WROTE $OUT ($(($(wc -l < $OUT)-1)) rows)"

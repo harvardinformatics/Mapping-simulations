@@ -60,7 +60,15 @@ plev  <- names(pcols)
 
 vf <- bind_rows(lapply(c("0.04","0.06","0.08","0.10"), function(d)
   read_csv(sprintf("analyses/s01-baseline-iterative/results/s01-varfate-%s.csv", d),
-           col_types = cols()))) %>% mutate(divergence = as.numeric(divergence))
+           col_types = cols()))) %>%
+  mutate(divergence = as.numeric(divergence),
+         # per-SNP visibility from the read ledger (variant_read_fate.py; columns in the tables'
+         # dictionaries): reads at the locus (exact or shifted start) that present a base at the SNP,
+         # reads at the locus with the SNP soft-clipped or deleted, reads placed elsewhere, unmapped
+         p_visible = ex_alt + ex_ref + ex_err + sh_alt + sh_ref + sh_err,
+         p_clipdel = ex_clip + ex_del + sh_clip + sh_del,
+         p_mismap  = mm_clip + mm_noclip + dc,
+         p_unmap   = un)
 traj <- vf %>% group_by(caller, divergence, snp_pos) %>%
   summarize(r1 = recovered[iteration == 1], r3 = recovered[iteration == 3], .groups = "drop") %>%
   mutate(new = r1 == 0 & r3 == 1)
