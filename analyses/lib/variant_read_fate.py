@@ -29,7 +29,9 @@ Usage:
       --iter 1:iter1/mapped.bam:iter1/recovered.vcf.gz  --iter 2:...  --iter 3:...
 (--sample <=0 means ALL true SNPs, no sampling.)
 """
-import argparse, bisect, pysam
+import argparse, bisect
+import pysam
+import provenance                       # shared provenance block for the data dictionaries
 
 TOLERANCE = 150
 CELLS = ["ex_alt", "ex_ref", "ex_err", "ex_clip", "ex_del",
@@ -219,17 +221,110 @@ def write_aggregate(a, n_iter, snp_traj, hcomp):
             out.write(",".join([a.divergence, a.caller, it, status] + [str(x) for x in h]) + "\n")
 
 
+def write_dictionaries(a):
+    """Write the data dictionary for every table this run produces (per-SNP mode: <out>.dict.txt;
+    aggregate mode: <out>-gtraj.csv.dict.txt and <out>-hcomp.csv.dict.txt). Each starts with the
+    shared provenance block (lib/provenance.py): this run's own command line, or with --dicts-only
+    the ORIGINAL producing command, marked as a backfill."""
+    def hdr(table):
+        if a.dicts_only:
+            return provenance.header(table, command=a.dicts_only, backfill=True)
+        return provenance.header(table)
+
+    site = ("HETEROZYGOUS (phased 0|1 / 1|0) biallelic truth SNPs; true-alt reads are those from the "
+            "alt-carrying haplotype (mason oH tag); recovered = called correctly AS A HET in the "
+            "per-iteration caller VCF") if a.het else (
+            "homozygous divergent (1|1) biallelic truth SNPs; every covering read truly carries alt; "
+            "recovered = (position, alt) present in the iteration's recovered VCF")
+    sampling = ("all truth SNPs on the region (--sample 0)" if not a.sample or a.sample <= 0 else
+                "systematic sample of ~%d truth SNPs (every len/%d-th site along the region)"
+                % (a.sample, a.sample))
+    common = ("Sites      : %s.\n"
+              "Sampling   : %s.\n"
+              "Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are\n"
+              "             assigned to every SNP their TRUE span covers.\n"
+              "Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= %d bp;\n"
+              "             mismapped = |delta| > %d bp; diff_chr = other contig (or true start in a\n"
+              "             chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to\n"
+              "             the consensus with that iteration's ref2cons chain (4th --iter field).\n\n"
+              % (site, sampling, TOLERANCE, TOLERANCE))
+    if a.aggregate:
+        with open(a.out + "-gtraj.csv.dict.txt", "w") as d:
+            d.write(hdr(a.out + "-gtraj.csv") + common)
+            d.write("One row per distinct trajectory of (call status, f_alt bin) across the iterations;\n"
+                    "the table is the aggregated input to the G (joint-state flow) plots.\n\n"
+                    "Fields:\n"
+                    "  divergence, caller : condition labels (as passed on the command line)\n"
+                    "  s<k>               : call status at iteration k -- called | not_called\n"
+                    "  fb<k>              : f_alt bin at iteration k, f_alt = (alt reads aligned at the\n"
+                    "                       SNP, exact or shifted placement) / (reads truly carrying alt);\n"
+                    "                       bins 0.0-0.2 ... 0.8-1.0 (upper edge inclusive in the top bin),\n"
+                    "                       or 'nocov' when no read truly carries alt\n"
+                    "  n_snps             : number of SNPs that followed this trajectory\n")
+        with open(a.out + "-hcomp.csv.dict.txt", "w") as d:
+            d.write(hdr(a.out + "-hcomp.csv") + common)
+            d.write("Read-fate composition at the SNP position, SUMMED over all SNPs, per (iteration,\n"
+                    "call status). Counts are read-SNP pairs (a read covering 2 SNPs counts twice).\n\n"
+                    "Fields:\n"
+                    "  divergence, caller : condition labels\n"
+                    "  iteration          : mapping iteration (1 = single-shot)\n"
+                    "  status             : called | not_called at that iteration\n"
+                    "  alt_at_p           : reads at the locus (exact/shifted) presenting the alt base at p\n"
+                    "  ref_at_p           : ... presenting the reference base at p\n"
+                    "  err_at_p           : ... presenting another base (sequencing error)\n"
+                    "  clipped            : at the locus but soft-clipped over p\n"
+                    "  deleted            : at the locus but p falls in a deletion of the alignment\n"
+                    "  mapped_elsewhere   : mismapped (> %d bp from the true start) or on another contig\n"
+                    "  unmapped           : unmapped reads\n"
+                    "  n_reads            : all reads truly covering the SNPs (sum of the above)\n"
+                    % TOLERANCE)
+        return
+    pile_txt = ("  depth_p            : reads aligned over p in the mapped BAM (samtools-style pileup,\n"
+                "                       secondary/supplementary/duplicate/QC-fail skipped), whatever\n"
+                "                       their true origin -- the caller's-eye view\n"
+                "  ref_p, alt_p, oth_p: of those, reads presenting the ref / alt / another base at p\n"
+                "  mapq_p             : mean mapping quality of those reads (0.0 when depth_p = 0)\n"
+                "  mapq20_p           : of those, reads with MAPQ >= 20\n"
+                "  mmin_p             : of those, reads MISMAPPED INTO p (true span does not cover p)\n"
+                "  mmin_ref_p, mmin_alt_p : mismapped-in reads presenting the ref / alt base\n"
+                ) if a.pileup else ""
+    with open(a.out + ".dict.txt", "w") as d:
+        d.write(hdr(a.out) + common)
+        d.write("One row per (SNP, iteration): the exact read ledger of the reads that TRULY cover the\n"
+                "SNP. All cells are read counts.\n\n"
+                "Fields:\n"
+                "  divergence, caller : condition labels\n"
+                "  iteration          : mapping iteration (1 = single-shot)\n"
+                "  snp_pos            : 1-based reference position of the SNP\n"
+                "  ref, alt           : truth alleles\n"
+                "  recovered          : 1 if recovered at this iteration (see Sites), else 0\n"
+                "  n_reads            : reads truly covering the SNP (sum of the 14 ledger cells)\n"
+                "  n_true_alt         : of those, reads that truly carry the alt allele\n"
+                "  ex_alt ex_ref ex_err ex_clip ex_del : exact placement; at p the read presents the\n"
+                "                       alt / ref / another base, or is soft-clipped over / deletes p\n"
+                "  sh_alt ... sh_del  : the same for shifted placement\n"
+                "  mm_clip, mm_noclip : mismapped reads, split by whether the read has any soft-clip\n"
+                "  dc, un             : reads on another contig / unmapped\n"
+                + pile_txt +
+                "\nDerived downstream: f_alt = (ex_alt + sh_alt) / n_true_alt; mismapped-out =\n"
+                "mm_clip + mm_noclip + dc + un.\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--truth-bam", required=True)
-    ap.add_argument("--truth-vcf", required=True)
-    ap.add_argument("--region", required=True)
+    ap.add_argument("--truth-bam")
+    ap.add_argument("--truth-vcf")
+    ap.add_argument("--region")
     ap.add_argument("--divergence", required=True)
     ap.add_argument("--caller", required=True)
     ap.add_argument("--sample", type=int, default=8000, help="approx SNPs to sample; <=0 = ALL")
-    ap.add_argument("--iter", action="append", required=True,
+    ap.add_argument("--iter", action="append",
                     metavar="ITER:MAPPED_BAM:RECOVERED_VCF")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
+                    help="write ONLY the data dictionaries for an already-existing output (same --out, "
+                         "--aggregate/--pileup/--het, --sample, --divergence, --caller as the run that made "
+                         "it), recording ORIGINAL_COMMAND as its provenance; no BAM/VCF is read.")
     ap.add_argument("--het", action="store_true",
                     help="score HETEROZYGOUS (0/1) truth sites instead of hom-div (1|1). n_true_alt is "
                          "then the alt-HAPLOTYPE reads only (via oH), f_alt measures how much of that "
@@ -247,6 +342,14 @@ def main():
                          "write <out>-gtraj.csv and <out>-hcomp.csv. Lets --sample 0 (full chromosome) "
                          "run without emitting a multi-GB per-SNP ledger.")
     a = ap.parse_args()
+
+    # --dicts-only: document an existing output without recomputing it
+    if a.dicts_only:
+        write_dictionaries(a)
+        return
+    missing = [f for f in ("truth_bam", "truth_vcf", "region", "iter") if not getattr(a, f)]
+    if missing:
+        ap.error("missing required arguments: " + ", ".join("--" + m.replace("_", "-") for m in missing))
 
     # truth reads: key -> (ref_name, start, end, oH-haplotype). oH is mason's 1-based
     # source-haplotype tag, so we know each read's TRUE allele independent of sequencing error.
@@ -388,6 +491,7 @@ def main():
             out.write(",".join(head) + "\n")
             for row in rows:
                 out.write(",".join(str(x) for x in row) + "\n")
+    write_dictionaries(a)
 
 
 if __name__ == "__main__":

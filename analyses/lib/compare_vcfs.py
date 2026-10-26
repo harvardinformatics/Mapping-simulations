@@ -31,6 +31,45 @@ downstream analyses keep working; indel and seed columns are appended.
 import sys
 import argparse
 import pysam
+import provenance                       # shared provenance block for the data dictionaries
+
+# Columns of the -vcf-summary.csv table (SNP columns first, unchanged from the SNP-only version;
+# indel columns appended); --extra NAME=VALUE columns follow these.
+BASE_COLUMNS = ("region", "coverage", "divergence", "heterozygosity", "seed", "caller", "iteration",
+                "n_truth_div", "div_tp", "div_het", "div_ref_or_absent", "div_other",
+                "n_truth_het", "het_tp", "het_hom_alt", "het_ref_or_absent", "het_other",
+                "fp", "n_called_snp",
+                "n_truth_indel_div", "indel_div_tp", "indel_div_ref_or_absent", "indel_div_other",
+                "n_truth_indel_het", "indel_het_tp", "indel_het_ref_or_absent", "indel_het_other",
+                "fp_indel", "n_called_indel")
+
+# Column definitions of the -vcf-summary.csv table. Kept as a constant so combine_summaries.py can
+# embed the same text in the dictionaries of the combined tables (which are committed to git, while
+# the per-condition dictionaries live in the git-ignored data/ tree).
+FIELD_DEFINITIONS = (
+    "Variant-calling accuracy vs controlled truth (SNPs + indels), normalized.\n"
+    "Divergence sites are hom-alt (1|1); het sites are 0|1. A called variant\n"
+    "matches a truth site by (POS, REF, ALT) after bcftools normalization.\n\n"
+    "region,coverage,divergence,heterozygosity,seed : simulation condition\n"
+    "caller           : variant caller (gatk | bcftools | freebayes)\n"
+    "iteration        : mapping iteration (1 = single-shot; 2..N = iterative)\n"
+    "n_truth_div       : number of truth SNP divergence (1|1) sites\n"
+    "div_tp            : SNP divergence called hom-alt, matching allele (recovered)\n"
+    "div_het           : SNP divergence called heterozygous\n"
+    "div_ref_or_absent : SNP divergence called hom-ref OR not called  <-- reference bias\n"
+    "div_other         : SNP divergence hom-alt wrong allele / edge case\n"
+    "n_truth_het       : number of truth SNP heterozygous (0|1) sites\n"
+    "het_tp/het_hom_alt/het_ref_or_absent/het_other : SNP het site call outcome\n"
+    "fp                : called SNP variants not matching any truth site (false positives)\n"
+    "n_called_snp      : total confident SNP variant calls\n"
+    "n_truth_indel_div : number of truth indel divergence (1|1) sites\n"
+    "indel_div_tp      : indel divergence recovered (hom-alt, matching REF/ALT)\n"
+    "indel_div_ref_or_absent : indel divergence called hom-ref OR not called\n"
+    "indel_div_other   : indel divergence other genotype (e.g. called het)\n"
+    "n_truth_indel_het : number of truth indel heterozygous (0|1) sites\n"
+    "indel_het_tp/indel_het_ref_or_absent/indel_het_other : indel het site outcome\n"
+    "fp_indel          : called indel variants not matching any truth site\n"
+    "n_called_indel    : total confident indel variant calls\n")
 
 
 def parse_args():
@@ -186,14 +225,8 @@ def main():
                         fp_indel += 1
 
     # --- write summary CSV (SNP columns unchanged; indel/seed appended) ----
-    cols = ["region", "coverage", "divergence", "heterozygosity", "seed", "caller", "iteration",
-            "n_truth_div", "div_tp", "div_het", "div_ref_or_absent", "div_other",
-            "n_truth_het", "het_tp", "het_hom_alt", "het_ref_or_absent", "het_other",
-            "fp", "n_called_snp",
-            "n_truth_indel_div", "indel_div_tp", "indel_div_ref_or_absent", "indel_div_other",
-            "n_truth_indel_het", "indel_het_tp", "indel_het_ref_or_absent", "indel_het_other",
-            "fp_indel", "n_called_indel"]
-    vals = [args.region, args.coverage, args.divergence, args.heterozygosity, args.seed, args.caller, args.iteration,
+    cols = list(BASE_COLUMNS)
+    vals =[args.region, args.coverage, args.divergence, args.heterozygosity, args.seed, args.caller, args.iteration,
             n["snp_div"], c["div_tp"], c["div_het"], c["div_ref_or_absent"], c["div_other"],
             n["snp_het"], c["het_tp"], c["het_hom_alt"], c["het_ref_or_absent"], c["het_other"],
             fp, n_called_snp,
@@ -216,30 +249,10 @@ def main():
         out.write(",".join(str(x) for x in vals) + "\n")
 
     with open(args.out_prefix + "-vcf-summary.dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n" % csv_path)
-        d.write("Variant-calling accuracy vs controlled truth (SNPs + indels), normalized.\n")
-        d.write("Divergence sites are hom-alt (1|1); het sites are 0|1. A called variant\n")
-        d.write("matches a truth site by (POS, REF, ALT) after bcftools normalization.\n\n")
-        d.write("region,coverage,divergence,heterozygosity,seed : simulation condition\n")
-        d.write("caller           : variant caller (gatk | bcftools | freebayes)\n")
-        d.write("iteration        : mapping iteration (1 = single-shot; 2..N = iterative)\n")
-        d.write("n_truth_div       : number of truth SNP divergence (1|1) sites\n")
-        d.write("div_tp            : SNP divergence called hom-alt, matching allele (recovered)\n")
-        d.write("div_het           : SNP divergence called heterozygous\n")
-        d.write("div_ref_or_absent : SNP divergence called hom-ref OR not called  <-- reference bias\n")
-        d.write("div_other         : SNP divergence hom-alt wrong allele / edge case\n")
-        d.write("n_truth_het       : number of truth SNP heterozygous (0|1) sites\n")
-        d.write("het_tp/het_hom_alt/het_ref_or_absent/het_other : SNP het site call outcome\n")
-        d.write("fp                : called SNP variants not matching any truth site (false positives)\n")
-        d.write("n_called_snp      : total confident SNP variant calls\n")
-        d.write("n_truth_indel_div : number of truth indel divergence (1|1) sites\n")
-        d.write("indel_div_tp      : indel divergence recovered (hom-alt, matching REF/ALT)\n")
-        d.write("indel_div_ref_or_absent : indel divergence called hom-ref OR not called\n")
-        d.write("indel_div_other   : indel divergence other genotype (e.g. called het)\n")
-        d.write("n_truth_indel_het : number of truth indel heterozygous (0|1) sites\n")
-        d.write("indel_het_tp/indel_het_ref_or_absent/indel_het_other : indel het site outcome\n")
-        d.write("fp_indel          : called indel variants not matching any truth site\n")
-        d.write("n_called_indel    : total confident indel variant calls\n")
+        d.write(provenance.header(csv_path))
+        d.write(FIELD_DEFINITIONS)
+        for name in cols[len(BASE_COLUMNS):]:
+            d.write("%-17s : extra condition column (--extra %s=VALUE)\n" % (name, name))
 
     print("wrote %s" % csv_path)
     for k in cols[5:]:

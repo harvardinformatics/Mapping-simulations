@@ -35,6 +35,9 @@ import csv
 import argparse
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+import provenance                       # shared provenance block for the data dictionaries
+
 # same local-divergence bin edges as local_recall.py (keep the axis consistent)
 BIN_EDGES = [0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.13, 0.16, 0.20, 0.25, 0.30,
              0.40, 0.60, 1.01]
@@ -140,7 +143,7 @@ def main():
                        "%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g\n") % r)
 
     with open(a.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % a.out)
+        d.write(provenance.header(a.out))
         d.write("s05 mapping-vs-calling decomposition, binned by local divergence.\n")
         d.write("One row per (caller, iteration, local-D bin). Alt-evidence threshold\n")
         d.write("--alt-min = %d reads.\n\n" % a.alt_min)

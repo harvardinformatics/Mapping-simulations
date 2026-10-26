@@ -35,6 +35,9 @@ import argparse
 import subprocess
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+import provenance                       # shared provenance block for the data dictionaries
+
 QUAL_T = [0, 10, 20, 30, 50, 100]
 DP_T   = [0, 2, 4, 6, 8, 10]
 MQ_T   = [0, 20, 30, 40, 50, 60]
@@ -190,7 +193,7 @@ def main():
             out.write("%s,%s,%s,%s,%g,%d,%d,%d,%d,%d,%.6g,%.6g\n" % r)
 
     with open(a.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % a.out)
+        d.write(provenance.header(a.out))
         d.write("s06 filtering sweep: recall of true divergence + precision vs hard-filter\n")
         d.write("threshold, over the RAW single-shot (iter %s) SNP caller VCFs.\n\n" % a.iter)
         d.write("Fields:\n")

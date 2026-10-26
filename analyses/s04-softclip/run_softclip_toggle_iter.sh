@@ -16,7 +16,10 @@
 # The prior set (iter_{k-1}/mm39_recovered.vcf.gz) is identical for both arms -- only iter-k calling
 # is toggled -- so any difference in cumulative div recall is the flag alone. s01 is SNP-only, so the
 # consensus keeps reference (identity) coordinates and no liftover is needed.
-# Usage:  sbatch run_softclip_toggle_iter.sh <DIV> <ITER>     (ITER >= 2)
+# Usage:  cd analyses/s04-softclip && sbatch run_softclip_toggle_iter.sh <DIV> <ITER>   (ITER >= 2;
+#         submit_softclip_toggle_iter.sh submits D = 0.06, 0.10 x ITER = 2, 3)
+#         bash analyses/s04-softclip/run_softclip_toggle_iter.sh <DIV> <ITER> --dict-only   (from the
+#         project root: only (re)write the data dictionary of an existing output, marked as a backfill)
 set -eo pipefail
 source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh
 conda activate mapping-sims
@@ -29,11 +32,37 @@ BAM=$ITERD/iter$K/mm39_mapped.bam                       # reads mapped to consen
 CONSREF=$ITERD/iter$((K - 1))/mm39-consensus.fa         # that consensus == the calling reference
 PRIOR=$ITERD/iter$((K - 1))/mm39_recovered.vcf.gz       # already recovered (baked into consensus_{K-1})
 TRUTH=$BASE/sim/30X/19/$D/0.005/$SEED/mm39-truth.norm.vcf.gz
+WORK=data/s04-softclip/$D/iter$K
+OUT=analyses/s04-softclip/results/softclip-toggle-$D-iter$K.csv
+
+# data dictionary for $OUT: provenance block + what the two rows are + compare_vcfs.py's columns.
+# Optional $1 = --backfill (the table already exists and is not being regenerated).
+write_dict() {
+    python analyses/lib/provenance.py --table "$OUT" --script analyses/s04-softclip/run_softclip_toggle_iter.sh \
+        --command "cd analyses/s04-softclip && sbatch run_softclip_toggle_iter.sh $D $K" \
+        --append-definitions compare_vcfs $1 <<EOF
+s04 soft-clip toggle at iteration $K, divergence D = $D (s01 SNP-only simulation, seed $SEED).
+GATK HaplotypeCaller was re-run twice on the SAME existing s01 iter$K gatk BAM (reads mapped to
+consensus_$((K - 1))), calling against that consensus, once per arm:
+  gatk_default    : HaplotypeCaller defaults (soft-clipped bases are used)
+  gatk_nosoftclip : HaplotypeCaller --dont-use-soft-clipped-bases
+Each arm's new hom-alt SNP calls were merged with the already-recovered set baked into
+consensus_$((K - 1)) (identical for both arms), and that CUMULATIVE recovered set was scored
+against the truth with compare_vcfs.py -- the s01 pipeline's definition of recovery at iteration $K.
+One row per arm (caller column). Het columns are 0 by construction: het calls are never baked into
+the haploid consensus, so div recall (div_tp / n_truth_div) is the metric for this test.
+Inputs: BAM     $BAM
+        CONSREF $CONSREF
+        PRIOR   $PRIOR
+        TRUTH   $TRUTH
+Per-arm work files (git-ignored): $WORK/{default,nosoftclip}/
+EOF
+}
+if [ "$3" = "--dict-only" ]; then write_dict --backfill --replace; exit 0; fi
+
 for f in "$BAM" "$CONSREF" "$PRIOR" "$TRUTH"; do
     [ -s "$f" ] || { echo "ERROR: missing input $f"; exit 1; }
 done
-WORK=data/s04-softclip/$D/iter$K
-OUT=analyses/s04-softclip/results/softclip-toggle-$D-iter$K.csv
 LEN=$(cut -f2 "$CONSREF".fai | head -1); CHUNK=$(( (LEN + N - 1) / N ))
 
 # call gatk on the iter-K BAM (against consensus_{K-1}), build cumulative recovered, score vs truth
@@ -81,4 +110,5 @@ call_and_score nosoftclip "--dont-use-soft-clipped-bases"
 head -1 "$WORK"/default/score-vcf-summary.csv > "$OUT"
 tail -n +2 "$WORK"/default/score-vcf-summary.csv    >> "$OUT"
 tail -n +2 "$WORK"/nosoftclip/score-vcf-summary.csv >> "$OUT"
+write_dict
 echo "WROTE $OUT"; column -t -s, "$OUT"

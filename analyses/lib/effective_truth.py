@@ -24,6 +24,8 @@ import subprocess
 
 import pysam
 
+import provenance                       # shared provenance block for the data dictionaries
+
 
 def load_snps(vcf_path):
     """Return sorted [(pos0, ref, alt, is_het)] for biallelic SNP truth sites (both 1|1 and 0|1)."""
@@ -41,6 +43,58 @@ def load_snps(vcf_path):
     return out
 
 
+# Written into every dictionary of this tool's outputs (and of tables derived from them).
+ARTIFACT_NOTE = ("KNOWN ARTIFACT (found 2026-10-22): most sites flagged phantom here are NOT phantoms. "
+                 "mason -oa writes dense SNP clusters in the truth BAM as gapped 1D..1I CIGAR pairs, so "
+                 "reading bases through those CIGARs puts them at shifted positions and real alt sites "
+                 "look all-reference; bwa-mapped reads carry the alt at most of them. Do not use these "
+                 "counts or the effective truth until the scan compares read SEQUENCES to the truth "
+                 "haplotype instead.")
+
+
+def write_dictionaries(a, notes):
+    """Dictionaries for <prefix>-phantom.tsv, -effective.vcf.gz and -summary.csv. With --dicts-only
+    they document existing outputs (backfill) under the ORIGINAL command."""
+    def hdr(table):
+        notes_all = [ARTIFACT_NOTE] + list(notes)
+        if a.dicts_only:
+            return provenance.header(table, command=a.dicts_only, backfill=True, notes=notes_all)
+        return provenance.header(table, notes=notes_all)
+
+    method = ("Method: one pass over the mason -oa truth BAM (%s); for every biallelic truth SNP (1|1\n"
+              "and 0|1) the base each primary read presents at the SNP is tallied as alt / ref / other.\n"
+              "A SNP with truth-read depth >= %d and alt fraction < %.2f is flagged phantom; depth < %d\n"
+              "leaves it unclassified (kept as truth). Truth VCF: %s.\n\n"
+              % (a.truth_bam, a.min_depth, a.alt_frac, a.min_depth, a.truth_vcf))
+    ph = a.out_prefix + "-phantom.tsv"
+    with open(ph + ".dict.txt", "w") as d:
+        d.write(hdr(ph) + method)
+        d.write("One row per flagged phantom SNP (tab-separated).\n\nFields:\n"
+                "  pos       : 1-based reference position\n"
+                "  ref, alt  : truth alleles\n"
+                "  zyg       : div (hom-div 1|1) | het (0|1)\n"
+                "  depth     : truth-BAM reads presenting a base at pos\n"
+                "  alt_count : of those, presenting the alt base\n"
+                "  alt_frac  : alt_count / depth\n")
+    eff = a.out_prefix + "-effective.vcf.gz"
+    with open(eff + ".dict.txt", "w") as d:
+        d.write(hdr(eff) + method)
+        d.write("The truth VCF with the flagged phantom SNP records removed; every other record (incl.\n"
+                "indels and multiallelics) passed through unchanged. bgzipped + tabix-indexed.\n")
+    sm = a.out_prefix + "-summary.csv"
+    with open(sm + ".dict.txt", "w") as d:
+        d.write(hdr(sm) + method)
+        d.write("One row (this region / divergence / seed).\n\nFields:\n"
+                "  region, divergence, seed : condition labels\n"
+                "  n_truth_snp       : biallelic truth SNPs (div + het)\n"
+                "  n_truth_div, n_truth_het : of those, hom-div (1|1) / het (0|1)\n"
+                "  n_phantom_div, n_phantom_het : flagged phantom, by zygosity\n"
+                "  phantom_div_rate  : n_phantom_div / n_truth_div\n"
+                "  phantom_het_rate  : n_phantom_het / n_truth_het\n"
+                "  n_lowcov          : SNPs with truth-read depth < min depth (unclassified)\n"
+                "  mean_alt_frac     : mean alt fraction over the classified SNPs\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--truth-bam", required=True, help="mason -oa truth BAM (reads at TRUE positions)")
@@ -53,7 +107,17 @@ def main():
     ap.add_argument("--alt-frac", type=float, default=0.10,
                     help="alt-allele fraction below which the alt is 'absent' -> phantom (default 0.10)")
     ap.add_argument("--out-prefix", required=True)
+    ap.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
+                    help="write ONLY the data dictionaries for existing outputs (same arguments as the "
+                         "run that made them), recording ORIGINAL_COMMAND as provenance")
+    ap.add_argument("--dict-note", action="append", default=[],
+                    help="extra provenance note for the dictionaries (repeatable)")
     a = ap.parse_args()
+
+    # --dicts-only: document existing outputs without recomputing them
+    if a.dicts_only:
+        write_dictionaries(a, a.dict_note)
+        return
 
     snps = load_snps(a.truth_vcf)
     poslist = [p for p, _, _, _ in snps]
@@ -134,6 +198,7 @@ def main():
                 f"{n_phantom_div / n_div if n_div else 0:.5f},"
                 f"{n_phantom_het / n_het if n_het else 0:.5f},"
                 f"{n_lowcov},{alt_frac_sum / n_scored if n_scored else 0:.4f}\n")
+    write_dictionaries(a, a.dict_note)
     print(f"div phantom {n_phantom_div}/{n_div} ({100 * n_phantom_div / max(1, n_div):.2f}%), "
           f"het phantom {n_phantom_het}/{n_het} ({100 * n_phantom_het / max(1, n_het):.2f}%); "
           f"wrote {a.out_prefix}-effective.vcf.gz")

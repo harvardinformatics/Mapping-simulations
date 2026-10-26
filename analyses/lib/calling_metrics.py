@@ -29,6 +29,7 @@ import argparse
 import gzip
 import numpy as np
 import pysam
+import provenance                       # shared provenance block for the data dictionaries
 
 
 def parse_args():
@@ -133,7 +134,7 @@ def main():
                        (int(di) if np.isfinite(di) else big), snp_d[i], hp_frac[i]))
 
     with open(a.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % a.out)
+        d.write(provenance.header(a.out))
         d.write("Per divergent (1|1) SNP: local CALLING-side covariates (window +/- %d bp).\n\n" % W)
         d.write("Fields:\n")
         d.write("  divergence      : condition label\n")

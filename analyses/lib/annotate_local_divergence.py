@@ -39,6 +39,7 @@ import numpy as np
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # allow import of sibling module
 import divergence_field as dfield
+import provenance                       # shared provenance block for the data dictionaries
 
 
 def parse_args():
@@ -102,7 +103,7 @@ def main():
             out.write("\t".join(row) + "\n")
 
     with open(args.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % args.out)
+        d.write(provenance.header(args.out))
         d.write("One row per FIXED-divergence (1|1) truth SNP, with its measured local\n")
         d.write("divergence at each window scale. Downstream s05 tables join on POS.\n\n")
         d.write("Fields:\n")

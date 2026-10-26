@@ -27,6 +27,9 @@ import gzip
 import argparse
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+import provenance                       # shared provenance block for the data dictionaries
+
 # 3 monotone bins: unique, moderately repetitive, highly repetitive. (Finer splits of the
 # sparse middle are non-monotone -- the exactly-2-copy class behaves oddly -- so we keep
 # the robust three-way contrast.)
@@ -136,7 +139,7 @@ def main():
             out.write("%s,%s,%s,%s,%d,%d,%d,%.6g\n" % r)
 
     with open(a.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % a.out)
+        d.write(provenance.header(a.out))
         d.write("s08 multi-mapping confounder: SNP recovery binned by local reference\n")
         d.write("mappability (GenMap K=100 E=2 on chr19). One row per (caller, divergence,\n")
         d.write("iteration, mappability bin). s01 SNP-only data.\n\n")

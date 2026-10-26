@@ -25,6 +25,7 @@ import pysam
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 import divergence_field as dfield
+import provenance                       # shared provenance block for the data dictionaries
 
 
 def parse_args():
@@ -44,7 +45,49 @@ def parse_args():
     p.add_argument("--hist-max", type=float, default=0.60, help="local-D histogram top edge")
     p.add_argument("--windows", nargs="+", default=["150", "500"])
     p.add_argument("--out-prefix", required=True)
+    p.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
+                   help="write ONLY the data dictionaries for existing outputs (same arguments as the "
+                        "run that made them), recording ORIGINAL_COMMAND as provenance")
+    p.add_argument("--dict-note", action="append", default=[],
+                   help="extra provenance note for the dictionaries (repeatable)")
     return p.parse_args()
+
+
+def write_dictionaries(args):
+    """One data dictionary per output table. With --dicts-only they document existing tables
+    (backfill) under the ORIGINAL command."""
+    def hdr(table):
+        if args.dicts_only:
+            return provenance.header(table, command=args.dicts_only, backfill=True, notes=args.dict_note)
+        return provenance.header(table, notes=args.dict_note)
+
+    sites = ("Sites: each config's FIXED-divergence (1|1) truth SNPs, with local divergence from\n"
+             "its mm39-truth-locald.tsv (annotate_local_divergence.py). Configs: %s.\n\n"
+             % ", ".join(args.configs))
+    land = args.out_prefix + "-landscape.csv"
+    with open(land + ".dict.txt", "w") as d:
+        d.write(hdr(land) + sites)
+        d.write("Local divergence along chr%s in %d-bp bins; one row per (config, bin).\n\n"
+                % (args.region, args.bin_size))
+        d.write("Fields:\n")
+        d.write("  field/corr_len/sigma : divergence-field config tag L{corr_len}-S{sigma}[-C{cap}]\n")
+        d.write("                         (mean D fixed at %s)\n" % args.div)
+        d.write("  bin_center           : bp center of the bin\n")
+        d.write("  local_divergence     : divergent sites per ELIGIBLE (non-N) base in the bin\n")
+        d.write("  valid                : 1 if the bin is >=50% non-N (else density is meaningless)\n")
+    dist = args.out_prefix + "-localdist.csv"
+    with open(dist + ".dict.txt", "w") as d:
+        d.write(hdr(dist) + sites)
+        d.write("Histogram of per-site local divergence; one row per (config, window, bin).\n\n")
+        d.write("Fields:\n")
+        d.write("  field/corr_len/sigma : divergence-field config (as above)\n")
+        d.write("  window     : local-D window half-size in bp (150 = read scale, 500 = fragment)\n")
+        d.write("  locald_mid : histogram bin midpoint; bins are %.2g wide from 0 to %.2g, plus a\n"
+                % (args.hist_step, args.hist_max))
+        d.write("               '>%.2g' overflow row\n" % args.hist_max)
+        d.write("  n_sites    : truth divergent SNP sites with local divergence in that bin\n\n")
+        d.write("The homogeneous control (sigma=0) concentrates near the mean; larger sigma\n")
+        d.write("spreads sites across a wide range of local divergence (the heterogeneity).\n")
 
 
 def parse_field(tag):
@@ -71,6 +114,10 @@ def load_locald(path, windows):
 
 def main():
     args = parse_args()
+    # --dicts-only: document existing outputs without recomputing them
+    if args.dicts_only:
+        write_dictionaries(args)
+        return
 
     # reference length + eligible (non-N) positions, once
     fa = pysam.FastaFile(args.reference)
@@ -120,20 +167,7 @@ def main():
         for r in dist_rows:
             out.write("%s,%s,%s,%s,%s,%d\n" % r)
 
-    # shared data dictionary
-    with open(args.out_prefix + "-landscape.csv.dict.txt", "w") as d:
-        d.write("Data dictionaries for %s-{landscape,localdist}.csv\n\n" % args.out_prefix)
-        d.write("landscape.csv -- local divergence along chr%s in %d-bp bins:\n" % (args.region, args.bin_size))
-        d.write("  field/corr_len/sigma : divergence-field config (mean D fixed at %s)\n" % args.div)
-        d.write("  bin_center           : bp center of the bin\n")
-        d.write("  local_divergence     : divergent sites per ELIGIBLE (non-N) base in the bin\n")
-        d.write("  valid                : 1 if the bin is >=50%% non-N (else density is meaningless)\n\n")
-        d.write("localdist.csv -- distribution of per-site local divergence:\n")
-        d.write("  window     : local-D window half-size (150 read, 500 fragment)\n")
-        d.write("  locald_mid : local-divergence histogram bin midpoint (or '>%.2g' overflow)\n" % args.hist_max)
-        d.write("  n_sites    : truth divergent SNP sites with local divergence in that bin\n\n")
-        d.write("The homogeneous control (sigma=0) concentrates near the mean; larger sigma\n")
-        d.write("spreads sites across a wide range of local divergence (the heterogeneity).\n")
+    write_dictionaries(args)
 
     sys.stderr.write("# landscape rows=%d  localdist rows=%d\n" % (len(land_rows), len(dist_rows)))
 

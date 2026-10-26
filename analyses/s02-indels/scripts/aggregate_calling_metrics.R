@@ -7,7 +7,7 @@
 #
 # Inputs:
 #   analyses/s02-indels/results/calling-metrics/calling-metrics.csv   (per-SNP static covariates)
-#   analyses/s02-indels/results/vrf-pileup/vrf-pileup-<caller>.csv     (per-SNP call fate + alt_p)
+#   analyses/s02-indels/results/vrf-pileup/vrf-pileup-<caller>-<D>.csv (per-SNP call fate + alt_p)
 #
 # Outputs (mean + SE of each covariate, per caller x divergence x fate x metric):
 #   calling-metrics-by-fate.csv      -- SINGLE-SHOT fate (iter1): recovered / calling-limited

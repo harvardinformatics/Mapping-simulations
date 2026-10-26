@@ -12,6 +12,23 @@ BASE=data/s01-baseline-iterative
 OUT=analyses/s01-baseline-iterative/results/effective-truth
 mkdir -p "$OUT"
 
+# data dictionary for the combined phantom-by-divergence.csv (the per-divergence outputs get theirs
+# from effective_truth.py). Optional $1 = --backfill (table exists, not being regenerated).
+# `bash analyses/s01-baseline-iterative/run_effective_truth.sh --dict-only` writes only this dictionary.
+write_dict() {
+    python analyses/lib/provenance.py --table "$OUT/phantom-by-divergence.csv" \
+        --script analyses/s01-baseline-iterative/run_effective_truth.sh \
+        --command "bash analyses/s01-baseline-iterative/run_effective_truth.sh" \
+        --note "$(python -c 'import sys; sys.path.insert(0, "analyses/lib"); import effective_truth; print(effective_truth.ARTIFACT_NOTE)')" \
+        "$@" <<EOT
+The per-divergence eff-<D>-summary.csv tables (effective_truth.py, D = 0.04 0.06 0.08 0.10, seed
+$SEED) concatenated under one header, one row per divergence that had a truth BAM and truth VCF.
+
+Fields: identical to eff-<D>-summary.csv; see eff-<D>-summary.csv.dict.txt next to this file.
+EOT
+}
+if [ "${1:-}" = "--dict-only" ]; then write_dict --backfill --replace; exit 0; fi
+
 for D in 0.04 0.06 0.08 0.10; do
     TB=data/varfate/$D/truth.oa.bam
     NT=$BASE/sim/30X/19/$D/0.005/$SEED/mm39-truth.norm.vcf.gz
@@ -26,5 +43,6 @@ head -1 "$OUT"/eff-0.10-summary.csv > "$OUT/phantom-by-divergence.csv"
 for D in 0.04 0.06 0.08 0.10; do
     [ -s "$OUT/eff-$D-summary.csv" ] && tail -n +2 "$OUT/eff-$D-summary.csv" >> "$OUT/phantom-by-divergence.csv"
 done
+write_dict
 echo "### combined -> $OUT/phantom-by-divergence.csv ###"
 column -t -s, "$OUT/phantom-by-divergence.csv"

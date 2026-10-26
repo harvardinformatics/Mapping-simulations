@@ -24,9 +24,40 @@ import gzip
 import bisect
 import argparse
 import pysam
+import provenance                       # shared provenance block for the data dictionaries
 
 BASE_IDX = {"A": 0, "C": 1, "G": 2, "T": 3}
 NBINS = 10
+# columns of the -ab-summary.csv table
+COLUMNS = (("region", "coverage", "divergence", "heterozygosity", "seed", "caller", "iteration",
+            "n_het", "n_covered", "n_nocov", "lift_fail", "mean_depth",
+            "mean_raf", "frac_ref_biased", "frac_alt_dropout")
+           + tuple("raf_b%d" % i for i in range(NBINS)))
+
+
+def field_definitions(min_mapq=None, min_baseq=None, dropout_alt_frac=None):
+    """Column definitions of the -ab-summary.csv table. A function (not a constant) because the
+    thresholds are run arguments; combine_summaries.py calls it without them, for the combined
+    (committed) tables, and the text then names the arguments instead of their values."""
+    mapq = "%d" % min_mapq if min_mapq is not None else "--min-mapq (default 20)"
+    baseq = "%d" % min_baseq if min_baseq is not None else "--min-baseq (default 13)"
+    drop = ("%.2f" % dropout_alt_frac if dropout_alt_frac is not None
+            else "--dropout-alt-frac (default 0.2)")
+    return ("Reference-allele bias at true heterozygous SNP sites, from the pileup.\n"
+            "RAF = ref_reads/(ref_reads+alt_reads); truth = 0.5, reference bias => RAF > 0.5.\n"
+            "MAPQ >= %s, base quality >= %s; iter>1 positions lifted via --chain.\n\n" % (mapq, baseq) +
+            "region,coverage,divergence,heterozygosity,seed : simulation condition\n"
+            "caller          : variant caller whose consensus this iteration mapped to\n"
+            "iteration       : mapping iteration (1 = single-shot map to the reference)\n"
+            "n_het           : het SNP sites in the truth\n"
+            "n_covered       : het sites with >=1 informative (ref or alt) read (RAF computed)\n"
+            "n_nocov         : het sites with 0 informative reads (fully uncovered)\n"
+            "lift_fail       : het positions that did not lift (chain gap); 0 without --chain\n"
+            "mean_depth      : mean informative depth at covered het sites\n"
+            "mean_raf        : mean reference-allele fraction (0.5 = unbiased, >0.5 = ref bias)\n"
+            "frac_ref_biased : fraction of covered het sites with RAF > 0.5\n"
+            "frac_alt_dropout: fraction of covered het sites with alt fraction < %s (near-lost)\n" % drop +
+            "raf_b0..raf_b9  : histogram of RAF over covered sites, bins [0,0.1),...,[0.9,1.0]\n")
 
 
 def parse_args():
@@ -145,10 +176,7 @@ def main():
     frac_ref_biased = ref_biased / n_cov if n_cov else 0.0
     frac_dropout = dropout / n_cov if n_cov else 0.0
 
-    head = (["region", "coverage", "divergence", "heterozygosity", "seed", "caller", "iteration",
-             "n_het", "n_covered", "n_nocov", "lift_fail", "mean_depth",
-             "mean_raf", "frac_ref_biased", "frac_alt_dropout"]
-            + ["raf_b%d" % i for i in range(NBINS)])
+    head = list(COLUMNS)
     row = ([args.region, args.coverage, args.divergence, args.heterozygosity, args.seed,
             args.caller, args.iteration, n_het, n_cov, n_nocov, lift_fail,
             "%.2f" % mean_depth, "%.6f" % mean_raf, "%.6f" % frac_ref_biased, "%.6f" % frac_dropout]
@@ -160,21 +188,8 @@ def main():
         out.write(",".join(str(x) for x in row) + "\n")
 
     with open(args.out_prefix + "-ab-summary.dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n" % csv_path)
-        d.write("Reference-allele bias at true heterozygous SNP sites, from the pileup.\n")
-        d.write("RAF = ref_reads/(ref_reads+alt_reads); truth = 0.5, reference bias => RAF > 0.5.\n")
-        d.write("MAPQ >= %d, base quality >= %d; iter>1 positions lifted via --chain.\n\n"
-                % (args.min_mapq, args.min_baseq))
-        d.write("n_het           : het SNP sites in the truth\n")
-        d.write("n_covered       : het sites with >=1 informative (ref or alt) read (RAF computed)\n")
-        d.write("n_nocov         : het sites with 0 informative reads (fully uncovered)\n")
-        d.write("lift_fail       : het positions that did not lift (chain gap); 0 without --chain\n")
-        d.write("mean_depth      : mean informative depth at covered het sites\n")
-        d.write("mean_raf        : mean reference-allele fraction (0.5 = unbiased, >0.5 = ref bias)\n")
-        d.write("frac_ref_biased : fraction of covered het sites with RAF > 0.5\n")
-        d.write("frac_alt_dropout: fraction of covered het sites with alt fraction < %.2f (near-lost)\n"
-                % args.dropout_alt_frac)
-        d.write("raf_b0..raf_b9  : histogram of RAF over covered sites, bins [0,0.1),...,[0.9,1.0]\n")
+        d.write(provenance.header(csv_path))
+        d.write(field_definitions(args.min_mapq, args.min_baseq, args.dropout_alt_frac))
 
     print("caller=%s iter=%s div=%s het=%s: n_covered=%d mean_RAF=%.4f frac_ref_biased=%.3f "
           "frac_dropout=%.3f mean_depth=%.1f" %

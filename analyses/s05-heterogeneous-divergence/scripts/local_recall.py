@@ -27,6 +27,9 @@ import gzip
 import argparse
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+import provenance                       # shared provenance block for the data dictionaries
+
 # Local-divergence bin edges (sites/bp). Finer through the 0.05-0.30 transition
 # where recovery falls off; the last bin catches the diverged cores.
 BIN_EDGES = [0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.13, 0.16, 0.20, 0.25, 0.30,
@@ -140,7 +143,7 @@ def main():
             out.write("%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%.6g\n" % r)
 
     with open(args.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % args.out)
+        d.write(provenance.header(args.out))
         d.write("s05 SNP recovery binned by measured local divergence.\n")
         d.write("One row per (field config, caller, iteration, window, local-D bin), plus\n")
         d.write("a window='all' whole-config cross-check row per (config, caller, iteration).\n\n")

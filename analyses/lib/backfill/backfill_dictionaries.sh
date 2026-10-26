@@ -1,0 +1,166 @@
+#!/bin/bash
+# backfill_dictionaries.sh -- the record of how the data dictionaries of OLDER outputs were written.
+#
+# Tables made before provenance tracking (2026-10-26) had no dictionary, or one without its producing
+# command. This script writes those dictionaries WITHOUT regenerating any table: each producing tool
+# or run script is called in its dictionary-only mode with the command that ORIGINALLY made the table
+# (recovered from the run scripts and the session log), so each dictionary starts with a "backfill"
+# provenance block. It is kept so the dictionaries' own origin is reproducible; re-running it rewrites
+# the same dictionaries. New runs of the tools write their dictionaries themselves.
+#
+# Verifications noted below ("reproduces ... byte for byte") were done by re-running the current code
+# into a scratch directory and comparing with cmp; the tables in the repo were not touched.
+#
+# Run from the project root:  bash analyses/lib/backfill/backfill_dictionaries.sh
+set -eo pipefail
+source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh
+conda activate mapping-sims
+set -u
+cd /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations
+n=0
+step() { n=$((n + 1)); }
+
+# ---------------------------------------------------------------------------------------------------
+# 1. variant_read_fate.py outputs (s01-s03 trajectory + per-site pileup tables; s05 pileup tables)
+# ---------------------------------------------------------------------------------------------------
+V=analyses/lib/variant_read_fate.py
+for s in s01-baseline-iterative s02-indels s03-heterozygosity; do
+    het=""; [ $s = s03-heterozygosity ] && het="--het"
+    # aggregate trajectory tables (full chromosome, --sample 0), one job per caller x D
+    for g in analyses/$s/results/vrf-agg/*-gtraj.csv; do
+        b=$(basename "$g" -gtraj.csv); C=$(echo "$b" | cut -d- -f3); D=$(echo "$b" | cut -d- -f4)
+        python $V --dicts-only "cd analyses/$s && sbatch run_vrf_aggregate.sh $C $D" \
+            --aggregate $het --sample 0 --divergence "$D" --caller "$C" \
+            --out "analyses/$s/results/vrf-agg/vrf-agg-$C-$D"; step
+    done
+    # per-site pileup ledgers (30,000 sampled SNPs), one job per caller x D
+    for f in analyses/$s/results/vrf-pileup/vrf-pileup-*.csv; do
+        b=$(basename "$f" .csv); C=$(echo "$b" | cut -d- -f3); D=$(echo "$b" | cut -d- -f4)
+        python $V --dicts-only "cd analyses/$s && sbatch run_vrf_pileup.sh $C $D" \
+            --pileup $het --sample 30000 --divergence "$D" --caller "$C" --out "$f"; step
+    done
+done
+# s05: one job per caller; field config and mean D are fixed inside each run script
+S5=analyses/s05-heterogeneous-divergence
+for C in gatk bcftools freebayes; do
+    python $V --dicts-only "cd $S5 && sbatch run_vrf_pileup.sh $C" --pileup --sample 50000 \
+        --divergence 0.06 --caller $C --out $S5/results/vrf-pileup/vrf-pileup-$C.csv; step
+    python $V --dicts-only "cd $S5 && sbatch run_vrf_pileup_capped.sh $C" --pileup --sample 50000 \
+        --divergence 0.03 --caller $C --out $S5/results/vrf-pileup-capped/vrf-pileup-$C.csv; step
+done
+
+# ---------------------------------------------------------------------------------------------------
+# 2. neighborhood_assembly.py (s01, s03: made 2026-08-06 by an earlier version; s02: current version)
+# ---------------------------------------------------------------------------------------------------
+NB=analyses/lib/neighborhood_assembly.py
+OLDNB="made 2026-08-06 by an earlier version of neighborhood_assembly.py that did not yet write the n_neighbor_truth_indel / n_unrecovered_indel columns; the current version reproduces neighborhood-summary.csv and every other per-SNP column byte for byte (checked 2026-10-26)"
+nb_dicts() {   # section, truth-data section, extra args...
+    local s=$1 t=$2; shift 2
+    python $NB --dicts-only "bash analyses/$s/run_neighborhood.sh" \
+        --truth "data/$t/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz" \
+        --recovered "data/$t/iter/{C}/30X/19/{D}/0.005/42/iter{k}/$REC" \
+        --pile "analyses/$s/results/vrf-pileup/vrf-pileup-{C}-{D}.csv" \
+        --out "analyses/$s/results/neighborhood" --divs 0.06,0.08,0.10 "$@"; step
+}
+REC=mm39_recovered.vcf.gz
+nb_dicts s01-baseline-iterative s01-baseline-iterative --dict-note "$OLDNB"
+nb_dicts s03-heterozygosity s01-baseline-iterative --dict-note "$OLDNB"
+# s02: keep the existing hand-written per-SNP dictionary (it carries an interpretation section)
+REC=mm39_recovered.acc.vcf.gz
+nb_dicts s02-indels s02-indels --dicts-only-table summary
+
+# ---------------------------------------------------------------------------------------------------
+# 3. tables assembled by run scripts (dictionary-only modes of the scripts themselves)
+# ---------------------------------------------------------------------------------------------------
+bash analyses/s03-heterozygosity/run_altbias_mechanism.sh --dict-only; step
+for D in 0.06 0.10; do
+    bash analyses/s04-softclip/run_softclip_toggle.sh $D --dict-only; step
+    for K in 2 3; do bash analyses/s04-softclip/run_softclip_toggle_iter.sh $D $K --dict-only; step; done
+done
+bash analyses/s02-indels/run_calling_metrics.sh --dict-only \
+    --note "made 2026-08-13 by an equivalent ad hoc loop over the same three calling_metrics.py commands, ~2 h before this script was written; the current calling_metrics.py reproduces calling-metrics-0.06.csv byte for byte (checked 2026-10-26)"; step
+bash analyses/s01-baseline-iterative/run_effective_truth.sh --dict-only; step
+bash analyses/s02-indels/run_effective_truth.sh --dict-only; step
+
+# ---------------------------------------------------------------------------------------------------
+# 4. section scripts run with ad hoc commands (commands recovered from the session log)
+# ---------------------------------------------------------------------------------------------------
+LL=$S5/scripts/local_landscape.py
+REF5=data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa
+CHK5="the current local_landscape.py reproduces both tables byte for byte (checked 2026-10-26)"
+python $LL --data-dir data/s05-heterogeneous-divergence --reference $REF5 \
+    --configs L20000-S0.0 L2000-S1.0 L20000-S1.0 L200000-S1.0 L20000-S2.0 --out-prefix $S5/results/s05 \
+    --dicts-only "python $LL --data-dir data/s05-heterogeneous-divergence --reference $REF5 --configs L20000-S0.0 L2000-S1.0 L20000-S1.0 L200000-S1.0 L20000-S2.0 --out-prefix $S5/results/s05" \
+    --dict-note "ad hoc command (2026-08-08), made by a version of the script edited afterwards; $CHK5"; step
+python $LL --data-dir data/s05-heterogeneous-divergence --reference $REF5 --div 0.03 \
+    --configs L20000-S0.0 L20000-S1.0-C0.20 --out-prefix $S5/results/s05-realistic \
+    --dicts-only "python $LL --data-dir data/s05-heterogeneous-divergence --reference $REF5 --div 0.03 --configs L20000-S0.0 L20000-S1.0-C0.20 --out-prefix $S5/results/s05-realistic" \
+    --dict-note "ad hoc command (2026-08-09); $CHK5"; step
+SV=analyses/s07-svs/scripts/sv_confounder.py
+python $SV --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv \
+    --dicts-only "python $SV --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv"; step
+
+# ---------------------------------------------------------------------------------------------------
+# 5. phantom-site outputs (git-ignored; KNOWN ARTIFACT -- the tools write the warning into every one)
+# ---------------------------------------------------------------------------------------------------
+ET=analyses/lib/effective_truth.py
+for D in 0.04 0.06 0.08 0.10; do
+    S1=data/s01-baseline-iterative/sim/30X/19/$D/0.005/42
+    python $ET --truth-bam data/varfate/$D/truth.oa.bam --truth-vcf $S1/mm39-truth.norm.vcf.gz \
+        --region 19 --divergence $D --seed 42 \
+        --out-prefix analyses/s01-baseline-iterative/results/effective-truth/eff-$D \
+        --dicts-only "bash analyses/s01-baseline-iterative/run_effective_truth.sh"; step
+    S2=data/s02-indels/sim/30X/19/$D/0.005/42
+    python $ET --truth-bam $S2/mm39-truth.oa.bam --truth-vcf $S2/mm39-truth.norm.vcf.gz \
+        --region 19 --divergence $D --seed 42 \
+        --out-prefix analyses/s02-indels/results/effective-truth/eff-$D \
+        --dicts-only "bash analyses/s02-indels/run_effective_truth.sh"; step
+done
+PA=analyses/lib/phantom_adjacency.py
+for s in s01-baseline-iterative s02-indels; do
+    args=(--truth "data/$s/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz"
+          --phantom "analyses/$s/results/effective-truth/eff-{D}-phantom.tsv"
+          --out analyses/$s/results/effective-truth/phantom-adjacency.csv --divs 0.04,0.06,0.08,0.10)
+    python $PA "${args[@]}" --dicts-only "python $PA ${args[*]}"; step
+done
+
+# ---------------------------------------------------------------------------------------------------
+# 6. orphans: tables whose producing code is no longer (or was never) in the repo as it ran
+# ---------------------------------------------------------------------------------------------------
+# 6a. codified ad hoc tables: the new scripts reproduce them byte for byte
+conda run -n renv Rscript analyses/synthesis/scripts/s01_mapping_vs_calling.R --dict-only; step
+bash analyses/s02-indels/scripts/callvcf_composition.sh --dict-only; step
+
+# 6b. s01-varfate-<D>.csv: made by the 2026-08-04 version of variant_read_fate.py
+for D in 0.04 0.06 0.08 0.10; do
+    python analyses/lib/provenance.py --backfill --replace \
+        --table analyses/s01-baseline-iterative/results/s01-varfate-$D.csv \
+        --script analyses/s01-baseline-iterative/run_variant_read_fate.sh \
+        --command "cd analyses/s01-baseline-iterative && sbatch run_variant_read_fate.sh $D" \
+        --note "made 2026-08-04 with the variant_read_fate.py of that day, whose per-SNP output had the columns below; the current variant_read_fate.py writes a different, finer ledger, so re-running this command now gives a DIFFERENT table. That version was reconstructed from the session log (not re-executed); its header matches this table exactly." <<EOF
+s01 per-variant call fate x read-placement fate, D = $D: for ~8,000 true hom-div (1|1) SNPs (every
+len/8000-th, evenly spaced) and each caller x iteration 1-3, whether the SNP was recovered and where
+the reads that TRULY cover it (by their mason -oa truth-BAM span) were placed by bwa.
+
+Fields:
+  divergence, caller, iteration : condition (iteration 1 = single-shot)
+  snp_pos    : 1-based reference position of the SNP
+  alt        : truth alt allele
+  recovered  : 1 if (position, alt) is in that iteration's recovered VCF, else 0
+  n_reads    : reads truly covering the SNP (sum of the 7 placement classes)
+  exact, shifted, clipped, span_off, mismapped, diff_chr, unmapped : the reads' placement class,
+               as compare_bams.py defines it (tolerance 150 bp; end tolerance 10 bp)
+  p_visible  : reads at the right locus whose aligned blocks contain the SNP position (the caller
+               can see the SNP base)
+  p_clipdel  : reads at the right locus with the SNP position soft-clipped over or deleted
+  p_mismap   : reads placed at the wrong locus (mismapped or other contig)
+  p_unmap    : unmapped reads
+  (p_visible + p_clipdel + p_mismap + p_unmap = n_reads)
+EOF
+    step
+done
+
+# 6c. (removed) pileup_decomp_{summary,bybin}.csv: their dictionaries were backfilled here on
+#     2026-10-26; the tables were then deleted the same day (superseded, nothing read them).
+
+echo "wrote dictionaries in $n steps"

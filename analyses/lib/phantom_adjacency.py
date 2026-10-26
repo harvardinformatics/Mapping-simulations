@@ -20,6 +20,27 @@ import gzip
 import random
 import statistics
 
+import provenance                       # shared provenance block for the data dictionaries
+from effective_truth import ARTIFACT_NOTE   # the phantom flags this reads are mostly an artifact
+
+
+def write_dictionary(a):
+    """Dictionary for the --out table (backfill under the ORIGINAL command with --dicts-only)."""
+    kw = dict(command=a.dicts_only, backfill=True) if a.dicts_only else {}
+    with open(a.out + ".dict.txt", "w") as d:
+        d.write(provenance.header(a.out, notes=[ARTIFACT_NOTE], **kw))
+        d.write("Distance from each phantom-flagged hom-div SNP to the nearest OTHER truth variant (any\n"
+                "type), vs a random sample of non-phantom hom-div SNPs. Phantom flags from %s;\n"
+                "truth VCF %s. Up to %d sites per group (random.seed(1)).\n\n"
+                "One row per (divergence, group).\n\nFields:\n"
+                "  divergence      : simulated divergence D\n"
+                "  group           : phantom | non_phantom\n"
+                "  n               : sites measured\n"
+                "  median_nn_bp    : median distance (bp) to the nearest other truth variant\n"
+                "  mean_nn_bp      : mean of that distance\n"
+                "  frac_within_2bp : fraction of sites with a truth neighbour <= 2 bp away\n"
+                % (a.phantom, a.truth, a.sample))
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -28,7 +49,13 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--divs", default="0.04,0.06,0.08,0.10")
     ap.add_argument("--sample", type=int, default=3000)
+    ap.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
+                    help="write ONLY the data dictionary for an existing --out table, recording "
+                         "ORIGINAL_COMMAND as provenance (backfill)")
     a = ap.parse_args()
+    if a.dicts_only:
+        write_dictionary(a)
+        return
     random.seed(1)
 
     rows = []
@@ -71,6 +98,7 @@ def main():
         out.write("divergence,group,n,median_nn_bp,mean_nn_bp,frac_within_2bp\n")
         for r in rows:
             out.write(",".join(str(x) for x in r) + "\n")
+    write_dictionary(a)
     print(f"wrote {a.out}")
     print(f"{'D':>5} {'group':>12} {'median_nn':>10} {'frac<=2bp':>10}")
     for D, g, n, md, mn, fr in rows:

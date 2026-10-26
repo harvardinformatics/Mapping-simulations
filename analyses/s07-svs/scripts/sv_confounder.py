@@ -30,7 +30,11 @@ import gzip
 import argparse
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+import provenance                       # shared provenance block for the data dictionaries
+
 DIST_EDGES = [0, 50, 100, 150, 250, 400, 700, 1200, 2500, 5000, 10**9]
+FP_WINDOW = 150     # bp: a false positive "near" a breakpoint is within this distance of it
 
 
 def parse_args():
@@ -46,6 +50,9 @@ def parse_args():
     p.add_argument("--callers", nargs="+", default=["gatk", "bcftools", "freebayes"])
     p.add_argument("--iters", nargs="+", default=["1", "2", "3"])
     p.add_argument("--out", required=True)
+    p.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
+                   help="write ONLY the data dictionaries for existing outputs (same --out/--div as the "
+                        "run that made them), recording ORIGINAL_COMMAND as provenance")
     return p.parse_args()
 
 
@@ -153,8 +160,57 @@ def nearest_breakpoint(pos, bp_pos, bp_typ):
     return dist, bp_typ[near_idx]
 
 
+def write_dictionaries(a):
+    """Data dictionaries for <out> (recovery by distance) and <out>-fp.csv (FP enrichment). With
+    --dicts-only they document existing tables (backfill) under the ORIGINAL command."""
+    def hdr(table):
+        if a.dicts_only:
+            return provenance.header(table, command=a.dicts_only, backfill=True)
+        return provenance.header(table)
+
+    with open(a.out + ".dict.txt", "w") as d:
+        d.write(hdr(a.out))
+        d.write("s07 SV-confounder: small-variant recovery vs distance from nearest SV\n")
+        d.write("breakpoint. One row per (caller, iteration, vtype, distance bin).\n\n")
+        d.write("Fields:\n")
+        d.write("  caller, iteration : condition (SNP div background = %s; SVs uncalled)\n" % a.div)
+        d.write("  vtype     : snp | indel (GT 1|1 divergence truth sites)\n")
+        d.write("  bptype    : type of the NEAREST breakpoint -- any | del | ins (does a\n")
+        d.write("              deletion's coverage gap hurt more than an insertion's anchor?)\n")
+        d.write("  dist_lo/hi: distance-to-nearest-SV-breakpoint bin edges (bp); hi=-1 is the\n")
+        d.write("              far/SV-free baseline bin (>= %g bp)\n" % DIST_EDGES[-2])
+        d.write("  dist_mid  : bin midpoint (plotting x); = dist_lo for the baseline bin\n")
+        d.write("  n_sites, n_recovered, recall : truth sites / recovered / recall in the bin\n\n")
+        d.write("SV breakpoints: deletions contribute both ends, insertions their anchor.\n")
+        d.write("Recovery should crater near 0 and rise to the baseline far away.\n")
+
+    fp_out = a.out.replace(".csv", "-fp.csv")
+    W = FP_WINDOW
+    with open(fp_out + ".dict.txt", "w") as d:
+        d.write(hdr(fp_out))
+        d.write("s07 SV-confounder, false-positive side: do SVs also CREATE false calls near their\n")
+        d.write("breakpoints? One row per caller, over the RAW single-shot (iter1) normalized call VCF\n")
+        d.write("(<caller>/.../iter1/mm39_calls.norm.vcf.gz), SNP divergence background = %s.\n" % a.div)
+        d.write("A false positive (FP) is a called SNP/indel whose (POS, REF, ALT) matches no truth\n")
+        d.write("site in truth.norm (SV records excluded). Breakpoints as in the main table.\n\n")
+        d.write("Fields:\n")
+        d.write("  caller                    : variant caller (gatk | bcftools | freebayes)\n")
+        d.write("  n_fp                      : FP calls on the contig\n")
+        d.write("  frac_fp_within_%dbp       : fraction of those FPs within %d bp of a breakpoint\n" % (W, W))
+        d.write("  genomic_frac_within_%dbp  : fraction of the contig within %d bp of a breakpoint,\n" % (W, W))
+        d.write("                              approximated as n_breakpoints * 2 * %d / contig length\n" % W)
+        d.write("                              (breakpoints are sparse, so windows ~never overlap)\n")
+        d.write("  enrichment                : frac_fp_within / genomic_frac_within; 1 = no excess\n")
+        d.write("                              of FPs near breakpoints, > 1 = SVs create false calls\n")
+        d.write("A caller is absent when its iter1 call VCF does not exist or it has no FPs.\n")
+
+
 def main():
     a = parse_args()
+    # --dicts-only: document existing outputs without recomputing them
+    if a.dicts_only:
+        write_dictionaries(a)
+        return
     sim = os.path.join(a.data_dir, "sim", a.cov + "X", a.region, a.div, a.het, a.seed)
     bp_pos, bp_typ = load_sv_breakpoints(os.path.join(sim, a.ref_str + "-truth.vcf.gz"))
     if bp_pos.size == 0:
@@ -207,7 +263,7 @@ def main():
     # --- FP enrichment near breakpoints (single-shot iter1 raw calls) -----------
     # Do SVs also CREATE false calls near breakpoints? Compare the fraction of a
     # caller's FPs within W bp of a breakpoint to the genomic fraction that close.
-    W = 150
+    W = FP_WINDOW
     L = contig_length(a.data_dir, a.ref_str, a.region)
     truth_all = np.array(sorted(load_keyset(
         os.path.join(sim, a.ref_str + "-truth.norm.vcf.gz"), exclude_sv=True)))
@@ -234,24 +290,10 @@ def main():
         for r in fp_rows:
             out.write("%s,%d,%.6g,%.6g,%.4g\n" % r)
 
-    with open(a.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % a.out)
-        d.write("s07 SV-confounder: small-variant recovery vs distance from nearest SV\n")
-        d.write("breakpoint. One row per (caller, iteration, vtype, distance bin).\n\n")
-        d.write("Fields:\n")
-        d.write("  caller, iteration : condition (SNP div background = %s; SVs uncalled)\n" % a.div)
-        d.write("  vtype     : snp | indel (GT 1|1 divergence truth sites)\n")
-        d.write("  bptype    : type of the NEAREST breakpoint -- any | del | ins (does a\n")
-        d.write("              deletion's coverage gap hurt more than an insertion's anchor?)\n")
-        d.write("  dist_lo/hi: distance-to-nearest-SV-breakpoint bin edges (bp); hi=-1 is the\n")
-        d.write("              far/SV-free baseline bin (>= %g bp)\n" % DIST_EDGES[-2])
-        d.write("  dist_mid  : bin midpoint (plotting x); = dist_lo for the baseline bin\n")
-        d.write("  n_sites, n_recovered, recall : truth sites / recovered / recall in the bin\n\n")
-        d.write("SV breakpoints: deletions contribute both ends, insertions their anchor.\n")
-        d.write("Recovery should crater near 0 and rise to the baseline far away.\n")
+    write_dictionaries(a)
 
     sys.stderr.write("# %d breakpoints, %d truth sites (%d snp, %d indel); %d rows\n"
-                     % (bps.size, len(keys), int((vtypes == "snp").sum()),
+                     % (bp_pos.size, len(keys), int((vtypes == "snp").sum()),
                         int((vtypes == "indel").sum()), len(rows)))
 
 

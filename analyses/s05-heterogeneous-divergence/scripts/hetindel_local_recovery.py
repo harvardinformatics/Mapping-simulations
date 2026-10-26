@@ -31,6 +31,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 import divergence_field as dfield
+import provenance                       # shared provenance block for the data dictionaries
 
 BIN_EDGES = [0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.13, 0.16, 0.20, 0.25, 0.30,
              0.40, 0.60, 1.01]
@@ -139,7 +140,7 @@ def main():
             out.write("%s,%s,%s,%s,%s,%s,%d,%d,%.6g\n" % r)
 
     with open(a.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n\n" % a.out)
+        d.write(provenance.header(a.out))
         d.write("s05 het-indels: SNP and indel recovery binned by local divergence.\n")
         d.write("One row per (caller, iteration, vtype, local-D bin). Window = +/-%d bp.\n\n" % a.window)
         d.write("Fields:\n")

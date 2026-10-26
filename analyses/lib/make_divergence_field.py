@@ -30,6 +30,7 @@ import pysam
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # allow import of sibling module
 import divergence_field as dfield
+import provenance                       # shared provenance block for the data dictionaries
 
 
 def parse_args():
@@ -138,7 +139,8 @@ def main():
                 % (np.mean(vrate < 0.5 * vrate.mean())))
 
     with open(args.out_prefix + "-summary.txt.dict.txt", "w") as d:
-        d.write("Data dictionary for %s-{landscape.tsv,localdist.tsv,summary.txt}\n\n"
+        d.write(provenance.header(args.out_prefix + "-summary.txt"))
+        d.write("Covers all three outputs: %s-{landscape.tsv,localdist.tsv,summary.txt}\n\n"
                 % args.out_prefix)
         d.write("Purpose: validation of the s05 continuous autocorrelated divergence\n")
         d.write("landscape produced by divergence_field.build_weights (same code path\n")

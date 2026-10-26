@@ -59,6 +59,7 @@ import pysam
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # allow import of sibling module
 import divergence_field as dfield
+import provenance                       # shared provenance block for the data dictionaries
 
 BASES = "ACGT"
 ALT_CHOICES = {"A": "CGT", "C": "AGT", "G": "ACT", "T": "ACG"}  # SNP alternates
@@ -365,7 +366,7 @@ def main():
 
     # --- data dictionary --------------------------------------------------
     with open(args.out + ".dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n" % args.out)
+        d.write(provenance.header(args.out))
         d.write("Controlled truth (golden) VCF for the v2 mason reference-bias pipeline.\n\n")
         d.write("Generation parameters:\n")
         d.write("  reference          : %s (contig %s, length %d)\n" % (args.reference, contig, length))

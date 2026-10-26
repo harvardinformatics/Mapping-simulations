@@ -12,7 +12,9 @@
 # Re-run HaplotypeCaller on the SAME existing iter1 BAM twice -- default (uses soft-clipped
 # bases) vs --dont-use-soft-clipped-bases -- and score SNP recall vs truth. Paired on one BAM,
 # so any difference is the flag alone. Prediction (assembler-not-clipping): recall barely moves.
-# Usage:  sbatch run_softclip_toggle.sh <DIV>
+# Usage:  cd analyses/s04-softclip && sbatch run_softclip_toggle.sh <DIV>
+#         bash analyses/s04-softclip/run_softclip_toggle.sh <DIV> --dict-only   (from the project
+#         root: only (re)write the data dictionary of an existing output, marked as a backfill)
 set -eo pipefail
 source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh
 conda activate mapping-sims
@@ -25,6 +27,28 @@ REF=data/s01-baseline-iterative/ref-regions/mm39-19.fa
 TRUTH=data/s01-baseline-iterative/sim/30X/19/$D/0.005/$SEED/mm39-truth.norm.vcf.gz
 WORK=data/s04-softclip/$D
 OUT=analyses/s04-softclip/results/softclip-toggle-$D.csv
+
+# data dictionary for $OUT: provenance block + what the two rows are + compare_vcfs.py's columns.
+# Optional $1 = --backfill (the table already exists and is not being regenerated).
+write_dict() {
+    python analyses/lib/provenance.py --table "$OUT" --script analyses/s04-softclip/run_softclip_toggle.sh \
+        --command "cd analyses/s04-softclip && sbatch run_softclip_toggle.sh $D" \
+        --append-definitions compare_vcfs $1 <<EOF
+s04 soft-clip toggle, single-shot (iteration 1), divergence D = $D (s01 SNP-only simulation, seed $SEED).
+GATK HaplotypeCaller (-ERC GVCF, $N-way scatter, then GenotypeGVCFs and bcftools norm --atomize)
+was re-run twice on the SAME existing s01 iter1 gatk BAM, once per arm, and each arm's calls were
+scored against the truth with compare_vcfs.py. One row per arm; the arm is in the caller column:
+  gatk_default    : HaplotypeCaller defaults (soft-clipped bases are used)
+  gatk_nosoftclip : HaplotypeCaller --dont-use-soft-clipped-bases
+Both arms share the BAM, so any difference between the two rows is the flag alone.
+Inputs: BAM   $BAM
+        REF   $REF
+        TRUTH $TRUTH
+Per-arm work files (git-ignored): $WORK/{default,nosoftclip}/
+EOF
+}
+if [ "$2" = "--dict-only" ]; then write_dict --backfill --replace; exit 0; fi
+
 LEN=$(cut -f2 $REF.fai | head -1); CHUNK=$(( (LEN + N - 1) / N ))
 
 call_gatk() {  # $1 = mode label ; $2 = extra HC flags
@@ -57,4 +81,5 @@ call_gatk nosoftclip "--dont-use-soft-clipped-bases"
 head -1 $WORK/default/score-vcf-summary.csv > $OUT
 tail -n +2 $WORK/default/score-vcf-summary.csv    >> $OUT
 tail -n +2 $WORK/nosoftclip/score-vcf-summary.csv >> $OUT
+write_dict
 echo "WROTE $OUT"; column -t -s, $OUT

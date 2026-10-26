@@ -26,6 +26,27 @@ COMBINED=$OUTDIR/calling-metrics.csv
 # per-divergence truth VCFs (mason-format IDs: div_snp / div_indel / het_snp)
 DIVS="0.06 0.08 0.10"
 
+# data dictionary for the combined table (each per-divergence part gets its own from
+# calling_metrics.py). Optional $1 = --backfill (table exists, not being regenerated).
+# `bash analyses/s02-indels/run_calling_metrics.sh --dict-only` writes only this dictionary.
+write_dict() {
+    python analyses/lib/provenance.py --table "$COMBINED" --script analyses/s02-indels/run_calling_metrics.sh \
+        --command "cd analyses/s02-indels && sbatch run_calling_metrics.sh" "$@" <<EOF
+s02 per-SNP calling-side covariates, all divergences in one table: the per-divergence tables
+calling-metrics-<D>.csv (D = $DIVS; analyses/lib/calling_metrics.py, window +/-100 bp, homopolymer
+run >= 5 bp, on data/s02-indels/sim/30X/19/<D>/0.005/42/mm39-truth.vcf.gz) concatenated in that
+order under one header. One row per divergent (1|1) truth SNP per divergence.
+
+Fields: identical to the per-divergence tables; see calling-metrics-<D>.csv.dict.txt next to
+this file (committed to git, while the tables themselves are git-ignored for size).
+EOF
+}
+if [ "${1:-}" = "--dict-only" ]; then
+    shift
+    write_dict --backfill --replace "$@"
+    exit 0
+fi
+
 first=1
 for D in $DIVS; do
     VCF=data/s02-indels/sim/30X/19/$D/0.005/42/mm39-truth.vcf.gz
@@ -44,4 +65,5 @@ for D in $DIVS; do
     fi
 done
 
+write_dict
 echo "### wrote $COMBINED ($(wc -l < "$COMBINED") lines incl. header) ###"

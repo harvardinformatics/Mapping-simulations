@@ -26,6 +26,8 @@ import csv
 import gzip
 import os
 
+import provenance                       # shared provenance block for the data dictionaries
+
 
 def snp_positions(vcf_path, hom_div_only):
     """Sorted list of 0-based SNP positions. hom_div_only -> keep GT 1|1 hom-div biallelic SNPs."""
@@ -85,6 +87,61 @@ def unrec_in_window(truth_sorted, rec_sorted, lo, hi, exclude):
     return cnt
 
 
+def write_dictionaries(a):
+    """Data dictionaries for neighborhood-per-snp.csv and neighborhood-summary.csv. With --dicts-only
+    they document existing tables (backfill), recording the ORIGINAL command and any --dict-note."""
+    common = ("Query sites: the SNPs sampled in the --pile per-SNP pileup CSVs (template %s);\n"
+              "             their per-iteration 'recovered' flags come from that file.\n"
+              "Neighbours : OTHER true hom-div (GT 1|1) variants within +/-%d bp of the query SNP p,\n"
+              "             from the truth VCF (template %s). A record is a SNP when REF and ALT are\n"
+              "             both 1 bp, otherwise an indel.\n"
+              "Recovered  : per-iteration recovered VCF (template %s), i.e. the variants\n"
+              "             already baked into the consensus at that iteration.\n"
+              "Unrecovered: a neighbour truth variant whose position is NOT in the recovered set\n"
+              "             (set membership, so false-positive recovered calls cannot lower the count).\n"
+              "All coordinates are reference coordinates.\n\n"
+              % (a.pile, a.window, a.truth, a.recovered))
+
+    def hdr(table):
+        if a.dicts_only:
+            return provenance.header(table, command=a.dicts_only, backfill=True, notes=a.dict_note)
+        return provenance.header(table, notes=a.dict_note)
+
+    per_snp_text = ("One row per (caller, divergence, query SNP, iteration).\n\n"
+                    "Fields:\n"
+                    "  caller                 : variant caller (gatk | bcftools | freebayes)\n"
+                    "  divergence             : simulated hom-div divergence D\n"
+                    "  snp_pos                : 1-based reference position of the query SNP p\n"
+                    "  iteration              : mapping iteration (1 = single-shot)\n"
+                    "  n_neighbor_truth       : neighbour true hom-div SNPs in [p-W, p+W], excluding p\n"
+                    "  n_unrecovered          : of those, NOT yet recovered at this iteration\n"
+                    "  n_neighbor_truth_indel : neighbour true hom-div indels in the window\n"
+                    "  n_unrecovered_indel    : of those, NOT yet recovered at this iteration. Indel\n"
+                    "                           recovery is by POSITION match of the normalized truth vs\n"
+                    "                           recovered indels, so it slightly understates recovery.\n")
+    summary_text = ("For each query SNP and each consecutive iteration pair (k -> k+1) the SNP's fate over\n"
+                    "the pair is classified, and the neighbour counts are averaged per (caller, divergence,\n"
+                    "fate) group. Neighbour counts here are SNPs only.\n\n"
+                    "Fields:\n"
+                    "  caller                  : variant caller (gatk | bcftools | freebayes)\n"
+                    "  divergence              : simulated hom-div divergence D\n"
+                    "  fate                    : flip (not called at k -> called at k+1) | stayed_notcalled |\n"
+                    "                            stayed_called | lost (called at k -> not called at k+1)\n"
+                    "  window_bp               : half-window W (bp)\n"
+                    "  n                       : number of (SNP, iteration pair) instances in the group\n"
+                    "  mean_neighbor_truth     : mean neighbour true hom-div SNPs in the window\n"
+                    "  mean_unrecovered_before : mean neighbours NOT yet recovered at iteration k\n"
+                    "  mean_unrecovered_after  : mean neighbours NOT yet recovered at iteration k+1\n")
+    tables = {"per-snp": ("neighborhood-per-snp.csv", per_snp_text),
+              "summary": ("neighborhood-summary.csv", summary_text)}
+    for name, (fname, text) in tables.items():
+        if a.dicts_only_table not in ("both", name):
+            continue                     # --dicts-only-table: leave the other dictionary alone
+        table = os.path.join(a.out, fname)
+        with open(table + ".dict.txt", "w") as d:
+            d.write(hdr(table) + common + text)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--truth", required=True, help="template for the sim truth VCF (hom-div NEIGHBOR SNPs); {D}")
@@ -94,7 +151,21 @@ def main():
     ap.add_argument("--callers", default="gatk,bcftools,freebayes")
     ap.add_argument("--divs", default="0.06,0.08,0.10")
     ap.add_argument("--window", type=int, default=200, help="+/- window (bp) ~ assembly region")
+    ap.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
+                    help="write ONLY the data dictionaries for existing outputs in --out (same other "
+                         "arguments as the run that made them), recording ORIGINAL_COMMAND as provenance")
+    ap.add_argument("--dict-note", action="append", default=[],
+                    help="extra provenance note for the dictionaries (repeatable)")
+    ap.add_argument("--dicts-only-table", choices=["both", "per-snp", "summary"], default="both",
+                    help="with --dicts-only: which table's dictionary to write (default both)")
     a = ap.parse_args()
+    if a.dicts_only_table != "both" and not a.dicts_only:
+        ap.error("--dicts-only-table needs --dicts-only")
+
+    # --dicts-only: document existing outputs without recomputing them
+    if a.dicts_only:
+        write_dictionaries(a)
+        return
     os.makedirs(a.out, exist_ok=True)
     W = a.window
     CALLERS = a.callers.split(",")
@@ -151,6 +222,7 @@ def main():
                   "mean_unrecovered_before,mean_unrecovered_after\n")
         for (C, D, fate), (n, tw, ub, ua) in sorted(agg.items()):
             out.write(f"{C},{D},{fate},{W},{n},{tw/n:.2f},{ub/n:.2f},{ua/n:.2f}\n")
+    write_dictionaries(a)
 
     print(f"window +/-{W}bp. Mean # still-UNRECOVERED neighbor hom-div SNPs around p, before -> after:")
     print(f"{'caller':>9} {'D':>5} {'fate':>17} {'n':>6} {'unrec_before':>13} {'unrec_after':>12}")

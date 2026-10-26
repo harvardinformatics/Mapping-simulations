@@ -39,6 +39,7 @@ import sys
 import bisect
 import argparse
 import pysam
+import provenance                       # shared provenance block for the data dictionaries
 
 
 # --- parameters -------------------------------------------------------------
@@ -49,6 +50,37 @@ TOLERANCE = 150  # bp; within one read length of truth counts as "close"
 # For SNP-only (identity coords, no --chain) start and end shift together, so span_off
 # is ~0 and behavior matches the start-only version.
 END_TOLERANCE = 10
+
+# read-placement classes and the -bam-summary.csv columns (counts, then proportions)
+CLASSES = ("exact", "shifted", "clipped", "span_off", "mismapped", "diff_chr", "unmapped", "missing")
+COLUMNS = (("region", "coverage", "divergence", "heterozygosity", "seed", "caller", "iteration",
+            "total_reads") + CLASSES + tuple(c + "_prop" for c in CLASSES))
+
+# Column definitions of the -bam-summary.csv table. Kept as a constant so combine_summaries.py can
+# embed the same text in the dictionaries of the combined (committed) tables.
+FIELD_DEFINITIONS = (
+    "Read-mapping accuracy: bwa placement vs mason truth (reference coords).\n"
+    "Reads matched by (fragment id, mate); tolerance = %d bp; contigs compared by name.\n\n" % TOLERANCE +
+    "region         : reference region / chromosome label\n"
+    "coverage       : simulated fold coverage\n"
+    "divergence     : simulated fixed divergence (D) label\n"
+    "heterozygosity : simulated heterozygosity (H) label\n"
+    "seed           : replicate random seed\n"
+    "caller         : variant caller whose consensus this iteration mapped to\n"
+    "iteration      : pseudo-it iteration (1 = single-shot map to the reference)\n"
+    "total_reads    : primary reads compared (sum of the placement classes)\n"
+    "exact          : true START (delta = 0) AND reference footprint matches truth\n"
+    "                 (lifted END within %d bp), fully aligned, NO soft-clip\n" % END_TOLERANCE +
+    "shifted        : correct locus, whole read START moved 1-%d bp, no soft-clip\n" % TOLERANCE +
+    "clipped        : correct locus (<=%d bp) but soft-clipped (alt-bearing ends dropped);\n" % TOLERANCE +
+    "                 includes 3'-clipped reads that sit at the exact start position\n"
+    "span_off       : correct START but reference footprint wrong by > %d bp -- the read\n" % END_TOLERANCE +
+    "                 spans the wrong indel structure (only distinguishable with --chain)\n"
+    "mismapped      : same contig but > %d bp from the true position\n" % TOLERANCE +
+    "diff_chr       : mapped to a different contig than truth\n"
+    "unmapped       : present in truth but unmapped by bwa\n"
+    "missing        : present in truth but absent from the mapped BAM (expected 0)\n"
+    "*_prop         : each count as a proportion of total_reads\n")
 
 
 def parse_args():
@@ -174,12 +206,10 @@ def main():
     counts["missing"] = len(truth)  # never seen in mapped BAM
 
     # --- 3. write summary CSV ---------------------------------------------
-    classes = ["exact", "shifted", "clipped", "span_off", "mismapped", "diff_chr", "unmapped", "missing"]
+    classes = list(CLASSES)
     total = sum(counts[c] for c in classes)
 
-    header = (["region", "coverage", "divergence", "heterozygosity", "seed",
-               "caller", "iteration", "total_reads"]
-              + classes + [c + "_prop" for c in classes])
+    header = list(COLUMNS)
     row = ([args.region, args.coverage, args.divergence, args.heterozygosity, args.seed,
             args.caller, args.iteration, total]
            + [counts[c] for c in classes]
@@ -197,29 +227,8 @@ def main():
 
     # --- 4. data dictionary -----------------------------------------------
     with open(args.out_prefix + "-bam-summary.dict.txt", "w") as d:
-        d.write("Data dictionary for %s\n" % csv_path)
-        d.write("Read-mapping accuracy: bwa placement vs mason truth (reference coords).\n")
-        d.write("Reads matched by (fragment id, mate); tolerance = %d bp; contigs compared by name.\n\n" % TOLERANCE)
-        d.write("region         : reference region / chromosome label\n")
-        d.write("coverage       : simulated fold coverage\n")
-        d.write("divergence     : simulated fixed divergence (D) label\n")
-        d.write("heterozygosity : simulated heterozygosity (H) label\n")
-        d.write("seed           : replicate random seed\n")
-        d.write("caller         : variant caller whose consensus this iteration mapped to\n")
-        d.write("iteration      : pseudo-it iteration (1 = single-shot map to the reference)\n")
-        d.write("total_reads    : primary reads compared (sum of the placement classes)\n")
-        d.write("exact          : true START (delta = 0) AND reference footprint matches truth\n")
-        d.write("                 (lifted END within %d bp), fully aligned, NO soft-clip\n" % END_TOLERANCE)
-        d.write("shifted        : correct locus, whole read START moved 1-%d bp, no soft-clip\n" % TOLERANCE)
-        d.write("clipped        : correct locus (<=%d bp) but soft-clipped (alt-bearing ends dropped);\n" % TOLERANCE)
-        d.write("                 includes 3'-clipped reads that sit at the exact start position\n")
-        d.write("span_off       : correct START but reference footprint wrong by > %d bp -- the read\n" % END_TOLERANCE)
-        d.write("                 spans the wrong indel structure (only distinguishable with --chain)\n")
-        d.write("mismapped      : same contig but > %d bp from the true position\n" % TOLERANCE)
-        d.write("diff_chr       : mapped to a different contig than truth\n")
-        d.write("unmapped       : present in truth but unmapped by bwa\n")
-        d.write("missing        : present in truth but absent from the mapped BAM (expected 0)\n")
-        d.write("*_prop         : each count as a proportion of total_reads\n")
+        d.write(provenance.header(csv_path))
+        d.write(FIELD_DEFINITIONS)
 
     # --- 5. echo to log ---------------------------------------------------
     print("caller=%s iter=%s region=%s cov=%s div=%s het=%s total=%d"
