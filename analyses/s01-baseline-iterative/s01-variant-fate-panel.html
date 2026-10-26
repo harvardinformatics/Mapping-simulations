@@ -1672,7 +1672,7 @@ border-radius: 0px;
 <h1 class="title toc-ignore">s01 — variant read-fate panel (direct
 per-SNP visibility, iter1→2→3)</h1>
 <h4 class="author">gwct</h4>
-<h4 class="date">10/26/2026 13:00 EDT</h4>
+<h4 class="date">10/26/2026 15:52 EDT</h4>
 
 </div>
 
@@ -1691,8 +1691,8 @@ img { max-width: 1300px; height: auto; display: block; margin-left: auto; margin
 <div style="font-size: 0.85em; color: #555; border-left: 4px solid #bbb; padding: 2px 10px;">
 <p><strong>Provenance</strong></p>
 <ul>
-<li><strong>Rendered from commit</strong> <code>761a36dcb53d</code>
-(branch <code>mason2-sims</code>) on 2026-10-26 13:01</li>
+<li><strong>Rendered from commit</strong> <code>b5d2bef3cf0d</code>
+(branch <code>mason2-sims</code>) on 2026-10-26 15:52</li>
 <li><strong>This notebook:</strong> notebook as committed</li>
 <li><strong>Analysis code:</strong> no uncommitted edits under
 <code>analyses/</code></li>
@@ -1727,21 +1727,29 @@ fell.</p>
 <span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a></span>
 <span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>vf <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(<span class="fu">lapply</span>(<span class="fu">c</span>(<span class="st">&quot;0.04&quot;</span>,<span class="st">&quot;0.06&quot;</span>,<span class="st">&quot;0.08&quot;</span>,<span class="st">&quot;0.10&quot;</span>), <span class="cf">function</span>(d)</span>
 <span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">sprintf</span>(<span class="st">&quot;analyses/s01-baseline-iterative/results/s01-varfate-%s.csv&quot;</span>, d),</span>
-<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>           <span class="at">col_types =</span> <span class="fu">cols</span>()))) <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">divergence =</span> <span class="fu">as.numeric</span>(divergence))</span>
-<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>traj <span class="ot">&lt;-</span> vf <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(caller, divergence, snp_pos) <span class="sc">%&gt;%</span></span>
-<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>  <span class="fu">summarize</span>(<span class="at">r1 =</span> recovered[iteration <span class="sc">==</span> <span class="dv">1</span>], <span class="at">r3 =</span> recovered[iteration <span class="sc">==</span> <span class="dv">3</span>], <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">new =</span> r1 <span class="sc">==</span> <span class="dv">0</span> <span class="sc">&amp;</span> r3 <span class="sc">==</span> <span class="dv">1</span>)</span>
-<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>vf <span class="ot">&lt;-</span> vf <span class="sc">%&gt;%</span> <span class="fu">left_join</span>(<span class="fu">select</span>(traj, caller, divergence, snp_pos, new),</span>
-<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>                       <span class="at">by =</span> <span class="fu">c</span>(<span class="st">&quot;caller&quot;</span>, <span class="st">&quot;divergence&quot;</span>, <span class="st">&quot;snp_pos&quot;</span>))</span>
-<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>vf<span class="sc">$</span>pdom <span class="ot">&lt;-</span> <span class="fu">factor</span>(pnice[pcl[<span class="fu">max.col</span>(<span class="fu">as.matrix</span>(vf[, pcl]), <span class="at">ties.method =</span> <span class="st">&quot;first&quot;</span>)]], <span class="at">levels =</span> plev)</span>
-<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a></span>
-<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a>flow3 <span class="ot">&lt;-</span> <span class="cf">function</span>(cc, dd) {</span>
-<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a>  vf <span class="sc">%&gt;%</span> <span class="fu">filter</span>(caller <span class="sc">==</span> cc, divergence <span class="sc">==</span> dd, new, n_reads <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a>    <span class="fu">select</span>(snp_pos, iteration, pdom) <span class="sc">%&gt;%</span></span>
-<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a>    <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> iteration, <span class="at">values_from =</span> pdom) <span class="sc">%&gt;%</span></span>
-<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a>    <span class="fu">rename</span>(<span class="at">i1 =</span> <span class="st">`</span><span class="at">1</span><span class="st">`</span>, <span class="at">i2 =</span> <span class="st">`</span><span class="at">2</span><span class="st">`</span>, <span class="at">i3 =</span> <span class="st">`</span><span class="at">3</span><span class="st">`</span>) <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(i1), <span class="sc">!</span><span class="fu">is.na</span>(i2), <span class="sc">!</span><span class="fu">is.na</span>(i3)) <span class="sc">%&gt;%</span></span>
-<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a>    <span class="fu">count</span>(i1, i2, i3, <span class="at">name =</span> <span class="st">&quot;nsnp&quot;</span>)</span>
-<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a>}</span></code></pre></div>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>           <span class="at">col_types =</span> <span class="fu">cols</span>()))) <span class="sc">%&gt;%</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">divergence =</span> <span class="fu">as.numeric</span>(divergence),</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>         <span class="co"># per-SNP visibility from the read ledger (variant_read_fate.py; columns in the tables&#39;</span></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>         <span class="co"># dictionaries): reads at the locus (exact or shifted start) that present a base at the SNP,</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>         <span class="co"># reads at the locus with the SNP soft-clipped or deleted, reads placed elsewhere, unmapped</span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>         <span class="at">p_visible =</span> ex_alt <span class="sc">+</span> ex_ref <span class="sc">+</span> ex_err <span class="sc">+</span> sh_alt <span class="sc">+</span> sh_ref <span class="sc">+</span> sh_err,</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>         <span class="at">p_clipdel =</span> ex_clip <span class="sc">+</span> ex_del <span class="sc">+</span> sh_clip <span class="sc">+</span> sh_del,</span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a>         <span class="at">p_mismap  =</span> mm_clip <span class="sc">+</span> mm_noclip <span class="sc">+</span> dc,</span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a>         <span class="at">p_unmap   =</span> un)</span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a>traj <span class="ot">&lt;-</span> vf <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(caller, divergence, snp_pos) <span class="sc">%&gt;%</span></span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a>  <span class="fu">summarize</span>(<span class="at">r1 =</span> recovered[iteration <span class="sc">==</span> <span class="dv">1</span>], <span class="at">r3 =</span> recovered[iteration <span class="sc">==</span> <span class="dv">3</span>], <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">new =</span> r1 <span class="sc">==</span> <span class="dv">0</span> <span class="sc">&amp;</span> r3 <span class="sc">==</span> <span class="dv">1</span>)</span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a>vf <span class="ot">&lt;-</span> vf <span class="sc">%&gt;%</span> <span class="fu">left_join</span>(<span class="fu">select</span>(traj, caller, divergence, snp_pos, new),</span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a>                       <span class="at">by =</span> <span class="fu">c</span>(<span class="st">&quot;caller&quot;</span>, <span class="st">&quot;divergence&quot;</span>, <span class="st">&quot;snp_pos&quot;</span>))</span>
+<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a>vf<span class="sc">$</span>pdom <span class="ot">&lt;-</span> <span class="fu">factor</span>(pnice[pcl[<span class="fu">max.col</span>(<span class="fu">as.matrix</span>(vf[, pcl]), <span class="at">ties.method =</span> <span class="st">&quot;first&quot;</span>)]], <span class="at">levels =</span> plev)</span>
+<span id="cb2-23"><a href="#cb2-23" tabindex="-1"></a></span>
+<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a>flow3 <span class="ot">&lt;-</span> <span class="cf">function</span>(cc, dd) {</span>
+<span id="cb2-25"><a href="#cb2-25" tabindex="-1"></a>  vf <span class="sc">%&gt;%</span> <span class="fu">filter</span>(caller <span class="sc">==</span> cc, divergence <span class="sc">==</span> dd, new, n_reads <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb2-26"><a href="#cb2-26" tabindex="-1"></a>    <span class="fu">select</span>(snp_pos, iteration, pdom) <span class="sc">%&gt;%</span></span>
+<span id="cb2-27"><a href="#cb2-27" tabindex="-1"></a>    <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> iteration, <span class="at">values_from =</span> pdom) <span class="sc">%&gt;%</span></span>
+<span id="cb2-28"><a href="#cb2-28" tabindex="-1"></a>    <span class="fu">rename</span>(<span class="at">i1 =</span> <span class="st">`</span><span class="at">1</span><span class="st">`</span>, <span class="at">i2 =</span> <span class="st">`</span><span class="at">2</span><span class="st">`</span>, <span class="at">i3 =</span> <span class="st">`</span><span class="at">3</span><span class="st">`</span>) <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(i1), <span class="sc">!</span><span class="fu">is.na</span>(i2), <span class="sc">!</span><span class="fu">is.na</span>(i3)) <span class="sc">%&gt;%</span></span>
+<span id="cb2-29"><a href="#cb2-29" tabindex="-1"></a>    <span class="fu">count</span>(i1, i2, i3, <span class="at">name =</span> <span class="st">&quot;nsnp&quot;</span>)</span>
+<span id="cb2-30"><a href="#cb2-30" tabindex="-1"></a>}</span></code></pre></div>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="cf">for</span> (cc <span class="cf">in</span> <span class="fu">c</span>(<span class="st">&quot;gatk&quot;</span>, <span class="st">&quot;bcftools&quot;</span>, <span class="st">&quot;freebayes&quot;</span>)) {</span>
 <span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st"># %s</span><span class="sc">\n\n</span><span class="st">&quot;</span>, cc))</span>
 <span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>  <span class="cf">for</span> (dd <span class="cf">in</span> <span class="fu">c</span>(<span class="fl">0.04</span>, <span class="fl">0.06</span>, <span class="fl">0.08</span>, <span class="fl">0.10</span>)) {</span>
