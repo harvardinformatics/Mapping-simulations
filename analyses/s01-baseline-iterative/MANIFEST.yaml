@@ -1,0 +1,389 @@
+# MANIFEST.yaml -- s01-baseline-iterative: this section's top-level data dictionary and provenance
+# record. Lists every data file, figure and notebook in analyses/s01-baseline-iterative/ with the
+# script and exact command that produce it, its inputs, and what reads it (including other sections'
+# notebooks). Each table's columns are defined in its own <table>.dict.txt. Schema and checks:
+# analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s01-baseline-iterative
+#
+# Conventions used below:
+#   * sbatch scripts were submitted from INSIDE this directory (their #SBATCH --output is relative),
+#     hence "cd analyses/s01-baseline-iterative && sbatch ...".
+#   * Times are UTC (session-log timestamps); file mtimes on disk are EDT = UTC-4.
+#   * {caller} = gatk | bcftools | freebayes; {D} = homogeneous divergence; seed 42 unless stated.
+section: s01-baseline-iterative
+question: Does iterative (pseudo-it) mapping recover more true divergence than single-shot mapping, for each variant caller, on SNP-only homogeneous-divergence simulations?
+
+upstream:
+  - path: data/s01-baseline-iterative/
+    from: "s01 workflow (cd analyses/s01-baseline-iterative && sbatch run_sweep.sh; snakemake
+      workflow.smk + config/config.yaml): region reference, mason truth VCFs and reads, per-iteration
+      BAMs / caller VCFs / consensus / recovered VCFs and per-condition -vcf-summary.csv; plus the
+      add-on per-condition tables of read_classification.smk (-readclass-bam-summary.csv) and
+      het_recovery.smk (-hetscore-vcf-summary.csv)"
+  - path: data/varfate/
+    from: "cached mason -oa truth BAMs (oH haplotype tags, seed 42): D 0.04-0.10 written by
+      run_variant_read_fate.sh (which also left per-caller vrf-<caller>.csv there), D 0.02 and 0.005 by
+      `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` (2026-08-07)"
+
+notebooks:
+  - path: analyses/s01-baseline-iterative/s01-results.rmd
+    html: analyses/s01-baseline-iterative/s01-results.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s01-baseline-iterative/s01-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+  - path: analyses/s01-baseline-iterative/s01-variant-fate-panel.rmd
+    html: analyses/s01-baseline-iterative/s01-variant-fate-panel.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s01-baseline-iterative/s01-variant-fate-panel.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  # --- combined per-condition summaries (snakemake combine rules -> combine_summaries.py) ----------
+  - path: analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv
+    what: "divergence recovery per caller x D x seed x iteration (consensus-vs-reference diff SNPs scored
+      vs truth by compare_vcfs.py), 216 rows: 8 D (0.00-0.10) x 3 seeds x 3 callers x 3 iterations"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s01-baseline-iterative && sbatch run_sweep.sh
+      (snakemake -s workflow.smk --configfile config/config.yaml, rule combine_s01; file name from
+      run_tag "base")
+    inputs:
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39-vcf-summary.csv
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/s05-heterogeneous-divergence/s05-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "last written 2026-08-07 05:35 UTC by the sweep launched 02:15 UTC after D 0.001/0.005 were
+      added to config.yaml; compare_vcfs.py's scoring is unchanged since (later edits only added the
+      opt-in --extra columns and dictionary text)"
+
+  - path: analyses/s01-baseline-iterative/results/s01-base-het-recovery-by-iter.csv
+    what: "heterozygous-site recovery per caller x D x seed x iteration (raw per-iteration caller VCF
+      scored vs truth by compare_vcfs.py; het_* columns), 216 rows"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s01-baseline-iterative && sbatch run_het_recovery.sh
+      (snakemake -s het_recovery.smk --configfile config/config.yaml, rule combine_het)
+    inputs:
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39-hetscore-vcf-summary.csv
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/s03-heterozygosity/s03-results.rmd
+    git: tracked
+    note: "last written 2026-08-07 06:11 UTC; that run_het_recovery.sh was submitted by an ad hoc watcher
+      loop (2026-08-07 02:21 UTC) once the sweep had the new divergences"
+
+  - path: analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv
+    what: "read placement per caller x D x seed x iteration (compare_bams.py classes of each mapped BAM
+      vs the mason -oa truth BAM: exact/shifted/clipped/mismapped/diff_chr/unmapped/missing), 216 rows"
+    script: analyses/lib/combine_summaries.py
+    command: |
+      # ad hoc command (2026-08-07 06:47 UTC), not in a run script; replaces the failed
+      # combine_readclass step of `cd analyses/s01-baseline-iterative && sbatch run_read_classification.sh`
+      cd /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations
+      # strip span_off (field 12) and span_off_prop (field 20) from the new-div read-class CSVs (s01 identity -> span_off==0, unused)
+      n=0
+      for f in $(find data/s01-baseline-iterative/iter -path '*/19/0.001/*' -name 'mm39-readclass-bam-summary.csv'; \
+                 find data/s01-baseline-iterative/iter -path '*/19/0.005/*' -name 'mm39-readclass-bam-summary.csv'); do
+        awk -F, 'BEGIN{OFS=","}{out="";for(i=1;i<=NF;i++) if(i!=12 && i!=20){out=(out==""?$i:out FS $i)} print out}' "$f" > "$f.fix" && mv "$f.fix" "$f"
+        n=$((n+1))
+      done
+      source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh; conda activate mapping-sims
+      python analyses/lib/combine_summaries.py \
+        --inputs $(find data/s01-baseline-iterative -name 'mm39-readclass-bam-summary.csv' | sort) \
+        --out analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv --kind readclass-bam
+    inputs:
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39-readclass-bam-summary.csv
+    used_by: [analyses/s01-baseline-iterative/s01-results.rmd]
+    git: tracked
+    status: earlier-version
+    note: "mixed compare_bams.py versions. D 0.00 and 0.02-0.10 rows come from the 2026-07-31 version
+      (no span_off class); D 0.001/0.005 rows come from the 2026-08-01 version (adds span_off: right
+      start, wrong reference footprint) with span_off/span_off_prop stripped in place in data/ by the
+      command above, so in those 54 rows the classes sum to total_reads minus the dropped span_off
+      reads (<= 91 reads per row). The snakemake combine failed on the header mismatch. Re-running
+      read_classification.smk now gives a table with span_off columns and exact split into
+      exact/span_off."
+
+  # --- per-variant read fate (variant_read_fate.py) ---------------------------------------------
+  - path: analyses/s01-baseline-iterative/results/s01-varfate-{D}.csv
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "per-variant call fate x read-placement fate: ~8,000 sampled hom-div SNPs x 3 callers x
+      iterations 1-3, recovered flag plus the placement classes of the reads that truly cover the SNP"
+    script: analyses/s01-baseline-iterative/run_variant_read_fate.sh
+    command: cd analyses/s01-baseline-iterative && sbatch run_variant_read_fate.sh {D}
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+    used_by: [analyses/s01-baseline-iterative/s01-variant-fate-panel.rmd]
+    git: tracked
+    status: earlier-version
+    note: "made 2026-08-04 by the variant_read_fate.py of that day, whose per-SNP output had this
+      table's columns; the current variant_read_fate.py writes a different, finer ledger, so re-running
+      this command now gives a DIFFERENT table (the old version was reconstructed from the session log;
+      its header matches)"
+
+  - path: analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
+    values:
+      caller: [gatk, bcftools, freebayes]
+      D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]
+    what: "whole-chromosome aggregate read-fate ledger: SNP counts per (call status, f_alt bin)
+      trajectory across iterations 1-3; the input of the G (joint-state flow) plots"
+    script: analyses/s01-baseline-iterative/run_vrf_aggregate.sh
+    command: >-
+      cd analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh {caller} {D}
+      (D 0.04-0.10: submitted by `bash analyses/s01-baseline-iterative/submit_vrf_aggregate.sh`,
+      2026-08-05 02:55 UTC; D 0.005/0.02: submitted by an ad hoc watcher loop, 2026-08-07 14:10 UTC,
+      after `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` made their truth BAMs)
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/s01-baseline-iterative/scripts/vrf_agg_G.R
+      - analyses/lib/vrf_G_figs.R
+    git: tracked
+    note: "D 0.04-0.10 written 2026-08-05, D 0.005/0.02 on 2026-08-07. Later edits to
+      variant_read_fate.py only added opt-in paths (4th --iter chain field, --het, --pileup) and
+      dictionary writing, none of which this s01 hom-div aggregate run uses; judged current by code
+      inspection, not re-run"
+
+  - path: analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-hcomp.csv
+    values:
+      caller: [gatk, bcftools, freebayes]
+      D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]
+    what: "whole-chromosome aggregate read-fate ledger: summed at-p read composition (alt/ref/error at
+      p, clipped, deleted, mapped elsewhere, unmapped) per iteration x call status"
+    script: analyses/s01-baseline-iterative/run_vrf_aggregate.sh
+    command: >-
+      cd analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh {caller} {D}
+      (D 0.04-0.10: submitted by `bash analyses/s01-baseline-iterative/submit_vrf_aggregate.sh`,
+      2026-08-05 02:55 UTC; D 0.005/0.02: submitted by an ad hoc watcher loop, 2026-08-07 14:10 UTC,
+      after `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` made their truth BAMs)
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/s01-baseline-iterative/scripts/vrf_agg_figs.R
+    git: tracked
+    note: "same runs as the -gtraj tables (one job writes both); judged current by code inspection,
+      not re-run"
+
+  - path: analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+    values:
+      caller: [gatk, bcftools, freebayes]
+      D: ["0.06", "0.08", "0.10"]
+    what: "per-SNP read-fate ledger plus the position-centric pileup at p (depth, ref/alt/other, MAPQ,
+      mismapped-in reads) for ~30,000 sampled hom-div SNPs x iterations 1-3"
+    script: analyses/s01-baseline-iterative/run_vrf_pileup.sh
+    command: >-
+      bash analyses/s01-baseline-iterative/submit_vrf_pileup.sh
+      (submits: cd analyses/s01-baseline-iterative && sbatch run_vrf_pileup.sh {caller} {D})
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/s01-baseline-iterative/scripts/vrf_pileup_decomp.R
+      - analyses/s01-baseline-iterative/run_neighborhood.sh
+      - analyses/synthesis/scripts/s01_mapping_vs_calling.R
+    git: ignored
+    note: "submitted twice on 2026-08-06 (14:20 and 14:50 UTC); the files (14:59-15:01 UTC) are from the
+      second submission, made after the last edit to the --pileup code (14:44 UTC); later
+      variant_read_fate.py edits were dictionary writing only"
+
+  # --- neighborhood (assemblable-neighborhood load) ---------------------------------------------
+  - path: analyses/s01-baseline-iterative/results/neighborhood/neighborhood-per-snp.csv
+    what: "per sampled hom-div SNP x caller x D (0.06-0.10) x iteration: other truth SNPs and
+      still-unrecovered truth SNPs within +/-200 bp"
+    script: analyses/lib/neighborhood_assembly.py
+    command: bash analyses/s01-baseline-iterative/run_neighborhood.sh
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/s01-baseline-iterative/scripts/vrf_pileup_decomp.R
+    git: ignored
+    status: earlier-version
+    note: "made 2026-08-06 by an earlier version of analyses/lib/neighborhood_assembly.py that did not
+      yet write the n_neighbor_truth_indel / n_unrecovered_indel columns; the current version
+      reproduces every other column byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s01-baseline-iterative/results/neighborhood/neighborhood-summary.csv
+    what: "mean +/-200 bp neighborhood load (truth SNPs; unrecovered before/after) by caller x D x
+      iteration-fate group (flip / stayed called / stayed not-called)"
+    script: analyses/lib/neighborhood_assembly.py
+    command: bash analyses/s01-baseline-iterative/run_neighborhood.sh
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
+    used_by: [analyses/s01-baseline-iterative/s01-results.rmd]
+    git: tracked
+    status: earlier-version
+    note: "made 2026-08-06 by an earlier version of analyses/lib/neighborhood_assembly.py (before the
+      *_indel per-SNP columns); the current version reproduces this table byte for byte (checked
+      2026-10-26)"
+
+  # --- effective truth / phantom sites (KNOWN ARTIFACT) -----------------------------------------
+  - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-effective.vcf.gz
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "'effective' truth VCF: the normalized truth minus the sites flagged phantom (never simulated
+      into the reads) by the truth-BAM scan"
+    script: analyses/lib/effective_truth.py
+    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: []
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (found 2026-10-22): the phantom scan reads bases through mason -oa's gapped
+      1D..1I CIGARs for dense SNP clusters, so real alt sites look all-reference and most 'phantom'
+      sites are not phantoms. Do not use. Nothing reads this file."
+
+  - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "truth SNPs flagged phantom by the truth-BAM scan: position, ref/alt, zygosity, truth-BAM
+      depth and alt-read count/fraction"
+    script: analyses/lib/effective_truth.py
+    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/lib/phantom_adjacency.py]
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (found 2026-10-22): gapped mason -oa CIGARs make the scan flag real alt sites
+      as phantom; see eff-{D}-effective.vcf.gz"
+
+  - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-summary.csv
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "one row per divergence: counts and rates of phantom-flagged hom-div and het truth SNPs,
+      low-coverage count, mean alt fraction"
+    script: analyses/lib/effective_truth.py
+    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/s01-baseline-iterative/run_effective_truth.sh]
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (found 2026-10-22): phantom counts are inflated by the gapped-CIGAR scan bug;
+      concatenated by run_effective_truth.sh into phantom-by-divergence.csv"
+
+  - path: analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv
+    what: "the four eff-<D>-summary.csv rows under one header: phantom rate by divergence (D 0.04-0.10)"
+    script: analyses/s01-baseline-iterative/run_effective_truth.sh
+    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    inputs:
+      - analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-summary.csv
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/s03-heterozygosity/s03-results.rmd
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (found 2026-10-22): phantom rates are inflated by the gapped-CIGAR scan bug,
+      yet s01-results.rmd (phantom-rate / effective-recall chunks) and s03-results.rmd still read it"
+
+  - path: analyses/s01-baseline-iterative/results/effective-truth/phantom-adjacency.csv
+    what: "distance from phantom-flagged vs non-phantom hom-div SNPs to the nearest other truth
+      variant, one row per divergence x group"
+    script: analyses/lib/phantom_adjacency.py
+    command: >-
+      python analyses/lib/phantom_adjacency.py
+      --truth "data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz"
+      --phantom "analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv"
+      --out analyses/s01-baseline-iterative/results/effective-truth/phantom-adjacency.csv
+      --divs 0.04,0.06,0.08,0.10
+      (mapping-sims env; literal {D} -- the tool expands it)
+    inputs:
+      - analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/s01-baseline-iterative/s01-results.rmd]
+    git: ignored
+    status: artifact
+    note: "ad hoc command (2026-08-06 17:50 UTC), not in a run script. KNOWN ARTIFACT (found
+      2026-10-22): built on the bugged phantom flags, so its 'phantoms sit ~1 bp from a neighbour'
+      result reflects the gapped-CIGAR scan, yet s01-results.rmd (phantom-adjacency chunk) still reads it"
+
+  # --- companion decomposition (vrf_pileup_decomp.R) --------------------------------------------
+  - path: analyses/s01-baseline-iterative/results/vrf-pileup-viz/pileup_decomp_{fig}.png
+    values: {fig: [dist, flip, bybin]}
+    what: "standalone PNGs of the companion decomposition: per-SNP distributions by fate, mean trends
+      by divergence, flips by starting f_alt bin"
+    script: analyses/s01-baseline-iterative/scripts/vrf_pileup_decomp.R
+    command: conda run -n renv Rscript analyses/s01-baseline-iterative/scripts/vrf_pileup_decomp.R
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - analyses/s01-baseline-iterative/results/neighborhood/neighborhood-per-snp.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "made by the current script (run 2026-08-06 16:18 UTC, right after its last edit); nothing
+      embeds them -- s01-results.rmd draws the same decomposition inline from the same tables"
+
+  # --- figures ---------------------------------------------------------------------------------
+  - path: analyses/s01-baseline-iterative/results/vrf-viz-full/full_{fig}.png
+    values: {fig: [altatp_notcalled, atp_composition]}
+    what: "whole-chromosome headline figures from the -hcomp tables: alt-at-p fraction of not-called
+      SNPs vs D, and at-p read composition at D=0.10"
+    script: analyses/s01-baseline-iterative/scripts/vrf_agg_figs.R
+    command: >-
+      conda run -n renv Rscript -e 'source("analyses/lib/design.r");
+      source("analyses/s01-baseline-iterative/scripts/vrf_agg_figs.R")'
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-hcomp.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "ad hoc command (2026-08-05 03:34 UTC, the same Bash call that wrote the script), not in a run
+      script. Nothing embeds them -- s01-results.rmd draws both plots inline. Made when only D
+      0.04-0.10 existed; the script reads every -hcomp file, so a re-run now adds D 0.005/0.02 points
+      to full_altatp_notcalled.png."
+
+  - path: analyses/s01-baseline-iterative/results/vrf-viz-full/G_{caller}_D{D}.png
+    values:
+      caller: [gatk, bcftools, freebayes]
+      D: ["0.02", "0.04", "0.06", "0.08", "0.1"]
+    what: "figure G, one standalone panel per caller x D: joint (call status x f_alt bin) flow of every
+      hom-div SNP across iterations 1-3"
+    script: analyses/s01-baseline-iterative/scripts/vrf_agg_G.R
+    command: conda run -n renv Rscript analyses/s01-baseline-iterative/scripts/vrf_agg_G.R
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
+    used_by: []
+    git: tracked
+    note: "drawn by the shared builder analyses/lib/vrf_G_figs.R (called by vrf_agg_G.R) on 2026-09-01
+      (18:54 UTC); that run is not in the session log -- the command is the script's usage line,
+      consistent with the mtimes (both scripts edited just before the PNGs). s01-results.rmd points
+      readers to these panels in text but draws G inline."
+
+  - path: analyses/s01-baseline-iterative/results/vrf-viz-full/G_grid.png
+    what: "figure G, all 15 panels (callers x D 0.02-0.10) in one grid with a single shared f_alt legend"
+    script: analyses/s01-baseline-iterative/scripts/vrf_agg_G.R
+    command: conda run -n renv Rscript analyses/s01-baseline-iterative/scripts/vrf_agg_G.R
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
+    used_by: [analyses/synthesis/synthesis.rmd]
+    git: tracked
+    note: "written 2026-09-01 (18:55 UTC) by analyses/lib/vrf_G_figs.R via vrf_agg_G.R (run not in the
+      session log; command from the script's usage line). It replaced an ImageMagick montage of the
+      2026-08-13 panels in results/vrf-viz-G/ (deleted 2026-10-26 as superseded by these)"

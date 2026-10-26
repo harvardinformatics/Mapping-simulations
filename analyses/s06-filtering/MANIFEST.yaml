@@ -1,0 +1,67 @@
+# MANIFEST.yaml -- s06-filtering: this section's top-level data dictionary and provenance record.
+# Lists every data file, figure and notebook in analyses/s06-filtering/ with the script and exact
+# command that produce it, its inputs, and what reads it. Each table's columns are defined in its
+# own <table>.dict.txt. Schema and checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s06-filtering
+#
+# No run script: every table here came from an AD HOC command typed in an earlier session
+# (recovered from the session log; times are UTC). filter_sweep.py does no mapping or calling --
+# it re-reads the existing single-shot (iteration 1) raw caller VCFs of s01/s02 and sweeps hard-filter
+# thresholds in memory. Placeholders in `inputs:` below: {caller} = gatk | bcftools | freebayes,
+# {D} = the --divs values of that command.
+section: s06-filtering
+question: Can hard-filtering the raw calls (QUAL, depth DP, mapping quality MQ/MQM) recover the divergence lost to reference bias, or only buy precision?
+
+upstream:
+  - path: data/s01-baseline-iterative/
+    from: "s01 workflow (cd analyses/s01-baseline-iterative && sbatch run_sweep.sh; config/config.yaml):
+      the SNP-only iter1 raw call VCFs (iter/<caller>/.../iter1/mm39_calls.norm.vcf.gz) and the
+      normalized truth VCFs (sim/.../mm39-truth.norm.vcf.gz) that filter_sweep.py re-reads"
+  - path: data/s02-indels/
+    from: "s02 workflow (cd analyses/s02-indels && sbatch run_sweep.sh; config/config.yaml): the
+      SNP + indel iter1 raw call VCFs and normalized truth VCFs, same layout as s01"
+
+notebooks:
+  - path: analyses/s06-filtering/s06-results.rmd
+    html: analyses/s06-filtering/s06-results.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s06-filtering/s06-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  - path: analyses/s06-filtering/results/s06-filter-sweep.csv
+    what: "s01 (SNP-only) divergence recall + precision at each QUAL / DP / MQ hard-filter threshold
+      over the raw iter1 calls; one row per caller x D (0.02-0.10) x axis x threshold (all vtype snp)"
+    script: analyses/s06-filtering/scripts/filter_sweep.py
+    command: >-
+      conda run -n mapping-sims python analyses/s06-filtering/scripts/filter_sweep.py
+      --data-dir data/s01-baseline-iterative --divs 0.02 0.04 0.06 0.08 0.10 --seed 42
+      --out analyses/s06-filtering/results/s06-filter-sweep.csv
+    inputs:
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter1/mm39_calls.norm.vcf.gz
+    used_by:
+      - analyses/s06-filtering/s06-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "ad hoc command (2026-08-11 14:51 UTC), not in a run script; run after the last
+      computational edit of filter_sweep.py (14:45 UTC, which added the vtype column). Verified
+      2026-10-26: re-running this command into .llm-tmp/ reproduces the table byte for byte (~4 min)."
+
+  - path: analyses/s06-filtering/results/s06-filter-sweep-s02.csv
+    what: "the same sweep over the s02 (SNP + indel) raw iter1 calls, one row per caller x D x vtype
+      (snp | indel) x axis x threshold; the s06 notebook uses only its indel rows"
+    script: analyses/s06-filtering/scripts/filter_sweep.py
+    command: >-
+      conda run -n mapping-sims python analyses/s06-filtering/scripts/filter_sweep.py
+      --data-dir data/s02-indels --divs 0.02 0.04 0.06 0.08 0.10 --seed 42
+      --out analyses/s06-filtering/results/s06-filter-sweep-s02.csv
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter1/mm39_calls.norm.vcf.gz
+    used_by: [analyses/s06-filtering/s06-results.rmd]
+    git: tracked
+    note: "ad hoc command (2026-08-11 14:45 UTC), not in a run script; run after the last
+      computational edit of filter_sweep.py (14:45:09 UTC). Verified 2026-10-26: re-running this
+      command into .llm-tmp/ reproduces the table byte for byte (~4.5 min)."

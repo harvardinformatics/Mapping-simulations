@@ -1,0 +1,334 @@
+# MANIFEST.yaml -- s02-indels: this section's top-level data dictionary and provenance record.
+# Lists every data file, figure and notebook in analyses/s02-indels/ with the script and exact
+# command that produce it, its inputs, and what reads it. Each table's columns are defined in its
+# own <table>.dict.txt. Schema and checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s02-indels
+# Commands that start with `cd analyses/s02-indels && sbatch ...` are run from the project root;
+# the sbatch scripts are submitted from inside the section directory (their --output is relative).
+section: s02-indels
+question: >-
+  With indels added to the simulated divergence, does iterative (pseudo-it) mapping with consensus
+  liftover still recover reference-biased SNPs and indels, and how does that depend on the caller?
+
+upstream:
+  - path: data/s02-indels/
+    from: "s02 workflow: cd analyses/s02-indels && sbatch run_sweep.sh (workflow.smk,
+      config/config.yaml) -- region reference, mason truth VCFs / -oa truth BAMs, reads, per-iteration
+      BAMs, calls, accumulated recovered VCFs, consensus FASTAs, ref2cons/cons2ref chains and the
+      per-condition -vcf-summary.csv files; then cd analyses/s02-indels && sbatch
+      run_read_classification.sh (read_classification.smk) for the per-condition
+      -readclass-bam-summary.csv files (git-ignored)"
+  - path: analyses/s01-baseline-iterative/results/
+    from: "s01 section (see analyses/s01-baseline-iterative/MANIFEST.yaml): s02-results.rmd reads the
+      SNP-only baseline s01-base-iterative-summary.csv and vrf-agg/*-hcomp.csv for comparison"
+
+notebooks:
+  - path: analyses/s02-indels/s02-results.rmd
+    html: analyses/s02-indels/s02-results.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s02-indels/s02-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+    note: "the html was rendered 2026-08-07 11:46; the rmd has since gained the provenance chunk
+      (uncommitted working-tree edit), so the html predates that chunk until it is re-rendered"
+
+outputs:
+  # --- workflow summary tables (snakemake; combine_summaries.py concatenates per-condition rows) ---
+  - path: analyses/s02-indels/results/s02-indels-recovery-summary.csv
+    what: "recovery of hom-divergent SNPs and indels: accumulated recovered set vs truth
+      (compare_vcfs.py), one row per caller x divergence x iteration"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s02-indels && sbatch run_sweep.sh   (snakemake rule combine_recovery in
+      workflow.smk, config/config.yaml; file name = results_dir + "s02-" + run_tag +
+      "-recovery-summary.csv", run_tag "indels")
+    inputs:
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39-recovery-vcf-summary.csv
+    used_by:
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/s05-heterogeneous-divergence/s05-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "last regenerated 2026-08-07 by sbatch run_sweep.sh (02:15 UTC), after D = 0.001 / 0.005
+      were added to config; header matches the current compare_vcfs.py BASE_COLUMNS"
+
+  - path: analyses/s02-indels/results/s02-indels-het-summary.csv
+    what: "heterozygous SNP/indel recovery: the lifted raw caller VCF vs truth (compare_vcfs.py),
+      one row per caller x divergence x iteration (D = 0 kept as the germline baseline)"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s02-indels && sbatch run_sweep.sh   (snakemake rule combine_het in workflow.smk,
+      config/config.yaml; file name = results_dir + "s02-" + run_tag + "-het-summary.csv")
+    inputs:
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39-het-vcf-summary.csv
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: tracked
+    note: "last regenerated 2026-08-07 by the same run_sweep.sh run as the recovery summary"
+
+  - path: analyses/s02-indels/results/s02-indels-readclass-by-iter.csv
+    what: "read placement (exact / shifted / clipped / span_off / mismapped ...) of each iteration's
+      mapped BAM vs the mason -oa truth, iter>1 point-lifted to reference (compare_bams.py)"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s02-indels && sbatch run_read_classification.sh   (snakemake rule
+      combine_readclass in read_classification.smk, config/config.yaml; run after run_sweep.sh)
+    inputs:
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39-readclass-bam-summary.csv
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: tracked
+    note: "last regenerated 2026-08-07 (~06:00 UTC), submitted by a watcher loop once the
+      run_sweep.sh rerun had finished; header matches the current compare_bams.py COLUMNS"
+
+  - path: analyses/s02-indels/results/s02-indels-callvcf-composition.csv
+    what: "record composition (SNP / indel / '*' allele / split-multiallelic) of each caller's
+      normalized call VCF at D = 0.10, per iteration"
+    script: analyses/s02-indels/scripts/callvcf_composition.sh
+    command: bash analyses/s02-indels/scripts/callvcf_composition.sh
+    inputs:
+      - data/s02-indels/iter/{caller}/30X/19/0.10/0.005/42/iter{k}/mm39_calls.norm.vcf.gz
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: tracked
+    note: "first made 2026-08-02 (17:55 UTC) by an ad hoc loop, not in a run script; the script
+      (2026-10-26) codifies that loop and reproduces the table byte for byte (verified 2026-10-26)"
+
+  # --- per-SNP variant read fate (SNPs in the indel context) ---------------------------------------
+  - path: analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
+    values: {caller: [gatk, bcftools, freebayes], D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
+    what: "full-chromosome count of hom-div SNPs per (call status, f_alt bin) trajectory across
+      iterations 1-3 (figure G input); iter>1 lifted into consensus coords via ref2cons.chain"
+    script: analyses/s02-indels/run_vrf_aggregate.sh
+    command: cd analyses/s02-indels && sbatch run_vrf_aggregate.sh {caller} {D}
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.acc.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
+    used_by:
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/synthesis/brief.rmd
+      - analyses/s02-indels/scripts/vrf_agg_G.R
+    git: tracked
+    note: "D = 0.04-0.10 submitted 2026-08-05 by bash analyses/s02-indels/submit_vrf_aggregate.sh;
+      D = 0.005 / 0.02 by an ad hoc loop (2026-08-07 15:04 UTC) running the same sbatch line from
+      analyses/s02-indels. brief.rmd reads only vrf-agg-gatk-0.10-gtraj.csv; vrf_agg_G.R (via
+      analyses/lib/vrf_G_figs.R) plots D = 0.02-0.10"
+
+  - path: analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-hcomp.csv
+    values: {caller: [gatk, bcftools, freebayes], D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
+    what: "full-chromosome read-fate composition at each hom-div SNP position p by call status and
+      iteration (figure H input: alt at p, clipped, absent ...)"
+    script: analyses/s02-indels/run_vrf_aggregate.sh
+    command: cd analyses/s02-indels && sbatch run_vrf_aggregate.sh {caller} {D}
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.acc.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: tracked
+    note: "written by the same jobs as the -gtraj.csv tables (D = 0.04-0.10 via
+      submit_vrf_aggregate.sh 2026-08-05; D = 0.005 / 0.02 via the ad hoc loop of 2026-08-07)"
+
+  - path: analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+    values: {caller: [gatk, bcftools, freebayes], D: ["0.06", "0.08", "0.10"]}
+    what: "per-SNP read-fate ledger plus the position-centric pileup at p (depth, ref/alt/other,
+      MAPQ, mismapped-in reads) for a ~30k systematic sample of hom-div SNPs, iterations 1-3"
+    script: analyses/s02-indels/run_vrf_pileup.sh
+    command: >-
+      bash analyses/s02-indels/submit_vrf_pileup.sh
+      (submits: cd analyses/s02-indels && sbatch run_vrf_pileup.sh {caller} {D})
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.acc.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
+    used_by:
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+      - analyses/s02-indels/run_neighborhood.sh
+      - analyses/s02-indels/scripts/aggregate_calling_metrics.R
+    git: ignored
+    note: "~8 MB each, git-ignored (dictionaries are tracked). brief.rmd reads only the D = 0.10
+      files; the notebooks and both scripts read all nine"
+
+  - path: analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv
+    what: "per sampled SNP x iteration: count of still-unrecovered truth SNPs / indels within
+      +/-200 bp (the assemblable-neighbourhood load)"
+    script: analyses/lib/neighborhood_assembly.py
+    command: bash analyses/s02-indels/run_neighborhood.sh
+    inputs:
+      - analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.acc.vcf.gz
+    used_by:
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: ignored
+
+  - path: analyses/s02-indels/results/neighborhood/neighborhood-summary.csv
+    what: "per caller x divergence x iteration-transition fate (flip / stayed called / stayed
+      not-called): mean truth neighbours and mean unrecovered neighbours before / after, +/-200 bp"
+    script: analyses/lib/neighborhood_assembly.py
+    command: bash analyses/s02-indels/run_neighborhood.sh
+    inputs:
+      - analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.acc.vcf.gz
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: tracked
+
+  # --- static calling-side covariates ----------------------------------------------------------------
+  - path: analyses/s02-indels/results/calling-metrics/calling-metrics-{D}.csv
+    values: {D: ["0.06", "0.08", "0.10"]}
+    what: "per divergent truth SNP: homopolymer fraction, indel / SNP / het density (+/-100 bp) and
+      distance to the nearest indel -- static local context"
+    script: analyses/lib/calling_metrics.py
+    command: cd analyses/s02-indels && sbatch run_calling_metrics.sh
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s02-indels/ref-regions/mm39-19.fa
+    used_by: [analyses/synthesis/brief.rmd]
+    git: ignored
+    note: "made 2026-08-13 (16:11 UTC) by an ad hoc loop equivalent to run_calling_metrics.sh
+      (the script was written ~2 h later): for d in 0.06 0.08 0.10; conda run -n mapping-sims python
+      analyses/lib/calling_metrics.py --truth-vcf data/s02-indels/sim/30X/19/$d/0.005/42/mm39-truth.vcf.gz
+      --reference data/s02-indels/ref-regions/mm39-19.fa --divergence $d --window 100
+      --out analyses/s02-indels/results/calling-metrics/calling-metrics-$d.csv (default --hp-min 5).
+      The current calling_metrics.py reproduces calling-metrics-0.06.csv byte for byte (verified).
+      brief.rmd reads only the D = 0.10 file; all three are concatenated into calling-metrics.csv"
+
+  - path: analyses/s02-indels/results/calling-metrics/calling-metrics.csv
+    what: "the three calling-metrics-{D}.csv tables concatenated under one header (0.06, 0.08, 0.10)"
+    script: analyses/s02-indels/run_calling_metrics.sh
+    command: cd analyses/s02-indels && sbatch run_calling_metrics.sh
+    inputs:
+      - analyses/s02-indels/results/calling-metrics/calling-metrics-{D}.csv
+    used_by: [analyses/s02-indels/scripts/aggregate_calling_metrics.R]
+    git: ignored
+    note: "concatenated 2026-08-13 (16:11 UTC) by the same ad hoc loop as the per-divergence tables
+      (head -1 of the 0.06 table, then tail -n +2 of 0.06, 0.08, 0.10 -- what the run script does)"
+
+  - path: analyses/s02-indels/results/calling-metrics/calling-metrics-by-{fate}.csv
+    values: {fate: [fate, iterfate]}
+    what: "mean + SE of each static covariate per caller x divergence x fate: single-shot iter1
+      fate (by-fate) or the iter1->iter2 transition fate (by-iterfate)"
+    script: analyses/s02-indels/scripts/aggregate_calling_metrics.R
+    command: conda run -n renv Rscript analyses/s02-indels/scripts/aggregate_calling_metrics.R
+    inputs:
+      - analyses/s02-indels/results/calling-metrics/calling-metrics.csv
+      - analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+    used_by: [analyses/synthesis/synthesis.rmd]
+    git: tracked
+    note: "first written by ad hoc .llm-tmp R scripts (2026-08-13), then regenerated by this script
+      right after it was written (2026-08-13 18:33 UTC); the script has not changed since"
+
+  # --- figure G (call-state x f_alt flow), from the vrf-agg -gtraj tables ---------------------------
+  - path: analyses/s02-indels/results/vrf-viz-G/G_grid.png
+    what: "figure G grid: callers (rows) x D = 0.02-0.10 (columns), one shared f_alt legend"
+    script: analyses/s02-indels/scripts/vrf_agg_G.R
+    command: conda run -n renv Rscript analyses/s02-indels/scripts/vrf_agg_G.R
+    inputs:
+      - analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
+    used_by: [analyses/synthesis/synthesis.rmd]
+    git: tracked
+    note: "made 2026-09-01 14:55, one minute after the driver and analyses/lib/vrf_G_figs.R were
+      written, in a session not in the available log; command taken from the driver's usage header
+      (run from the project root)"
+
+  - path: analyses/s02-indels/results/vrf-viz-G/G_{caller}_D{d}.png
+    values: {caller: [gatk, bcftools, freebayes], d: ["0.02", "0.04", "0.06", "0.08", "0.1"]}
+    what: "standalone figure G panel for one caller x divergence (file label uses R's format(), so 0.1)"
+    script: analyses/s02-indels/scripts/vrf_agg_G.R
+    command: conda run -n renv Rscript analyses/s02-indels/scripts/vrf_agg_G.R
+    inputs:
+      - analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "written alongside G_grid.png by the same 2026-09-01 run; no notebook embeds them
+      (s02-results.rmd builds G from the gtraj tables, synthesis.rmd embeds only G_grid.png)"
+
+  # --- effective truth / phantom sites (KNOWN ARTIFACT) ---------------------------------------------
+  - path: analyses/s02-indels/results/effective-truth/eff-{D}-effective.vcf.gz
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "truth VCF minus the SNPs flagged phantom (indels passed through unchanged)"
+    script: analyses/lib/effective_truth.py
+    command: bash analyses/s02-indels/run_effective_truth.sh
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: []
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (found 2026-10-22): mason -oa writes dense SNP clusters as gapped 1D..1I
+      CIGAR pairs, so reading bases through those CIGARs shifts them and real alt sites look
+      all-reference; most 'phantom' flags are wrong. Do not use. Also nothing reads these VCFs.
+      Made 2026-08-06 (16:28 UTC) by the run script"
+
+  - path: analyses/s02-indels/results/effective-truth/eff-{D}-phantom.tsv
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "the truth SNPs (div and het) flagged phantom: truth-BAM depth, alt count and alt fraction"
+    kind: table
+    script: analyses/lib/effective_truth.py
+    command: bash analyses/s02-indels/run_effective_truth.sh
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/lib/phantom_adjacency.py]
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT: phantom flags are mostly wrong (mason -oa gapped-CIGAR SNP clusters; see
+      analyses/lib/effective_truth.py ARTIFACT_NOTE). Made 2026-08-06 by the run script"
+
+  - path: analyses/s02-indels/results/effective-truth/eff-{D}-summary.csv
+    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
+    what: "one-row phantom counts / rates for one divergence"
+    script: analyses/lib/effective_truth.py
+    command: bash analyses/s02-indels/run_effective_truth.sh
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/s02-indels/run_effective_truth.sh]
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (phantom flags mostly wrong; see effective_truth.py ARTIFACT_NOTE).
+      Concatenated by run_effective_truth.sh into phantom-by-divergence.csv"
+
+  - path: analyses/s02-indels/results/effective-truth/phantom-by-divergence.csv
+    what: "the eff-{D}-summary.csv rows concatenated: phantom SNP counts / rates per divergence"
+    script: analyses/s02-indels/run_effective_truth.sh
+    command: bash analyses/s02-indels/run_effective_truth.sh
+    inputs:
+      - analyses/s02-indels/results/effective-truth/eff-{D}-summary.csv
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: ignored
+    status: artifact
+    note: "KNOWN ARTIFACT (phantom flags mostly wrong; see effective_truth.py ARTIFACT_NOTE), yet
+      s02-results.rmd still reads it. Made 2026-08-06 (16:28 UTC) by the run script"
+
+  - path: analyses/s02-indels/results/effective-truth/phantom-adjacency.csv
+    what: "distance to the nearest other truth variant for phantom vs non-phantom SNPs, per divergence"
+    script: analyses/lib/phantom_adjacency.py
+    command: >-
+      conda run -n mapping-sims python analyses/lib/phantom_adjacency.py
+      --truth "data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz"
+      --phantom "analyses/s02-indels/results/effective-truth/eff-{D}-phantom.tsv"
+      --out analyses/s02-indels/results/effective-truth/phantom-adjacency.csv --divs 0.04,0.06,0.08,0.10
+    inputs:
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - analyses/s02-indels/results/effective-truth/eff-{D}-phantom.tsv
+    used_by: [analyses/s02-indels/s02-results.rmd]
+    git: ignored
+    status: artifact
+    note: "ad hoc command (2026-08-06 17:50 UTC, run with the mapping-sims env activated; the {D} are
+      the tool's own templates), not in a run script. KNOWN ARTIFACT: built on the wrong phantom
+      flags; s02-results.rmd still reads it"
+
+ignore:
+  - glob: analyses/s02-indels/results/s02-indels-callvcf-composition.csv.status
+    reason: "job-status marker written by the 2026-08-02 ad hoc callvcf-composition loop; not data"

@@ -51,6 +51,14 @@ fac <- function(x) factor(x, levels = callers)
 pct <- scales::percent
 ```
 
+```{r provenance, echo=FALSE, results='asis'}
+# Which git commit this notebook was rendered from, and any uncommitted edits at render time
+# (analyses/lib/provenance.r). Each data file's producing command is in the section's MANIFEST.yaml.
+source("analyses/lib/provenance.r")
+cat('::: {style="font-size: 0.85em; color: #555; border-left: 4px solid #bbb; padding: 2px 10px;"}',
+    "**Provenance**", "", render_provenance("analyses/synthesis/synthesis.rmd"), "", ":::", sep = "\n")
+```
+
 # The one idea {#spine}
 
 This document pulls the eight sections (s01–s08) onto a single spine so the whole argument

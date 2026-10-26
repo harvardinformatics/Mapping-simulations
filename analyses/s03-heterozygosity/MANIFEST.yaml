@@ -1,0 +1,233 @@
+# MANIFEST.yaml -- s03-heterozygosity: this section's top-level data dictionary and provenance record.
+# Lists every data file, figure and notebook in analyses/s03-heterozygosity/ with the script and
+# exact command that produce it, its inputs, and what reads it. Each table's columns are defined in
+# its own <table>.dict.txt. Schema and checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s03-heterozygosity
+#
+# Two kinds of input data:
+#   * Phase 1 reuses the EXISTING s01 (SNP-only) and s02 (SNP + indel) BAMs -- no new simulation.
+#   * Phase 2 (het sweep, H = 0.01 / 0.02) runs the s01 workflow with this section's
+#     config/config-s01-hetsweep.yaml into its own data dir, data/s03-hetsweep/.
+# All sbatch scripts here were submitted from INSIDE this directory (their #SBATCH --output is
+# relative), hence the `cd analyses/s03-heterozygosity && sbatch ...` form of the commands.
+section: s03-heterozygosity
+question: >-
+  Does divergence bias heterozygous sites toward the reference allele (RAF > 0.5), by what read-level
+  mechanism, and does iterative mapping restore the allele balance?
+
+upstream:
+  - path: data/s01-baseline-iterative/
+    from: "s01 workflow (cd analyses/s01-baseline-iterative && sbatch run_sweep.sh): the iter1-3
+      mapped BAMs, per-iteration caller VCFs (mm39_calls.norm.vcf.gz), recovered VCFs and truth
+      VCFs (seeds 42-44, H = 0.005). het_allele_balance.smk (config/config-s01.yaml) writes its
+      per-condition mm39-ab-summary.csv files into these iter dirs"
+  - path: data/s02-indels/
+    from: "s02 workflow (cd analyses/s02-indels && sbatch run_sweep.sh): iter1-3 BAMs, truth VCFs
+      and iter<k>/ref2cons.chain (seed 42). het_allele_balance.smk (config/config-s02.yaml) writes
+      its per-condition mm39-ab-summary.csv files into these iter dirs"
+  - path: data/s03-hetsweep/
+    from: "Phase 2 het sweep (cd analyses/s03-heterozygosity && sbatch run_phase2_hetsweep.sh): the s01
+      workflow.smk run with config/config-s01-hetsweep.yaml at H = 0.01 and 0.02 (D = 0.04, 0.10,
+      seed 42), plus the per-condition mm39-ab-summary.csv / mm39-vcf-summary.csv files (git-ignored)"
+  - path: data/varfate/
+    from: "cached mason -oa truth BAMs <D>/truth.oa.bam (true read origin + oH haplotype tag):
+      D = 0.04-0.10 from s01 run_variant_read_fate.sh, D = 0.005 / 0.02 from s01
+      run_truth_bams_lowdiv.sh"
+
+notebooks:
+  - path: analyses/s03-heterozygosity/s03-results.rmd
+    html: analyses/s03-heterozygosity/s03-results.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s03-heterozygosity/s03-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  # --- Phase 1: allele balance (RAF at true het sites) on the existing s01 / s02 BAMs -------------
+  - path: analyses/s03-heterozygosity/results/s03-s01-allele-balance-summary.csv
+    what: "reference-allele fraction (RAF) at true het SNP sites from the pileup of the s01 (SNP-only)
+      BAMs; one allele_balance.py row per caller x D x seed (42-44) x iteration"
+    script: analyses/s03-heterozygosity/het_allele_balance.smk
+    command: >-
+      cd analyses/s03-heterozygosity && sbatch run_allele_balance.sh
+      (snakemake -s het_allele_balance.smk rule combine_ab, which runs analyses/lib/combine_summaries.py
+      --kind ab; config/config-s01.yaml)
+    inputs:
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39-ab-summary.csv
+      - "(each made by rule ab_pileup: analyses/lib/allele_balance.py on iter{k}/mm39_mapped.bam and
+        data/s01-baseline-iterative/sim/30X/19/{D}/0.005/{seed}/mm39-truth.vcf.gz)"
+    used_by:
+      - analyses/s03-heterozygosity/s03-results.rmd
+      - analyses/synthesis/synthesis.rmd
+    git: tracked
+    note: "last made 2026-08-07 (sbatch at 06:08 UTC, job 37609513) after D = 0.001 / 0.005 were added
+      to config-s01.yaml. Re-combining the per-condition summaries with the current
+      combine_summaries.py reproduces it byte for byte (checked 2026-10-26); the later edits to
+      allele_balance.py and combine_summaries.py touch only their dictionary-writing code"
+
+  - path: analyses/s03-heterozygosity/results/s03-s02-allele-balance-summary.csv
+    what: "RAF at true het SNP sites from the s02 (SNP + indel) BAMs, het positions lifted
+      ref->consensus with iter(k-1)/ref2cons.chain for iter > 1; one row per caller x D x iteration"
+    script: analyses/s03-heterozygosity/het_allele_balance.smk
+    command: >-
+      cd analyses/s03-heterozygosity && sbatch run_allele_balance.sh
+      (snakemake -s het_allele_balance.smk rule combine_ab, which runs analyses/lib/combine_summaries.py
+      --kind ab; config/config-s02.yaml)
+    inputs:
+      - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39-ab-summary.csv
+      - "(each made by rule ab_pileup: analyses/lib/allele_balance.py on iter{k}/mm39_mapped.bam,
+        data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz and, for k > 1,
+        iter(k-1)/ref2cons.chain)"
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: tracked
+    note: "last made 2026-08-07 by the same run_allele_balance.sh job as the s01 table (config-s02.yaml
+      also gained D = 0.001 / 0.005). Re-combining the per-condition summaries reproduces it byte
+      for byte (checked 2026-10-26); later code edits are dictionary-only"
+
+  # --- Phase 2: het-density sweep (new SNP-only simulations at H = 0.01 / 0.02) -------------------
+  - path: analyses/s03-heterozygosity/results/s03-hetsweep-{H}-allele-balance-summary.csv
+    values: {H: ["0.01", "0.02"]}
+    what: "RAF at true het SNP sites at elevated heterozygosity H (data/s03-hetsweep BAMs, D = 0.04 /
+      0.10, seed 42); one allele_balance.py row per caller x D x iteration"
+    script: analyses/s03-heterozygosity/het_allele_balance.smk
+    command: >-
+      cd analyses/s03-heterozygosity && sbatch run_phase2_hetsweep.sh
+      (its step 2: snakemake -s het_allele_balance.smk rule combine_ab, config/config-hetsweep.yaml
+      --config het={H} run_tag=hetsweep-{H})
+    inputs:
+      - data/s03-hetsweep/iter/{caller}/30X/19/{D}/{H}/42/iter{k}/mm39-ab-summary.csv
+      - "(each made by rule ab_pileup: analyses/lib/allele_balance.py on iter{k}/mm39_mapped.bam and
+        data/s03-hetsweep/sim/30X/19/{D}/{H}/42/mm39-truth.vcf.gz)"
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: tracked
+    note: "orchestrator submitted 2026-08-03 04:39 UTC (job 36853938; wrote H = 0.01), killed by node
+      trouble, resubmitted with the same command 2026-08-03 19:21 UTC (job 36913821; wrote H = 0.02).
+      Re-combining the per-condition summaries reproduces both byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s03-heterozygosity/results/s01-hetsweep-{H}-iterative-summary.csv
+    values: {H: ["0.01", "0.02"]}
+    what: "variant-calling accuracy (compare_vcfs.py: recovered set vs truth) of the het-sweep
+      simulations; one row per caller x D (0.04, 0.10) x iteration -- a by-product of the s01 workflow"
+    script: analyses/s01-baseline-iterative/workflow.smk
+    command: >-
+      cd analyses/s03-heterozygosity && sbatch run_phase2_hetsweep.sh
+      (its step 1: snakemake -s ../s01-baseline-iterative/workflow.smk rule combine_s01, which runs
+      analyses/lib/combine_summaries.py --kind vcf; config/config-s01-hetsweep.yaml
+      --config het={H} run_tag=hetsweep-{H})
+    inputs:
+      - data/s03-hetsweep/iter/{caller}/30X/19/{D}/{H}/42/iter{k}/mm39-vcf-summary.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "nothing reads it: the notebook uses only the sweep's allele-balance summaries. Same two
+      orchestrator jobs as the hetsweep allele-balance tables (H = 0.01 job 36853938, H = 0.02 job
+      36913821). Re-combining the per-condition summaries reproduces both byte for byte (checked
+      2026-10-26); compare_vcfs.py has since gained only an optional --extra column and
+      dictionary-code edits"
+
+  # --- mechanism: alt-read exclusion vs degradation ----------------------------------------------
+  - path: analyses/s03-heterozygosity/results/s03-altbias-mechanism.csv
+    what: "at every 25th true het SNP, primary reads with an aligned base split into ref vs alt
+      (counts, MAPQ, % MAPQ<20, % soft-clipped); iteration 1 per D plus iteration 3 per caller x D"
+    script: analyses/s03-heterozygosity/run_altbias_mechanism.sh
+    command: bash analyses/s03-heterozygosity/run_altbias_mechanism.sh
+    inputs:
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: tracked
+    note: "made 2026-08-04 (03:19 UTC) by analyses/lib/altbias_mechanism.py via this script; the
+      script has since gained only its data-dictionary function"
+
+  # --- per-variant read fate at het sites (s01 BAMs + mason -oa truth BAMs) -----------------------
+  - path: analyses/s03-heterozygosity/results/vrf-agg/vrf-agg-{caller}-{D}-{part}.csv
+    values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.04", "0.06", "0.08", "0.10"],
+             part: ["gtraj", "hcomp"]}
+    what: "full-chromosome het read-fate aggregates: gtraj = SNP counts per (call status, f_alt bin)
+      trajectory over iterations 1-3; hcomp = read-fate composition at p summed per iteration x status"
+    script: analyses/s03-heterozygosity/run_vrf_aggregate.sh
+    command: >-
+      bash analyses/s03-heterozygosity/submit_vrf_aggregate.sh
+      (submits: cd analyses/s03-heterozygosity && sbatch run_vrf_aggregate.sh {caller} {D})
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_calls.norm.vcf.gz
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: tracked
+    note: "submitted 2026-08-05 18:33 UTC (jobs 37405833-37405844). variant_read_fate.py was edited
+      afterwards only in its --pileup (per-SNP) code path and its dictionary code; the --aggregate
+      computation is unchanged"
+
+  - path: analyses/s03-heterozygosity/results/vrf-agg/vrf-agg-{caller}-{D}-{part}.csv
+    values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.005", "0.02"], part: ["gtraj", "hcomp"]}
+    what: "the same het read-fate aggregates at the low divergences D = 0.005 and 0.02"
+    script: analyses/s03-heterozygosity/run_vrf_aggregate.sh
+    command: cd analyses/s03-heterozygosity && sbatch run_vrf_aggregate.sh {caller} {D}
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_calls.norm.vcf.gz
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: tracked
+    note: "ad hoc submission loop (2026-08-07 15:04 UTC, jobs 37649542-37649557), not in a submit script
+      (submit_vrf_aggregate.sh covers only D = 0.04-0.10): for D in 0.02 0.005; do for C in gatk
+      bcftools freebayes; do (cd analyses/s03-heterozygosity && sbatch --parsable run_vrf_aggregate.sh
+      $C $D >/dev/null); done; done -- the same loop also submitted the s01 and s02 aggregate jobs.
+      Later variant_read_fate.py edits are dictionary-code only"
+
+  - path: analyses/s03-heterozygosity/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+    values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.06", "0.08", "0.10"]}
+    what: "per-SNP het read ledger (~30000 sampled het SNPs x iterations 1-3) plus the position-centric
+      pileup at p (depth, ref/alt/other, MAPQ, mismapped-in reads)"
+    script: analyses/s03-heterozygosity/run_vrf_pileup.sh
+    command: >-
+      bash analyses/s03-heterozygosity/submit_vrf_pileup.sh
+      (submits: cd analyses/s03-heterozygosity && sbatch run_vrf_pileup.sh {caller} {D})
+    inputs:
+      - data/varfate/{D}/truth.oa.bam
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_calls.norm.vcf.gz
+    used_by:
+      - analyses/s03-heterozygosity/s03-results.rmd
+      - analyses/s03-heterozygosity/run_neighborhood.sh
+    git: ignored
+    note: "submitted 2026-08-06 16:31 UTC (jobs 37519068-37519080), after the last computational edit
+      of variant_read_fate.py (14:44 UTC, the mismapped-in pileup columns); later edits are
+      dictionary-code only. The notebook reads the whole directory (decomp_load in
+      analyses/lib/decomp_figs.R)"
+
+  # --- neighbourhood assembly (unrecovered hom-div neighbours around each het query SNP) ---------
+  - path: analyses/s03-heterozygosity/results/neighborhood/neighborhood-summary.csv
+    what: "mean neighbour truth / unrecovered hom-div SNP counts within +/-200 bp of the het query SNPs,
+      per caller x D x fate over an iteration pair (flip / stayed called / stayed not called)"
+    script: analyses/s03-heterozygosity/run_neighborhood.sh
+    command: bash analyses/s03-heterozygosity/run_neighborhood.sh
+    inputs:
+      - analyses/s03-heterozygosity/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: tracked
+    note: "made 2026-08-06 (by a background watcher that ran this script once the 9 pileup tables were
+      done) with an earlier version of analyses/lib/neighborhood_assembly.py; the current version
+      reproduces this table byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s03-heterozygosity/results/neighborhood/neighborhood-per-snp.csv
+    what: "per het query SNP x iteration: neighbour truth and unrecovered hom-div SNP counts within
+      +/-200 bp, with the SNP's recovered flag"
+    script: analyses/s03-heterozygosity/run_neighborhood.sh
+    command: bash analyses/s03-heterozygosity/run_neighborhood.sh
+    inputs:
+      - analyses/s03-heterozygosity/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
+    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
+    git: ignored
+    status: earlier-version
+    note: "made 2026-08-06 by an earlier analyses/lib/neighborhood_assembly.py that did not yet write
+      the per-SNP n_neighbor_truth_indel / n_unrecovered_indel columns; the current version
+      reproduces every other column byte for byte (checked 2026-10-26). Re-running the command adds
+      the two indel columns"

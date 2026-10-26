@@ -1,0 +1,394 @@
+# MANIFEST.yaml -- s05-heterogeneous-divergence: this section's top-level data dictionary and
+# provenance record. Lists every data file, figure and notebook in
+# analyses/s05-heterogeneous-divergence/ with the script and exact command that produce it, its
+# inputs, and what reads it. Each table's columns are defined in its own <table>.dict.txt. Schema and
+# checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s05-heterogeneous-divergence
+#
+# Five simulation runs feed this section (all chr19, 30X, het 0.005, seed 42, field seed 42):
+#   A. characterization sweep, mean D 0.06, five field configs L{corr_len}-S{sigma}
+#      (L20000-S0.0 = homogeneous control, L2000-S1.0, L20000-S1.0, L200000-S1.0, L20000-S2.0);
+#      SNP-only.  workflow.smk + config/config.yaml, launcher run_sweep.sh.
+#   B. realistic, mean D 0.03: L20000-S0.0 control + L20000-S1.0-C0.20 (local-D cap 0.20, het on
+#      the same field); SNP-only.  workflow.smk + config/config-realistic.yaml, run_realistic.sh.
+#   C. realistic mean sweep, L20000-S1.0-C0.20 at mean D 0.01/0.02/0.03/0.04/0.06; SNP-only
+#      (0.03 reuses run B).  workflow.smk + config/config-realistic-meansweep.yaml,
+#      run_realistic_meansweep.sh (one snakemake pass per mean, then one combine).
+#   D. het-indels isolation run, mean D 0.06, sigma 1, corr 20 kb, indels on the field, het
+#      uniform, uncapped.  workflow-indels.smk + config/config-hetindel.yaml, run_sweep_hetindel.sh.
+#   E. realistic mean sweep WITH indels (cap 0.20, het + indels on the field), mean D 0.01-0.06.
+#      workflow-indels.smk + config/config-realistic-meansweep-indels.yaml,
+#      run_realistic_meansweep_indels.sh.
+# Every sbatch launcher was submitted from INSIDE this directory (relative #SBATCH --output).
+# The per-site tables (local recall, landscape, mapping-vs-calling, het-indel local recovery) came
+# from AD HOC commands typed in an earlier session (recovered from the session log; times UTC).
+# Every table below was re-made on 2026-10-26 from the existing inputs with the CURRENT code into
+# .llm-tmp/s05/ and compared with cmp: all are byte-identical (the post-run edits to the producing
+# scripts touch only their argument parsing / dictionary writing). Placeholders in `inputs:`:
+# {caller} = gatk | bcftools | freebayes, {K} = iteration 1 | 2 | 3.
+section: s05-heterogeneous-divergence
+question: With the genome-wide mean divergence fixed, how does spatially heterogeneous (autocorrelated, patchy) divergence change SNP and indel recovery, and is recall predicted by LOCAL divergence?
+
+upstream:
+  - path: data/s05-heterogeneous-divergence/
+    from: "s05 SNP-only workflow (workflow.smk) runs A, B and C above: ref-regions/mm39-19.fa,
+      sim/30X/19/{D}/0.005/{field}/42/ (truth VCFs, normalized truth, per-site local divergence
+      mm39-truth-locald.tsv, reads) and iter/{caller}/30X/19/{D}/0.005/{field}/42/iter{K}/ (BAMs,
+      calls, consensus, recovered VCFs, per-condition mm39-vcf-summary.csv). Also varfate/{field}/
+      truth.oa.bam (mason -oa truth BAMs) from cd analyses/s05-heterogeneous-divergence && sbatch
+      run_vrf_truthbam.sh (L20000-S1.0) and sbatch run_vrf_truthbam_capped.sh (L20000-S1.0-C0.20).
+      Note: the locald TSVs of runs A and B (made 2026-08-08/09) lack the TYPE column that
+      annotate_local_divergence.py gained on 2026-08-10 (runs C-E have it); the s05 scripts read
+      columns by header name, so both layouts work"
+  - path: data/s05-heterogeneous-divergence/indels/
+    from: "run D: cd analyses/s05-heterogeneous-divergence && sbatch run_sweep_hetindel.sh
+      (workflow-indels.smk, config/config-hetindel.yaml; preceded by the bcftools-only validation
+      chain sbatch run_validate_hetindel.sh)"
+  - path: data/s05-heterogeneous-divergence/realistic-indels/
+    from: "run E: cd analyses/s05-heterogeneous-divergence && sbatch run_realistic_meansweep_indels.sh
+      (workflow-indels.smk, config/config-realistic-meansweep-indels.yaml)"
+  - path: analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv
+    from: "s01 workflow (see analyses/s01-baseline-iterative/MANIFEST.yaml); the homogeneous SNP
+      baseline the s05 notebook compares the realistic mean sweep against"
+  - path: analyses/s02-indels/results/s02-indels-recovery-summary.csv
+    from: "s02 workflow (see analyses/s02-indels/MANIFEST.yaml); the homogeneous indel baseline the
+      s05 notebook compares the het-indels run against"
+
+notebooks:
+  # The html was rendered 2026-08-11 12:33 UTC; the rmd has since gained the provenance chunk
+  # (uncommitted), so the html predates the current rmd until it is re-rendered.
+  - path: analyses/s05-heterogeneous-divergence/s05-results.rmd
+    html: analyses/s05-heterogeneous-divergence/s05-results.html
+    render: >-
+      conda run -n renv Rscript -e
+      'rmarkdown::render("analyses/s05-heterogeneous-divergence/s05-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  # --- workflow summaries (compare_vcfs.py per condition, concatenated by combine_summaries.py) ---
+  - path: analyses/s05-heterogeneous-divergence/results/s05-hetdiv-iterative-summary.csv
+    what: "run A (mean D 0.06): SNP recovery (recovered set vs truth, compare_vcfs.py) per field
+      config x caller x iteration; 45 rows, last column = field tag"
+    script: analyses/s05-heterogeneous-divergence/workflow.smk
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_sweep.sh
+      (snakemake -s workflow.smk rule combine_s05, which runs analyses/lib/combine_summaries.py
+      --kind vcf; config/config.yaml, run_tag hetdiv)
+    inputs:
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.06/0.005/{field}/42/iter{K}/mm39-vcf-summary.csv
+      - "({field} = L20000-S0.0 L2000-S1.0 L20000-S1.0 L200000-S1.0 L20000-S2.0)"
+    used_by: [analyses/s05-heterogeneous-divergence/s05-results.rmd]
+    git: tracked
+    note: "orchestrator submitted 2026-08-08 02:15 UTC (job 37722476; a 01:57 UTC submission was
+      cancelled), combine ran 05:46 UTC. Re-combining the per-condition summaries with the current
+      combine_summaries.py reproduces it byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-realistic-iterative-summary.csv
+    what: "run B (mean D 0.03): SNP recovery per field config (L20000-S0.0 control,
+      L20000-S1.0-C0.20 realistic) x caller x iteration; 18 rows, last column = field tag"
+    script: analyses/s05-heterogeneous-divergence/workflow.smk
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_realistic.sh
+      (snakemake -s workflow.smk rule combine_s05, which runs analyses/lib/combine_summaries.py
+      --kind vcf; config/config-realistic.yaml, run_tag realistic)
+    inputs:
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.03/0.005/{field}/42/iter{K}/mm39-vcf-summary.csv
+      - "({field} = L20000-S0.0 L20000-S1.0-C0.20)"
+    used_by: [analyses/s05-heterogeneous-divergence/s05-results.rmd]
+    git: tracked
+    note: "orchestrator submitted 2026-08-09 19:39 UTC (job 37938668), combine ran 23:13 UTC.
+      Re-combining reproduces it byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-iterative-summary.csv
+    what: "run C: SNP recovery of the realistic field L20000-S1.0-C0.20 at mean D 0.01-0.06 x caller
+      x iteration; 45 rows, last column = field tag"
+    script: analyses/s05-heterogeneous-divergence/run_realistic_meansweep.sh
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_realistic_meansweep.sh
+      (its final step: python analyses/lib/combine_summaries.py --inputs $(find
+      data/s05-heterogeneous-divergence/iter -path "*L20000-S1.0-C0.20*/iter*/mm39-vcf-summary.csv" | sort)
+      --out analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-iterative-summary.csv
+      --kind vcf)
+    inputs:
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/{D}/0.005/L20000-S1.0-C0.20/42/iter{K}/mm39-vcf-summary.csv
+      - "({D} = 0.01 0.02 0.03 0.04 0.06; 0.03 is run B's data)"
+    used_by:
+      - analyses/s05-heterogeneous-divergence/s05-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "orchestrator submitted 2026-08-10 15:03 UTC (job 38065683; the 15:01 UTC job 38065481 died on a
+      float div_target, fixed in workflow.smk), final combine 2026-08-11 03:09 UTC. Each per-mean
+      snakemake pass also runs rule combine_s05, which writes this same path with that mean's rows
+      only; the launcher's final combine overwrites it with all 45. Re-running that final combine
+      reproduces it byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-hetindel-{part}-summary.csv
+    values: {part: ["recovery", "het"]}
+    what: "run D (mean D 0.06, indels on the field): recovery = SNP + indel divergence recovery of the
+      accumulated recovered set; het = het-site calls of the lifted raw calls; caller x iteration, 9 rows"
+    script: analyses/s05-heterogeneous-divergence/workflow-indels.smk
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_sweep_hetindel.sh
+      (snakemake -s workflow-indels.smk rules combine_recovery / combine_het, which run
+      analyses/lib/combine_summaries.py --kind vcf; config/config-hetindel.yaml, run_tag hetindel)
+    inputs:
+      - data/s05-heterogeneous-divergence/indels/iter/{caller}/30X/19/0.06/0.005/42/iter{K}/mm39-{part}-vcf-summary.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "orchestrator submitted 2026-08-10 18:05 UTC (job 38106669), combines ran 21:36 / 21:38 UTC;
+      re-combining reproduces both byte for byte (checked 2026-10-26). No notebook reads them (the
+      notebooks use s05-hetindel-local-recovery.csv instead); they are the workflow's rule-all
+      targets, so removing them would make snakemake re-run the combine steps"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-indels-recovery-summary.csv
+    what: "run E: SNP + indel divergence recovery of the realistic field (cap 0.20, het + indels on the
+      field) at mean D 0.01-0.06 x caller x iteration; 45 rows"
+    script: analyses/s05-heterogeneous-divergence/workflow-indels.smk
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_realistic_meansweep_indels.sh
+      (snakemake -s workflow-indels.smk rule combine_recovery, which runs
+      analyses/lib/combine_summaries.py --kind vcf; config/config-realistic-meansweep-indels.yaml,
+      run_tag realistic-meansweep-indels)
+    inputs:
+      - data/s05-heterogeneous-divergence/realistic-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{K}/mm39-recovery-vcf-summary.csv
+      - "({D} = 0.01 0.02 0.03 0.04 0.06)"
+    used_by:
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "orchestrator job 39190833 (sbatch issued at 16:58 and again at 16:59 UTC on 2026-08-14,
+      around an edit of --time to 3 days), combine ran 21:13 UTC. Re-combining reproduces it byte
+      for byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-realistic-meansweep-indels-het-summary.csv
+    what: "run E: het-site call outcomes (lifted raw calls vs truth het sites) at mean D 0.01-0.06 x
+      caller x iteration; 45 rows"
+    script: analyses/s05-heterogeneous-divergence/workflow-indels.smk
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_realistic_meansweep_indels.sh
+      (snakemake -s workflow-indels.smk rule combine_het, which runs analyses/lib/combine_summaries.py
+      --kind vcf; config/config-realistic-meansweep-indels.yaml)
+    inputs:
+      - data/s05-heterogeneous-divergence/realistic-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{K}/mm39-het-vcf-summary.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "same job as the recovery summary (39190833), combine ran 2026-08-14 21:10 UTC; re-combining
+      reproduces it byte for byte (checked 2026-10-26). No notebook reads it; it is a rule-all target
+      of workflow-indels.smk"
+
+  # --- per-site analyses (ad hoc commands) ---------------------------------------------------------
+  - path: analyses/s05-heterogeneous-divergence/results/s05-local-recall.csv
+    what: "run A: divergent-SNP recall binned by measured local divergence (+/-150 and +/-500 bp),
+      per field config x caller x iteration, plus a window='all' whole-config row"
+    script: analyses/s05-heterogeneous-divergence/scripts/local_recall.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/local_recall.py
+      --data-dir data/s05-heterogeneous-divergence
+      --configs L20000-S0.0 L2000-S1.0 L20000-S1.0 L200000-S1.0 L20000-S2.0
+      --out analyses/s05-heterogeneous-divergence/results/s05-local-recall.csv
+    inputs:
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.06/0.005/{field}/42/mm39-truth-locald.tsv
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.06/0.005/{field}/42/iter{K}/mm39_recovered.vcf.gz
+    used_by: [analyses/s05-heterogeneous-divergence/s05-results.rmd]
+    git: tracked
+    note: "ad hoc command (2026-08-09 01:57 UTC), not in a run script. local_recall.py was edited
+      afterwards (2026-08-10: parse_field accepts -C cap tags; 2026-10-26: provenance block in the
+      dictionary); re-running this command with the current script reproduces the table byte for
+      byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-realistic-local-recall.csv
+    what: "run B (mean D 0.03): divergent-SNP recall binned by local divergence for L20000-S0.0 and
+      L20000-S1.0-C0.20 x caller x iteration (same layout as s05-local-recall.csv)"
+    script: analyses/s05-heterogeneous-divergence/scripts/local_recall.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/local_recall.py
+      --data-dir data/s05-heterogeneous-divergence --div 0.03 --configs L20000-S0.0 L20000-S1.0-C0.20
+      --out analyses/s05-heterogeneous-divergence/results/s05-realistic-local-recall.csv
+    inputs:
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/{field}/42/mm39-truth-locald.tsv
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.03/0.005/{field}/42/iter{K}/mm39_recovered.vcf.gz
+    used_by:
+      - analyses/s05-heterogeneous-divergence/s05-results.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "ad hoc command (2026-08-10 00:01 UTC), not in a run script; re-running it with the current
+      script reproduces the table byte for byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-{table}.csv
+    values: {table: ["landscape", "localdist"]}
+    what: "run A landscape descriptors: landscape = local divergence along chr19 in 50 kb bins per
+      field config; localdist = histogram of per-site local divergence per config x window"
+    script: analyses/s05-heterogeneous-divergence/scripts/local_landscape.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/local_landscape.py
+      --data-dir data/s05-heterogeneous-divergence
+      --reference data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa
+      --configs L20000-S0.0 L2000-S1.0 L20000-S1.0 L200000-S1.0 L20000-S2.0
+      --out-prefix analyses/s05-heterogeneous-divergence/results/s05
+    inputs:
+      - data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.06/0.005/{field}/42/mm39-truth-locald.tsv
+    used_by: [analyses/s05-heterogeneous-divergence/s05-results.rmd]
+    git: tracked
+    note: "ad hoc command (2026-08-09 02:00 UTC), not in a run script; one run writes both tables.
+      local_landscape.py was edited afterwards (2026-08-10 cap-tag parsing; 2026-10-26 separate
+      dictionaries, --dicts-only); the current script reproduces both tables byte for byte
+      (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-realistic-{table}.csv
+    values: {table: ["landscape", "localdist"]}
+    what: "run B landscape descriptors (mean D 0.03; L20000-S0.0 and L20000-S1.0-C0.20), same layout
+      as s05-landscape.csv / s05-localdist.csv"
+    script: analyses/s05-heterogeneous-divergence/scripts/local_landscape.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/local_landscape.py
+      --data-dir data/s05-heterogeneous-divergence
+      --reference data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa --div 0.03
+      --configs L20000-S0.0 L20000-S1.0-C0.20
+      --out-prefix analyses/s05-heterogeneous-divergence/results/s05-realistic
+    inputs:
+      - data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/{field}/42/mm39-truth-locald.tsv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "ad hoc command (2026-08-10 00:01 UTC, same Bash call as s05-realistic-local-recall.csv), not
+      in a run script; the current script reproduces both tables byte for byte (checked 2026-10-26).
+      No notebook reads them"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-hetindel-local-recovery.csv
+    what: "run D: SNP and indel divergence recall binned by local divergence (div-SNP density in
+      +/-150 bp around each truth site), per caller x iteration x vtype"
+    script: analyses/s05-heterogeneous-divergence/scripts/hetindel_local_recovery.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/hetindel_local_recovery.py
+      --data-dir data/s05-heterogeneous-divergence/indels
+      --out analyses/s05-heterogeneous-divergence/results/s05-hetindel-local-recovery.csv
+    inputs:
+      - data/s05-heterogeneous-divergence/indels/sim/30X/19/0.06/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s05-heterogeneous-divergence/indels/iter/{caller}/30X/19/0.06/0.005/42/iter{K}/mm39_recovered.acc.vcf.gz
+    used_by:
+      - analyses/s05-heterogeneous-divergence/s05-results.rmd
+      - analyses/synthesis/synthesis.rmd
+    git: tracked
+    note: "ad hoc command (2026-08-11 01:58 UTC), not in a run script; the only later edit to the
+      script is the 2026-10-26 dictionary provenance block. Re-running reproduces the table byte for
+      byte (checked 2026-10-26)"
+
+  # --- mapping-vs-calling decomposition --------------------------------------------------------------
+  - path: analyses/s05-heterogeneous-divergence/results/vrf-pileup/vrf-pileup-{caller}.csv
+    values: {caller: ["gatk", "bcftools", "freebayes"]}
+    what: "per-divergent-SNP read-fate ledger + caller pileup at the SNP (variant_read_fate.py
+      --pileup), field L20000-S1.0, mean D 0.06, ~50k sampled SNPs x iterations 1-3"
+    script: analyses/s05-heterogeneous-divergence/run_vrf_pileup.sh
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_vrf_pileup.sh {caller}
+      (submitted after sbatch run_vrf_truthbam.sh, which regenerates the mason -oa truth BAM)
+    inputs:
+      - data/s05-heterogeneous-divergence/varfate/L20000-S1.0/truth.oa.bam
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.06/0.005/L20000-S1.0/42/mm39-truth.norm.vcf.gz
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.06/0.005/L20000-S1.0/42/iter{K}/mm39_mapped.bam
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.06/0.005/L20000-S1.0/42/iter{K}/mm39_recovered.vcf.gz
+    used_by: [analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py]
+    git: ignored
+    note: "submitted 2026-08-10 02:01 UTC (jobs 37966478-80, after truth-BAM job 37966477), written
+      02:28 UTC. variant_read_fate.py was edited afterwards (2026-10-23/26) only in its argument
+      parsing and dictionary writing (--dicts-only, provenance), not its computation. Not re-run
+      (10 h, 32 GB SLURM job); the downstream s05-mapping-vs-calling.csv re-derives byte for byte
+      from these files"
+
+  - path: analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped/vrf-pileup-{caller}.csv
+    values: {caller: ["gatk", "bcftools", "freebayes"]}
+    what: "the same read-fate + pileup ledger for the realistic capped field L20000-S1.0-C0.20, mean D
+      0.03, ~50k sampled SNPs x iterations 1-3"
+    script: analyses/s05-heterogeneous-divergence/run_vrf_pileup_capped.sh
+    command: >-
+      cd analyses/s05-heterogeneous-divergence && sbatch run_vrf_pileup_capped.sh {caller}
+      (submitted after sbatch run_vrf_truthbam_capped.sh, which regenerates the mason -oa truth BAM)
+    inputs:
+      - data/s05-heterogeneous-divergence/varfate/L20000-S1.0-C0.20/truth.oa.bam
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth.norm.vcf.gz
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/iter{K}/mm39_mapped.bam
+      - data/s05-heterogeneous-divergence/iter/{caller}/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/iter{K}/mm39_recovered.vcf.gz
+    used_by: [analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py]
+    git: ignored
+    note: "submitted 2026-08-13 16:02 UTC (jobs 38975122/25/26, after truth-BAM job 38975121), written
+      16:30 UTC. Later variant_read_fate.py edits are argument/dictionary-only (as above). Not re-run;
+      the downstream s05-mapping-vs-calling-capped.csv re-derives byte for byte from these files"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling.csv
+    what: "field L20000-S1.0, mean D 0.06: each sampled divergent SNP classed recovered /
+      calling-limited (alt >= 2 reads in the pileup, not called) / mapping-limited, binned by local
+      divergence (+/-150 bp), per caller x iteration"
+    script: analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py
+      --vrf-dir analyses/s05-heterogeneous-divergence/results/vrf-pileup
+      --localdiv data/s05-heterogeneous-divergence/sim/30X/19/0.06/0.005/L20000-S1.0/42/mm39-truth-locald.tsv
+      --window 150 --alt-min 2
+      --out analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling.csv
+    inputs:
+      - analyses/s05-heterogeneous-divergence/results/vrf-pileup/vrf-pileup-{caller}.csv
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.06/0.005/L20000-S1.0/42/mm39-truth-locald.tsv
+    used_by: [analyses/s05-heterogeneous-divergence/s05-results.rmd]
+    git: tracked
+    note: "ad hoc command (2026-08-10 13:57 UTC), not in a run script; the only later edit to the
+      script is the 2026-10-26 dictionary provenance block. Re-running reproduces the table byte for
+      byte (checked 2026-10-26)"
+
+  - path: analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv
+    what: "the same recovered / calling-limited / mapping-limited decomposition for the realistic
+      capped field L20000-S1.0-C0.20, mean D 0.03"
+    script: analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py
+    command: >-
+      conda run -n mapping-sims python analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py
+      --vrf-dir analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped
+      --localdiv data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv
+      --window 150
+      --out analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv
+    inputs:
+      - analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped/vrf-pileup-{caller}.csv
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv
+    used_by:
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "ad hoc command (2026-08-13 16:33 UTC), not in a run script; --alt-min left at its default
+      (2). Its dictionary was then hand-written (Write, 16:37 UTC) with the capped-config details.
+      Re-running reproduces the table byte for byte (checked 2026-10-26)"
+
+  # --- QC figure for the realistic capped config ------------------------------------------------------
+  - path: analyses/s05-heterogeneous-divergence/results/capped-divergence-distribution.png
+    what: "QC figure, field L20000-S1.0-C0.20 mean D 0.03: (A) per-read divergence NM/readlen in the
+      truth BAM, (B) per-site local_d_150 at divergent SNPs"
+    script: analyses/s05-heterogeneous-divergence/scripts/plot_divergence_distribution.R
+    command: bash analyses/s05-heterogeneous-divergence/run_divergence_distribution.sh
+    inputs:
+      - data/s05-heterogeneous-divergence/varfate/L20000-S1.0-C0.20/truth.oa.bam
+      - data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv
+    used_by: [analyses/synthesis/synthesis.rmd]
+    git: tracked
+    note: "last made 2026-08-14 14:06 UTC by run_divergence_distribution.sh, after the last edit of
+      plot_divergence_distribution.R (14:06:39 UTC). It replaced a first version (2026-08-13 18:28 UTC)
+      that was an ad hoc .llm-tmp/divdist.png copied into results/"
+
+  - path: analyses/s05-heterogeneous-divergence/results/capped-divergence-distribution.png.txt
+    kind: caption
+    what: "plain-text caption of capped-divergence-distribution.png: config, panel definitions,
+      percentiles and the reading that justifies the mapping-vs-calling x-axis range"
+    script: hand-written
+    command: >-
+      none -- hand-written (Write tool call, 2026-08-13 18:29 UTC); its numbers summarize the values
+      run_divergence_distribution.sh extracts and plots
+    inputs:
+      - analyses/s05-heterogeneous-divergence/results/capped-divergence-distribution.png
+    used_by: []
+    git: tracked
+    note: "written for the first, ad hoc version of the figure (2026-08-13); the figure was
+      regenerated by run_divergence_distribution.sh on 2026-08-14 and its n, mean, p99 and max still
+      match the caption. Corrected 2026-10-26: local_d_150 was described as count / 150 (code:
+      count / (2 x 150), grid 1/300) and the binning sentence referred to the old binning. Nothing
+      reads it (synthesis.rmd embeds the PNG and writes its own caption)"

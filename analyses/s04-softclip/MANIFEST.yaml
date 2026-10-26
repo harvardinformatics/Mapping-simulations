@@ -1,0 +1,51 @@
+# MANIFEST.yaml -- s04-softclip: this section's top-level data dictionary and provenance record.
+# Lists every data file, figure and notebook in analyses/s04-softclip/ with the script and exact
+# command that produce it, its inputs, and what reads it. Each table's columns are defined in its
+# own <table>.dict.txt. Schema and checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s04-softclip
+section: s04-softclip
+question: Does disabling soft-clipping (GATK --dont-use-soft-clipped-bases) change GATK's SNP recall?
+
+upstream:
+  - path: data/s01-baseline-iterative/
+    from: "s01 workflow (bash analyses/s01-baseline-iterative/run_sweep.sh): the iter1-3 gatk BAMs,
+      consensus FASTAs, recovered VCFs and normalized truth VCFs that both run scripts re-call"
+  - path: data/s04-softclip/
+    from: "per-arm work files written by the run scripts below (git-ignored)"
+
+notebooks:
+  - path: analyses/s04-softclip/s04-results.rmd
+    html: analyses/s04-softclip/s04-results.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s04-softclip/s04-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  - path: analyses/s04-softclip/results/softclip-toggle-{D}.csv
+    values: {D: ["0.06", "0.10"]}
+    what: "GATK SNP recall at iteration 1 with default settings vs --dont-use-soft-clipped-bases,
+      re-called on the same s01 iter1 BAM; one compare_vcfs.py row per arm"
+    script: analyses/s04-softclip/run_softclip_toggle.sh
+    command: cd analyses/s04-softclip && sbatch run_softclip_toggle.sh {D}
+    inputs:
+      - data/s01-baseline-iterative/iter/gatk/30X/19/{D}/0.005/42/iter1/mm39_mapped.bam
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/s04-softclip/s04-results.rmd]
+    git: tracked
+
+  - path: analyses/s04-softclip/results/softclip-toggle-{D}-iter{K}.csv
+    values: {D: ["0.06", "0.10"], K: ["2", "3"]}
+    what: "the same toggle at iterations 2 and 3: GATK re-called on the s01 iter-K BAM against
+      consensus_(K-1), scored as the cumulative recovered set; one row per arm"
+    script: analyses/s04-softclip/run_softclip_toggle_iter.sh
+    command: >-
+      bash analyses/s04-softclip/submit_softclip_toggle_iter.sh
+      (submits: cd analyses/s04-softclip && sbatch run_softclip_toggle_iter.sh {D} {K})
+    inputs:
+      - data/s01-baseline-iterative/iter/gatk/30X/19/{D}/0.005/42/iter{K}/mm39_mapped.bam
+      - data/s01-baseline-iterative/iter/gatk/30X/19/{D}/0.005/42/iter(K-1)/mm39-consensus.fa
+      - data/s01-baseline-iterative/iter/gatk/30X/19/{D}/0.005/42/iter(K-1)/mm39_recovered.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+    used_by: [analyses/s04-softclip/s04-results.rmd]
+    git: tracked

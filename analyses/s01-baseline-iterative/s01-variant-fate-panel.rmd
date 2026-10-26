@@ -31,6 +31,14 @@ library(ggplot2); library(dplyr); library(tidyr); library(readr); library(ggallu
 source("analyses/lib/design.r")
 ```
 
+```{r provenance, echo=FALSE, results='asis'}
+# Which git commit this notebook was rendered from, and any uncommitted edits at render time
+# (analyses/lib/provenance.r). Each data file's producing command is in the section's MANIFEST.yaml.
+source("analyses/lib/provenance.r")
+cat('::: {style="font-size: 0.85em; color: #555; border-left: 4px solid #bbb; padding: 2px 10px;"}',
+    "**Provenance**", "", render_provenance("analyses/s01-baseline-iterative/s01-variant-fate-panel.rmd"), "", ":::", sep = "\n")
+```
+
 This is the full panel of the per-variant read-fate flow, split into **separate large plots** (one per
 caller × divergence) so each is legible. It uses the **direct per-SNP visibility** measure, not the
 read's dominant class: each SNP is labeled by the plurality state of its covering reads —

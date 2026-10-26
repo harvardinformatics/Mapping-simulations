@@ -37,6 +37,14 @@ library(ggplot2); library(dplyr); library(tidyr); library(readr); library(knitr)
 source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
 ```
 
+```{r provenance, echo=FALSE, results='asis'}
+# Which git commit this notebook was rendered from, and any uncommitted edits at render time
+# (analyses/lib/provenance.r). Each data file's producing command is in the section's MANIFEST.yaml.
+source("analyses/lib/provenance.r")
+cat('::: {style="font-size: 0.85em; color: #555; border-left: 4px solid #bbb; padding: 2px 10px;"}',
+    "**Provenance**", "", render_provenance("analyses/s04-softclip/s04-results.rmd"), "", ":::", sep = "\n")
+```
+
 # Question & design
 
 **Does gatk's high-divergence SNP loss come from soft-clipped bases being ignored?** A read that

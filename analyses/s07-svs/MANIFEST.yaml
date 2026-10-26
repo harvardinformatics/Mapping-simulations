@@ -1,0 +1,108 @@
+# MANIFEST.yaml -- s07-svs: this section's top-level data dictionary and provenance record.
+# Lists every data file, figure and notebook in analyses/s07-svs/ with the script and exact
+# command that produce it, its inputs, and what reads it. Each table's columns are defined in its
+# own <table>.dict.txt. Schema and checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py s07-svs
+#
+# Two kinds of output:
+#   * the s07 Snakemake workflow (workflow.smk + config/config-sv.yaml) simulates ~1,000 SVs on a
+#     D = 0.02 SNP + indel background and runs the s02 indel + liftover pipeline (3 callers x 3
+#     iterations); its combine rules write the two *-summary.csv tables;
+#   * scripts/sv_confounder.py, run AD HOC (commands recovered from the session log; times UTC),
+#     bins small-variant recovery by distance to the nearest SV breakpoint.
+# Placeholders in `inputs:` below: {caller} = gatk | bcftools | freebayes, {K} = iteration 1 | 2 | 3.
+section: s07-svs
+question: How do structural variants (which no caller here calls) depress small-variant recovery near their breakpoints, and can iterative mapping recover it?
+
+upstream:
+  - path: data/s07-svs/
+    from: "s07 workflow (git-ignored work files): first the bcftools validation chain
+      (cd analyses/s07-svs && sbatch run_validate_sv.sh, 2026-08-11 15:23 UTC), then the full run
+      (cd analyses/s07-svs && sbatch run_sweep_sv.sh, 2026-08-11 18:03 UTC); both run
+      snakemake -s workflow.smk --configfile config/config-sv.yaml"
+  - path: data/reference-genomes/mm39/
+    from: "mm39 primary-assembly reference FASTA (config-sv.yaml ref_file); chr19 is extracted into
+      data/s07-svs/ref-regions/ by the workflow's extract_region_ref rule"
+
+notebooks:
+  - path: analyses/s07-svs/s07-results.rmd
+    html: analyses/s07-svs/s07-results.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/s07-svs/s07-results.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  # --- workflow products (snakemake combine rules) -------------------------------------------
+  - path: analyses/s07-svs/results/s07-svs-recovery-summary.csv
+    what: "compare_vcfs.py scores of the ACCUMULATED recovered set vs truth (SNP + indel), one row per
+      caller x iteration (9 rows) at D = 0.02 with SVs"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s07-svs && sbatch run_sweep_sv.sh
+      (snakemake rule combine_recovery, config/config-sv.yaml; file name from run_tag "svs")
+    inputs:
+      - data/s07-svs/iter/{caller}/30X/19/0.02/0.005/42/iter{K}/mm39-recovery-vcf-summary.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "Nothing reads it: s07-results.rmd and the synthesis notebooks use the distance-binned
+      sv_confounder tables instead. It is the workflow's final target (rule all), so removing it makes
+      snakemake re-run the combine rule; ask before deleting. Written 2026-08-11 21:22 UTC by the
+      run_sweep_sv.sh run; combine_summaries.py / compare_vcfs.py have changed since only in how they
+      write data dictionaries (2026-10-26)."
+
+  - path: analyses/s07-svs/results/s07-svs-het-summary.csv
+    what: "compare_vcfs.py scores of each iteration's lifted RAW calls vs truth (the het-site view),
+      one row per caller x iteration (9 rows) at D = 0.02 with SVs"
+    script: analyses/lib/combine_summaries.py
+    command: >-
+      cd analyses/s07-svs && sbatch run_sweep_sv.sh
+      (snakemake rule combine_het, config/config-sv.yaml; file name from run_tag "svs")
+    inputs:
+      - data/s07-svs/iter/{caller}/30X/19/0.02/0.005/42/iter{K}/mm39-het-vcf-summary.csv
+    used_by: []
+    git: tracked
+    status: unused
+    note: "Nothing reads it (see s07-svs-recovery-summary.csv). Workflow final target (rule all);
+      written 2026-08-11 21:20 UTC by the run_sweep_sv.sh run. Ask before deleting."
+
+  # --- sv_confounder.py (ad hoc) ----------------------------------------------------------------
+  - path: analyses/s07-svs/results/s07-sv-confounder.csv
+    what: "SNP / indel divergence recall binned by distance to the nearest SV breakpoint (and by its
+      type: any | del | ins), per caller x iteration 1-3; D = 0.02"
+    script: analyses/s07-svs/scripts/sv_confounder.py
+    command: >-
+      conda run -n mapping-sims python analyses/s07-svs/scripts/sv_confounder.py
+      --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv
+    inputs:
+      - data/s07-svs/sim/30X/19/0.02/0.005/42/mm39-truth.vcf.gz
+      - data/s07-svs/sim/30X/19/0.02/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s07-svs/iter/{caller}/30X/19/0.02/0.005/42/iter{K}/mm39_recovered.acc.vcf.gz
+    used_by:
+      - analyses/s07-svs/s07-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: "ad hoc command (2026-08-12 01:46 UTC), not in a run script. The same run also writes
+      s07-sv-confounder-fp.csv. Verified 2026-10-26: re-running it into .llm-tmp/ reproduces both
+      tables byte for byte. Known script bug: after writing every output (tables + dictionaries) the
+      run exits non-zero with NameError 'bps' in its final stderr summary line (variable renamed
+      bp_pos on 2026-08-11); the outputs are complete."
+
+  - path: analyses/s07-svs/results/s07-sv-confounder-fp.csv
+    what: "false-positive enrichment near SV breakpoints: per caller, fraction of iter1 raw-call FPs
+      within 150 bp of a breakpoint vs the genomic fraction that close"
+    script: analyses/s07-svs/scripts/sv_confounder.py
+    command: >-
+      conda run -n mapping-sims python analyses/s07-svs/scripts/sv_confounder.py
+      --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv
+      (writes <out>-fp.csv alongside <out>)
+    inputs:
+      - data/s07-svs/sim/30X/19/0.02/0.005/42/mm39-truth.vcf.gz
+      - data/s07-svs/sim/30X/19/0.02/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s07-svs/iter/{caller}/30X/19/0.02/0.005/42/iter1/mm39_calls.norm.vcf.gz
+      - data/s07-svs/ref-regions/mm39-19.fa.fai
+    used_by: [analyses/s07-svs/s07-results.rmd]
+    git: tracked
+    note: "ad hoc command (2026-08-12 01:46 UTC), the same run as s07-sv-confounder.csv; verified
+      byte-identical on re-run 2026-10-26."

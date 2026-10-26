@@ -1,0 +1,53 @@
+# MANIFEST.yaml -- synthesis: this section's top-level data dictionary and provenance record.
+# Lists every data file, figure and notebook in analyses/synthesis/ with the script and exact
+# command that produce it. The two notebooks mostly read the other sections' results; those files
+# are listed (with these notebooks in their used_by) in each section's own MANIFEST.yaml.
+# Schema and checks: analyses/lib/check_manifest.py; run
+#   conda run -n mapping-sims python analyses/lib/check_manifest.py synthesis
+section: synthesis
+question: What do s01-s08 say together, and which few figures summarize it for coauthors?
+
+upstream:
+  - path: analyses/
+    from: "the section results of s01-s08 (see each analyses/<section>/MANIFEST.yaml); some are
+      git-ignored per-site tables that must be regenerated from data/ before these notebooks render"
+
+notebooks:
+  - path: analyses/synthesis/synthesis.rmd
+    html: analyses/synthesis/synthesis.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/synthesis/synthesis.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+  - path: analyses/synthesis/brief.rmd
+    html: analyses/synthesis/brief.html
+    render: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/synthesis/brief.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+
+outputs:
+  - path: analyses/synthesis/s01-mapping-vs-calling.csv
+    what: "s01 divergent SNPs per caller x divergence x iteration split into recovered /
+      calling-limited / mapping-limited, from the s01 per-site pileup ledgers"
+    script: analyses/synthesis/scripts/s01_mapping_vs_calling.R
+    command: conda run -n renv Rscript analyses/synthesis/scripts/s01_mapping_vs_calling.R
+    inputs:
+      - analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
+    used_by: [analyses/synthesis/synthesis.rmd]
+    git: tracked
+    note: "first made 2026-08-13 by an equivalent ad hoc R command; the script reproduces it
+      byte for byte (checked 2026-10-26)"
+
+  - path: analyses/synthesis/figures/brief/{fig}.{ext}
+    values:
+      fig: [fig1-problem, fig1b-local-divergence, fig2-fix, fig2b-fix-uniform,
+            fig3a-mapping-vs-calling, fig3b-per-site-flow, fig3c-what-changed,
+            fig3d-indel-distance, fig4a-repeats, fig4b-svs, fig4c-filtering]
+      ext: [png, pdf]
+    what: "the coauthor brief's figures, each as PNG (300 dpi) and PDF, rewritten on every render"
+    kind: figure
+    script: analyses/synthesis/brief.rmd
+    command: >-
+      conda run -n renv Rscript -e 'rmarkdown::render("analyses/synthesis/brief.rmd",
+      knit_root_dir = getwd(), quiet = TRUE)'
+    used_by: []
+    git: tracked

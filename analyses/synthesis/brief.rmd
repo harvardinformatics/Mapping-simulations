@@ -116,6 +116,14 @@ snp_recall   <- function(d) d$div_tp / d$n_truth_div
 indel_recall <- function(d) d$indel_div_tp / d$n_truth_indel_div
 ```
 
+```{r provenance, echo=FALSE, results='asis'}
+# Which git commit this notebook was rendered from, and any uncommitted edits at render time
+# (analyses/lib/provenance.r). Each data file's producing command is in the section's MANIFEST.yaml.
+source("analyses/lib/provenance.r")
+cat('::: {style="font-size: 0.85em; color: #555; border-left: 4px solid #bbb; padding: 2px 10px;"}',
+    "**Provenance**", "", render_provenance("analyses/synthesis/brief.rmd"), "", ":::", sep = "\n")
+```
+
 # In one paragraph {#summary}
 
 We simulated reads from a sample that differs from the reference genome by a known set of

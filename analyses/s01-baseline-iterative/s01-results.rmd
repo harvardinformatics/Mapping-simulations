@@ -43,6 +43,14 @@ library(ggplot2); library(dplyr); library(tidyr); library(readr)
 source("analyses/lib/design.r")   # bartheme(), corecol(); knit from the project root
 ```
 
+```{r provenance, echo=FALSE, results='asis'}
+# Which git commit this notebook was rendered from, and any uncommitted edits at render time
+# (analyses/lib/provenance.r). Each data file's producing command is in the section's MANIFEST.yaml.
+source("analyses/lib/provenance.r")
+cat('::: {style="font-size: 0.85em; color: #555; border-left: 4px solid #bbb; padding: 2px 10px;"}',
+    "**Provenance**", "", render_provenance("analyses/s01-baseline-iterative/s01-results.rmd"), "", ":::", sep = "\n")
+```
+
 # Question & design
 
 **Does iterative (pseudo-it) mapping recover more true divergence than single-shot
@@ -791,7 +799,7 @@ If the change is in the neighborhood, we can measure it. For each SNP we count t
 SNPs within ±200 bp** (roughly HaplotypeCaller's active-region + assembly window) that are **not yet
 recovered** into the consensus at that iteration — the local mismatch load the reference-anchored
 reassembler must bridge to find shared exact k-mers and close a haplotype
-(`scripts/neighborhood_assembly.py`, `results/neighborhood/`).
+(`analyses/lib/neighborhood_assembly.py` via `run_neighborhood.sh`, `results/neighborhood/`).
 
 ```{r vrf-decomp-neigh, out.width="100%", fig.width=9.5, fig.height=3.6}
 nb <- read_csv("analyses/s01-baseline-iterative/results/neighborhood/neighborhood-summary.csv",

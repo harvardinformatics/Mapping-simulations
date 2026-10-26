@@ -92,3 +92,32 @@ So, the command to run the pipeline with the provided config and profile would b
 ```bash
 snakemake -s mapping_sims.smk -p --configfile mm30-config.yaml --profile profiles/slurm_profile/
 ```
+
+## Provenance and data dictionaries
+
+The current (mason2) analyses live in `analyses/<section>/` (`s01`–`s08` and `synthesis`). Three
+things record where every result came from:
+
+- **Data dictionaries.** Every table has a `<table>.dict.txt` next to it. It defines the columns and
+  starts with a provenance block: the producing script, the exact command, and the git commit the
+  table was written at. Tables made before 2026-10-26 have dictionaries marked "backfill": they were
+  documented afterwards, with the commands recovered from the run scripts and session logs, and
+  `analyses/lib/backfill/` records how.
+- **Section manifests.** `analyses/<section>/MANIFEST.yaml` is the section's top-level data
+  dictionary. For every data file, figure and notebook it lists what it is, the script and exact
+  command that produce it, its inputs, the notebooks that read it, whether git tracks it, and its
+  status: `current`, `earlier-version`, `artifact` or `unused`, with a note explaining any status
+  other than `current`. Check all of them with:
+
+  ```bash
+  conda run -n mapping-sims python analyses/lib/check_manifest.py
+  ```
+
+  It fails if a file is missing from its manifest, a table has no dictionary, or a notebook reads a
+  file that no manifest lists. Run it after adding or regenerating outputs.
+- **Notebooks.** Each rendered notebook starts with a box giving the commit it was rendered from and
+  any uncommitted edits at render time.
+
+Large per-site intermediate tables are not in git (`git: ignored` in the manifests). Before
+re-rendering a notebook that reads one, regenerate it from `data/` with the command in its
+manifest entry.
