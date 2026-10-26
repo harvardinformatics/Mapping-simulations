@@ -1,102 +1,101 @@
 # Mapping-simulations
 
-Repo for scripts and files for read mapping simulations.
+Simulations of **reference bias**: how divergence between a sample and the reference genome causes
+true variants to be lost during read mapping and variant calling, and whether **iterative mapping**
+(pseudo-it style: call, bake the calls into a consensus, remap) recovers them. Reads are simulated with
+`mason2` from controlled truth variants on mouse **chr19** (mm39), mapped with `bwa mem`, and called
+with three callers (GATK HaplotypeCaller, bcftools, freebayes). The project charter is
+[`GUIDE.md`](GUIDE.md).
 
-## Getting started
+## Repository layout
 
-Make sure [Anaconda](https://www.anaconda.com/products/individual#download-section) is installed and activate it if it hasn't been already:
+| path | what it holds |
+|---|---|
+| `analyses/<section>/` | The current analyses, one section per question (table below). Each has its workflow and run scripts, `config/`, `scripts/`, `results/` (tables with data dictionaries), a notebook (`.rmd` + rendered `.html`) and a `MANIFEST.yaml`. |
+| `analyses/lib/` | Shared tools: truth-VCF generation, divergence fields, scoring of calls and read placements, the per-variant read-fate ledger, provenance helpers and the manifest checker. |
+| `data/` | All simulation work files (references, truth VCFs, reads, BAMs, calls, consensus sequences). **Not in git.** |
+| `docs/` | HTML pages from earlier phases. `docs/mason_results.html` is the first, exploratory mason2 pass. |
+| `scripts/`, `snakemake/`, `simulation-configs/`, `summary-data/` | The exploratory mason2 pipeline behind `docs/mason_results.html` (`snakemake/simulate_and_map.smk`). The analyses in `analyses/` do not use it. |
+| `mapping-sims.yml`, `renv.yml` | Conda environments for the pipeline and the notebooks (see [Software](#software)). |
+| `*/v1/` | The archived first version, based on the NEAT read simulator, with its environment file in `snakemake/v1/`. Its run instructions are in this README's git history. |
+| `evolution/` | 2023 Evolution meeting talk and notes. |
+| `pseudo-it/` | Separate git repository (pseudo-it 4 development), ignored by this one. |
+| `AGENTS.md`, `CLAUDE.md` | Rules for LLM agents working in this repository. |
 
-```bash
-    source /path/to/anaconda3/bin/activate
-```
+## Analysis sections
 
-Then, all dependencies (except one, see below), can be installed using the pre-set environment, `mapping-sims`. Create that environment to install this software:
+| section | question | notebook |
+|---|---|---|
+| `s01-baseline-iterative` | Does iterative mapping recover more true divergence than single-shot mapping, for each caller? SNPs only, uniform divergence. | `s01-results.rmd`, `s01-variant-fate-panel.rmd` |
+| `s02-indels` | The same with indels added, using consensus liftover back to reference coordinates. | `s02-results.rmd` |
+| `s03-heterozygosity` | Does divergence bias heterozygous sites toward the reference allele, by what read-level mechanism, and does iteration restore the balance? | `s03-results.rmd` |
+| `s04-softclip` | Does disabling soft-clipping (`--dont-use-soft-clipped-bases`) change GATK's recall? | `s04-results.rmd` |
+| `s05-heterogeneous-divergence` | At a fixed genome-wide mean, how does patchy (spatially autocorrelated) divergence change recovery, and is recall predicted by local divergence? | `s05-results.rmd` |
+| `s06-filtering` | Can hard filters (QUAL, DP, MQ) recover the lost divergence, or only buy precision? | `s06-results.rmd` |
+| `s07-svs` | How do structural variants, which no caller here calls, depress small-variant recovery near their breakpoints? | `s07-results.rmd` |
+| `s08-mappability` | How much does low reference mappability (repeats) reduce recovery, independent of divergence? | `s08-results.rmd` |
+| `synthesis` | All sections together, plus a short figure set for coauthors. | `synthesis.rmd`, `brief.rmd` |
 
-```bash
-    conda env create --file mapping-sims.yml
-```
+## How the simulations are made
 
-And then activate the environment:
+Each section's Snakemake workflow (or run scripts, for sections that reuse earlier data) does:
 
-```bash
-    conda activate mapping-sims
-```
+1. **Reference:** extract chr19 from mm39 (GRCm39).
+2. **Truth variants** (`analyses/lib/make_truth_vcf.py`): fixed differences at divergence rate D
+   (genotype 1|1, random alternative alleles) plus heterozygous SNPs at 0.5% (0|1). Depending on
+   the section, also indels (1-10 bp, half insertions, indel:SNP about 0.12), structural variants
+   (s07), or a spatially varying divergence field with its mean fixed at D (s05).
+3. **Reads:** `mason_simulator` applies the truth VCF and simulates 150 bp paired-end reads (fragment
+   mean 300 bp, 30x, seed 42; s01 also seeds 43 and 44). Its `-oa` output records each read's true
+   origin, which the read-level analyses use as ground truth.
+4. **Mapping and iteration:** `bwa mem` to the reference, then 3 iterations. Each calls variants,
+   writes them into the reference with `bcftools consensus`, and remaps to that consensus.
+   Iteration 1 is ordinary single-shot mapping. With indels (s02 on), results are lifted back to
+   reference coordinates for scoring (Picard for VCFs, a point-lift for BAMs).
+5. **Calling:** GATK HaplotypeCaller (GVCF mode, then GenotypeGVCFs), bcftools mpileup/call, and
+   freebayes. Reads below mapping quality 20 are ignored by all three: bcftools and freebayes get
+   `min_mapping_quality: 20` from the config, and 20 is GATK's default read filter.
+6. **Scoring:** `compare_vcfs.py` (recall of truth variants), `compare_bams.py` (read placement vs
+   truth) and `variant_read_fate.py` (for each variant, where the reads that truly cover it went).
 
-The only software not installed via the conda environment is the read simulation software, [NEAT](https://github.com/ncsa/NEAT). NEAT is just a python script, so you can install it just by cloning the github repo, though this must be cloned in the correct spot so the snakemake pipeline can find it. First, while in the root project directory, make the directory `pkgs` and navigate to it:
-
-```bash
-    mkdir pkgs
-    cd pkgs
-```
-
-Then, clone the NEAT repo:
-
-```bash
-    git clone https://github.com/ncsa/NEAT.git
-```
-That should be everything!
-
-## Running the pipeline
-
-To make things easier, let's just switch to the `scripts` directory.
-
-```bash
-    cd scripts
-```
-If you'd rather not switch to `scripts`, just be sure to add that to all paths listed below.
-
-### Important note: use `--dryrun` on any snakemake commands before running them.
-
-`--dryrun` will show you the commands that snakemake will run without actually running them. This can let you address errors before you start the whole pipeline.
-
-### Running snakemake with a config file
-
-The commands for the pipeline are compiled in a snakemake workflow, `mapping_sims.smk`
-
-To run a given set of simulations, you will have to create a <b>config file</b> with the parameters and inputs of that simulation. An example config file for the mouse genome is provided here: `mm39-config.yaml`
-
-Take a look at that config file and make any changes, including paths to data directories and reference genomes, as well as simulation parameters.
-
-After you have edited the config file, you can run the pipeline directly:
-
-```
-snakemake -j <number of jobs to run in parallel> \
-    -s mapping_sims.smk                          \
-    -p                                           \
-    --configfile <your config file>
-```
-
-I like to include the `-p` option that prints out the exact shell command run for each rule, which I find helpful to understand exactly what's going on.
-
-For example, the exact command for the provided mm39 config file to launch 20 jobs would be:
+Run scripts are submitted to Slurm from inside their section directory, because their log paths are
+relative, for example:
 
 ```bash
-snakemake -j 20 -s mapping_sims.smk -p --configfile mm30-config.yaml
+cd analyses/s01-baseline-iterative && sbatch run_sweep.sh
 ```
 
-### Using a SLURM profile to launch snakemake jobs on the cluster
+Use `--dryrun` on any Snakemake command before running it for real. Every table's exact producing
+command is in its section's `MANIFEST.yaml` (see below).
 
-Snakemake also allows jobs to be submitted to a cluster rather than run directly on the terminal. This is advantageous as it can allow the pipeline to access many more resources than using a single node with the command above. To do this, you must set-up a <b>profile</b> for your cluster. An example profile for the Harvard SLURM cluster is provided in `scripts/profiles/slurm_profile/config.yaml`. Once your profile is set-up, you can launch the pipeline as follows:
+## Software
 
-```
-snakemake -s mapping_sims.smk                    \
-    -p                                           \
-    --configfile <your config file>              \
-    --profile <path to directory containing config.yaml profile>
-```
+Two conda environments:
 
-Similar, to the previous command, but without specifying the number of jobs with `-j`, which is now done with the `--profile` option. Note that the provided path must be to a directory containing your profile, which is saved as `config.yaml`.
-
-So, the command to run the pipeline with the provided config and profile would be:
+- **`mapping-sims`** for the pipeline, from `mapping-sims.yml`: mason 2.0.9, bwa 0.7.17, samtools
+  and bcftools 1.17, GATK 4.3.0.0, freebayes 1.3.6, Picard 2.27.5, GenMap 1.3.0, snakemake 7.20.0,
+  Python 3.9 with pysam 0.21.0 and numpy 1.24. The file is an export of the working environment, so
+  every package is pinned.
+- **`renv`** for the notebooks, from `renv.yml`: R 4.5.3 with rmarkdown, knitr, ggplot2, dplyr,
+  tidyr, readr, patchwork, ggalluvial, ggrepel and kableExtra, and pandoc 3.8.2. It lists only what
+  the notebooks load, at the versions in use; creating an environment from it has not been tested yet.
 
 ```bash
-snakemake -s mapping_sims.smk -p --configfile mm30-config.yaml --profile profiles/slurm_profile/
+conda env create -f mapping-sims.yml
+conda env create -f renv.yml
+```
+
+The v1 pipeline's 2021 environment file is kept at `snakemake/v1/mapping-sims.yml`.
+
+Render a notebook from the project root:
+
+```bash
+conda run -n renv Rscript -e 'rmarkdown::render("analyses/s04-softclip/s04-results.rmd", knit_root_dir = getwd(), quiet = TRUE)'
 ```
 
 ## Provenance and data dictionaries
 
-The current (mason2) analyses live in `analyses/<section>/` (`s01`–`s08` and `synthesis`). Three
-things record where every result came from:
+Three things record where every result in `analyses/` came from:
 
 - **Data dictionaries.** Every table has a `<table>.dict.txt` next to it. It defines the columns and
   starts with a provenance block: the producing script, the exact command, and the git commit the
