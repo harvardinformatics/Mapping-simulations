@@ -1,6 +1,31 @@
-Data dictionary for /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s03-heterozygosity/results/s03-s02-allele-balance-summary.csv
-Combined ab summary: one row per (coverage, divergence) condition.
-Columns are identical to the per-condition files produced by the
-compare_abs.py script; see that script's *-summary.dict.txt for full
-column definitions.
+Data dictionary for analyses/s03-heterozygosity/results/s03-s02-allele-balance-summary.csv
+
+Produced by : analyses/lib/combine_summaries.py
+Command     : cd analyses/s03-heterozygosity && sbatch run_allele_balance.sh (snakemake -s het_allele_balance.smk rule combine_ab, which runs analyses/lib/combine_summaries.py --kind ab; config/config-s02.yaml)
+Git commit  : not recorded (table written 2026-08-07 02:30, before provenance tracking)
+Dictionary  : added 2026-10-26 10:56 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : last made 2026-08-07 by the same run_allele_balance.sh job as the s01 table (config-s02.yaml also gained D = 0.001 / 0.005). Re-combining the per-condition summaries reproduces it byte for byte (checked 2026-10-26); later code edits are dictionary-only
+
+Combined het-site allele balance summary: the one-row-per-condition summary CSVs written by
+analyses/lib/allele_balance.py, concatenated. One row per input (condition).
+
+Column definitions (from allele_balance.py):
+
+Reference-allele bias at true heterozygous SNP sites, from the pileup.
+RAF = ref_reads/(ref_reads+alt_reads); truth = 0.5, reference bias => RAF > 0.5.
+MAPQ >= --min-mapq (default 20), base quality >= --min-baseq (default 13); iter>1 positions lifted via --chain.
+
+region,coverage,divergence,heterozygosity,seed : simulation condition
+caller          : variant caller whose consensus this iteration mapped to
+iteration       : mapping iteration (1 = single-shot map to the reference)
+n_het           : het SNP sites in the truth
+n_covered       : het sites with >=1 informative (ref or alt) read (RAF computed)
+n_nocov         : het sites with 0 informative reads (fully uncovered)
+lift_fail       : het positions that did not lift (chain gap); 0 without --chain
+mean_depth      : mean informative depth at covered het sites
+mean_raf        : mean reference-allele fraction (0.5 = unbiased, >0.5 = ref bias)
+frac_ref_biased : fraction of covered het sites with RAF > 0.5
+frac_alt_dropout: fraction of covered het sites with alt fraction < --dropout-alt-frac (default 0.2) (near-lost)
+raf_b0..raf_b9  : histogram of RAF over covered sites, bins [0,0.1),...,[0.9,1.0]
+
 Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,n_het,n_covered,n_nocov,lift_fail,mean_depth,mean_raf,frac_ref_biased,frac_alt_dropout,raf_b0,raf_b1,raf_b2,raf_b3,raf_b4,raf_b5,raf_b6,raf_b7,raf_b8,raf_b9

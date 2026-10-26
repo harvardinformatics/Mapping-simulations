@@ -39,7 +39,7 @@ FIELDS
 SOURCE
 ------
   calling metrics : analyses/s02-indels/results/calling-metrics/calling-metrics.csv
-  fates           : analyses/s02-indels/results/vrf-pileup/vrf-pileup-<caller>.csv (iter1 vs iter2)
+  fates           : analyses/s02-indels/results/vrf-pileup/vrf-pileup-<caller>-<D>.csv (iter1 vs iter2)
 
 KEY READING (accompanying interpretation)
 -----------------------------------------

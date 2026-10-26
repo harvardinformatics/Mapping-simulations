@@ -1,0 +1,22 @@
+Data dictionary for analyses/s05-heterogeneous-divergence/results/s05-localdist.csv
+
+Produced by : analyses/s05-heterogeneous-divergence/scripts/local_landscape.py
+Command     : python analyses/s05-heterogeneous-divergence/scripts/local_landscape.py --data-dir data/s05-heterogeneous-divergence --reference data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa --configs L20000-S0.0 L2000-S1.0 L20000-S1.0 L200000-S1.0 L20000-S2.0 --out-prefix analyses/s05-heterogeneous-divergence/results/s05
+Git commit  : not recorded (table written 2026-08-08 22:01, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : ad hoc command (2026-08-08), made by a version of the script edited afterwards; the current local_landscape.py reproduces both tables byte for byte (checked 2026-10-26)
+
+Sites: each config's FIXED-divergence (1|1) truth SNPs, with local divergence from
+its mm39-truth-locald.tsv (annotate_local_divergence.py). Configs: L20000-S0.0, L2000-S1.0, L20000-S1.0, L200000-S1.0, L20000-S2.0.
+
+Histogram of per-site local divergence; one row per (config, window, bin).
+
+Fields:
+  field/corr_len/sigma : divergence-field config (as above)
+  window     : local-D window half-size in bp (150 = read scale, 500 = fragment)
+  locald_mid : histogram bin midpoint; bins are 0.01 wide from 0 to 0.6, plus a
+               '>0.6' overflow row
+  n_sites    : truth divergent SNP sites with local divergence in that bin
+
+The homogeneous control (sigma=0) concentrates near the mean; larger sigma
+spreads sites across a wide range of local divergence (the heterogeneity).

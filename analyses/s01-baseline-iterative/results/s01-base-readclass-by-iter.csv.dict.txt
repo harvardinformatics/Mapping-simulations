@@ -1,6 +1,55 @@
 Data dictionary for analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv
-Combined readclass-bam summary: one row per (coverage, divergence) condition.
-Columns are identical to the per-condition files produced by the
-compare_readclass-bams.py script; see that script's *-summary.dict.txt for full
-column definitions.
+
+Produced by : analyses/lib/combine_summaries.py
+Command     : # ad hoc command (2026-08-07 06:47 UTC), not in a run script; replaces the failed
+# combine_readclass step of `cd analyses/s01-baseline-iterative && sbatch run_read_classification.sh`
+cd /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations
+# strip span_off (field 12) and span_off_prop (field 20) from the new-div read-class CSVs (s01 identity -> span_off==0, unused)
+n=0
+for f in $(find data/s01-baseline-iterative/iter -path '*/19/0.001/*' -name 'mm39-readclass-bam-summary.csv'; \
+           find data/s01-baseline-iterative/iter -path '*/19/0.005/*' -name 'mm39-readclass-bam-summary.csv'); do
+  awk -F, 'BEGIN{OFS=","}{out="";for(i=1;i<=NF;i++) if(i!=12 && i!=20){out=(out==""?$i:out FS $i)} print out}' "$f" > "$f.fix" && mv "$f.fix" "$f"
+  n=$((n+1))
+done
+source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh; conda activate mapping-sims
+python analyses/lib/combine_summaries.py \
+  --inputs $(find data/s01-baseline-iterative -name 'mm39-readclass-bam-summary.csv' | sort) \
+  --out analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv --kind readclass-bam
+
+Git commit  : not recorded (table written 2026-08-07 02:47, before provenance tracking)
+Dictionary  : added 2026-10-26 10:56 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : EARLIER-VERSION: mixed compare_bams.py versions. D 0.00 and 0.02-0.10 rows come from the 2026-07-31 version (no span_off class); D 0.001/0.005 rows come from the 2026-08-01 version (adds span_off: right start, wrong reference footprint) with span_off/span_off_prop stripped in place in data/ by the command above, so in those 54 rows the classes sum to total_reads minus the dropped span_off reads (<= 91 reads per row). The snakemake combine failed on the header mismatch. Re-running read_classification.smk now gives a table with span_off columns and exact split into exact/span_off.
+
+Combined read-mapping accuracy (read classification) summary: the one-row-per-condition summary CSVs written by
+analyses/lib/compare_bams.py, concatenated. One row per input (condition).
+
+Column definitions (from compare_bams.py):
+
+Read-mapping accuracy: bwa placement vs mason truth (reference coords).
+Reads matched by (fragment id, mate); tolerance = 150 bp; contigs compared by name.
+
+region         : reference region / chromosome label
+coverage       : simulated fold coverage
+divergence     : simulated fixed divergence (D) label
+heterozygosity : simulated heterozygosity (H) label
+seed           : replicate random seed
+caller         : variant caller whose consensus this iteration mapped to
+iteration      : pseudo-it iteration (1 = single-shot map to the reference)
+total_reads    : primary reads compared (sum of the placement classes)
+exact          : true START (delta = 0) AND reference footprint matches truth
+                 (lifted END within 10 bp), fully aligned, NO soft-clip
+shifted        : correct locus, whole read START moved 1-150 bp, no soft-clip
+clipped        : correct locus (<=150 bp) but soft-clipped (alt-bearing ends dropped);
+                 includes 3'-clipped reads that sit at the exact start position
+span_off       : correct START but reference footprint wrong by > 10 bp -- the read
+                 spans the wrong indel structure (only distinguishable with --chain)
+mismapped      : same contig but > 150 bp from the true position
+diff_chr       : mapped to a different contig than truth
+unmapped       : present in truth but unmapped by bwa
+missing        : present in truth but absent from the mapped BAM (expected 0)
+*_prop         : each count as a proportion of total_reads
+
+NOT IN THIS TABLE: span_off, span_off_prop -- defined above but absent here, because the table
+was made by an earlier version of compare_bams.py that did not write them yet.
+
 Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,total_reads,exact,shifted,clipped,mismapped,diff_chr,unmapped,missing,exact_prop,shifted_prop,clipped_prop,mismapped_prop,diff_chr_prop,unmapped_prop,missing_prop

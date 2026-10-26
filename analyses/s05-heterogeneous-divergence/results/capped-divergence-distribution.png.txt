@@ -18,13 +18,13 @@ Panel A -- PER-READ divergence: edit distance (BAM NM tag) / read length, for a 
   clipping reads, it is shaping the field.
 
 Panel B -- PER-SITE read-scale local divergence: local_d_150 (divergent sites in a +/-150 bp
-  window / 150) at every divergent truth SNP, from
+  window / 300 bp, i.e. per bp of the window) at every divergent truth SNP, from
   data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv.
   n = 1,842,600 sites. Conditioned on being AT a divergent SNP, so the mean is higher than the
   field mean.
     mean 0.069 | p50 0.053 | p90 0.150 | p95 0.187 | p99 0.223 | p99.9 0.253 | max 0.297
     fraction of sites with local divergence > 0.20 : 2.93%  ( > 0.25 : 0.10% )
-  The discrete "comb" spacing is just integer-SNP-count / 150.
+  Values sit on a discrete grid (integer SNP count / 300); the histogram bins are aligned to it.
 
 READING: 97% of divergent sites (and 99.3% of reads) have read-scale divergence <= 0.20, i.e. the
 realistic mass sits at/under the field cap. A thin, genuine tail (dense clusters the autocorrelated

@@ -1,0 +1,26 @@
+Data dictionary for analyses/s01-baseline-iterative/results/s01-varfate-0.06.csv
+
+Produced by : analyses/s01-baseline-iterative/run_variant_read_fate.sh
+Command     : cd analyses/s01-baseline-iterative && sbatch run_variant_read_fate.sh 0.06
+Git commit  : not recorded (table written 2026-08-04 14:00, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : made 2026-08-04 with the variant_read_fate.py of that day, whose per-SNP output had the columns below; the current variant_read_fate.py writes a different, finer ledger, so re-running this command now gives a DIFFERENT table. That version was reconstructed from the session log (not re-executed); its header matches this table exactly.
+
+s01 per-variant call fate x read-placement fate, D = 0.06: for ~8,000 true hom-div (1|1) SNPs (every
+len/8000-th, evenly spaced) and each caller x iteration 1-3, whether the SNP was recovered and where
+the reads that TRULY cover it (by their mason -oa truth-BAM span) were placed by bwa.
+
+Fields:
+  divergence, caller, iteration : condition (iteration 1 = single-shot)
+  snp_pos    : 1-based reference position of the SNP
+  alt        : truth alt allele
+  recovered  : 1 if (position, alt) is in that iteration's recovered VCF, else 0
+  n_reads    : reads truly covering the SNP (sum of the 7 placement classes)
+  exact, shifted, clipped, span_off, mismapped, diff_chr, unmapped : the reads' placement class,
+               as compare_bams.py defines it (tolerance 150 bp; end tolerance 10 bp)
+  p_visible  : reads at the right locus whose aligned blocks contain the SNP position (the caller
+               can see the SNP base)
+  p_clipdel  : reads at the right locus with the SNP position soft-clipped over or deleted
+  p_mismap   : reads placed at the wrong locus (mismapped or other contig)
+  p_unmap    : unmapped reads
+  (p_visible + p_clipdel + p_mismap + p_unmap = n_reads)

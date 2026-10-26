@@ -29,8 +29,8 @@ One row per divergence x caller x outcome x metric.
 
 FIELDS
 ------
-  divergence   : simulated mean divergence condition (0.06 / 0.08 / 0.10)
   caller       : bcftools / freebayes / gatk
+  divergence   : simulated mean divergence condition (0.06 / 0.08 / 0.10)
   outcome      : mapping-limited / calling-limited / recovered (see above)
   metric       : one of the four calling covariates below
   n            : number of divergent SNPs in this cell
@@ -62,5 +62,4 @@ KEY READINGS (accompanying interpretation)
   placement, upstream of calling.
 * het_density is flat across fates here (het rate 0.005 is too sparse to separate outcomes).
 
-The figure calling-metrics-by-fate.png shows the D=0.10 slice (strongest); the cross-divergence
-trend is in this csv.
+analyses/synthesis/synthesis.rmd plots this table (decomp_callingfig).

@@ -1,0 +1,23 @@
+Data dictionary for analyses/s07-svs/results/s07-sv-confounder-fp.csv
+
+Produced by : analyses/s07-svs/scripts/sv_confounder.py
+Command     : python analyses/s07-svs/scripts/sv_confounder.py --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv
+Git commit  : not recorded (table written 2026-08-11 21:47, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+
+s07 SV-confounder, false-positive side: do SVs also CREATE false calls near their
+breakpoints? One row per caller, over the RAW single-shot (iter1) normalized call VCF
+(<caller>/.../iter1/mm39_calls.norm.vcf.gz), SNP divergence background = 0.02.
+A false positive (FP) is a called SNP/indel whose (POS, REF, ALT) matches no truth
+site in truth.norm (SV records excluded). Breakpoints as in the main table.
+
+Fields:
+  caller                    : variant caller (gatk | bcftools | freebayes)
+  n_fp                      : FP calls on the contig
+  frac_fp_within_150bp       : fraction of those FPs within 150 bp of a breakpoint
+  genomic_frac_within_150bp  : fraction of the contig within 150 bp of a breakpoint,
+                              approximated as n_breakpoints * 2 * 150 / contig length
+                              (breakpoints are sparse, so windows ~never overlap)
+  enrichment                : frac_fp_within / genomic_frac_within; 1 = no excess
+                              of FPs near breakpoints, > 1 = SVs create false calls
+A caller is absent when its iter1 call VCF does not exist or it has no FPs.

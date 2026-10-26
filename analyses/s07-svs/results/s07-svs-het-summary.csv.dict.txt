@@ -1,6 +1,39 @@
-Data dictionary for /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s07-svs/results/s07-svs-het-summary.csv
-Combined vcf summary: one row per (coverage, divergence) condition.
-Columns are identical to the per-condition files produced by the
-compare_vcfs.py script; see that script's *-summary.dict.txt for full
-column definitions.
+Data dictionary for analyses/s07-svs/results/s07-svs-het-summary.csv
+
+Produced by : analyses/lib/combine_summaries.py
+Command     : cd analyses/s07-svs && sbatch run_sweep_sv.sh (snakemake rule combine_het, config/config-sv.yaml; file name from run_tag "svs")
+Git commit  : not recorded (table written 2026-08-11 17:20, before provenance tracking)
+Dictionary  : added 2026-10-26 10:56 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : UNUSED: Nothing reads it (see s07-svs-recovery-summary.csv). Workflow final target (rule all); written 2026-08-11 21:20 UTC by the run_sweep_sv.sh run. Ask before deleting.
+
+Combined variant-calling accuracy summary: the one-row-per-condition summary CSVs written by
+analyses/lib/compare_vcfs.py, concatenated. One row per input (condition).
+
+Column definitions (from compare_vcfs.py):
+
+Variant-calling accuracy vs controlled truth (SNPs + indels), normalized.
+Divergence sites are hom-alt (1|1); het sites are 0|1. A called variant
+matches a truth site by (POS, REF, ALT) after bcftools normalization.
+
+region,coverage,divergence,heterozygosity,seed : simulation condition
+caller           : variant caller (gatk | bcftools | freebayes)
+iteration        : mapping iteration (1 = single-shot; 2..N = iterative)
+n_truth_div       : number of truth SNP divergence (1|1) sites
+div_tp            : SNP divergence called hom-alt, matching allele (recovered)
+div_het           : SNP divergence called heterozygous
+div_ref_or_absent : SNP divergence called hom-ref OR not called  <-- reference bias
+div_other         : SNP divergence hom-alt wrong allele / edge case
+n_truth_het       : number of truth SNP heterozygous (0|1) sites
+het_tp/het_hom_alt/het_ref_or_absent/het_other : SNP het site call outcome
+fp                : called SNP variants not matching any truth site (false positives)
+n_called_snp      : total confident SNP variant calls
+n_truth_indel_div : number of truth indel divergence (1|1) sites
+indel_div_tp      : indel divergence recovered (hom-alt, matching REF/ALT)
+indel_div_ref_or_absent : indel divergence called hom-ref OR not called
+indel_div_other   : indel divergence other genotype (e.g. called het)
+n_truth_indel_het : number of truth indel heterozygous (0|1) sites
+indel_het_tp/indel_het_ref_or_absent/indel_het_other : indel het site outcome
+fp_indel          : called indel variants not matching any truth site
+n_called_indel    : total confident indel variant calls
+
 Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,n_truth_div,div_tp,div_het,div_ref_or_absent,div_other,n_truth_het,het_tp,het_hom_alt,het_ref_or_absent,het_other,fp,n_called_snp,n_truth_indel_div,indel_div_tp,indel_div_ref_or_absent,indel_div_other,n_truth_indel_het,indel_het_tp,indel_het_ref_or_absent,indel_het_other,fp_indel,n_called_indel

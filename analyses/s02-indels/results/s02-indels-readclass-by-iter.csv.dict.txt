@@ -1,6 +1,38 @@
-Data dictionary for /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/s02-indels/results/s02-indels-readclass-by-iter.csv
-Combined readclass-bam summary: one row per (coverage, divergence) condition.
-Columns are identical to the per-condition files produced by the
-compare_readclass-bams.py script; see that script's *-summary.dict.txt for full
-column definitions.
+Data dictionary for analyses/s02-indels/results/s02-indels-readclass-by-iter.csv
+
+Produced by : analyses/lib/combine_summaries.py
+Command     : cd analyses/s02-indels && sbatch run_read_classification.sh   (snakemake rule combine_readclass in read_classification.smk, config/config.yaml; run after run_sweep.sh)
+Git commit  : not recorded (table written 2026-08-07 02:09, before provenance tracking)
+Dictionary  : added 2026-10-26 10:56 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : last regenerated 2026-08-07 (~06:00 UTC), submitted by a watcher loop once the run_sweep.sh rerun had finished; header matches the current compare_bams.py COLUMNS
+
+Combined read-mapping accuracy (read classification) summary: the one-row-per-condition summary CSVs written by
+analyses/lib/compare_bams.py, concatenated. One row per input (condition).
+
+Column definitions (from compare_bams.py):
+
+Read-mapping accuracy: bwa placement vs mason truth (reference coords).
+Reads matched by (fragment id, mate); tolerance = 150 bp; contigs compared by name.
+
+region         : reference region / chromosome label
+coverage       : simulated fold coverage
+divergence     : simulated fixed divergence (D) label
+heterozygosity : simulated heterozygosity (H) label
+seed           : replicate random seed
+caller         : variant caller whose consensus this iteration mapped to
+iteration      : pseudo-it iteration (1 = single-shot map to the reference)
+total_reads    : primary reads compared (sum of the placement classes)
+exact          : true START (delta = 0) AND reference footprint matches truth
+                 (lifted END within 10 bp), fully aligned, NO soft-clip
+shifted        : correct locus, whole read START moved 1-150 bp, no soft-clip
+clipped        : correct locus (<=150 bp) but soft-clipped (alt-bearing ends dropped);
+                 includes 3'-clipped reads that sit at the exact start position
+span_off       : correct START but reference footprint wrong by > 10 bp -- the read
+                 spans the wrong indel structure (only distinguishable with --chain)
+mismapped      : same contig but > 150 bp from the true position
+diff_chr       : mapped to a different contig than truth
+unmapped       : present in truth but unmapped by bwa
+missing        : present in truth but absent from the mapped BAM (expected 0)
+*_prop         : each count as a proportion of total_reads
+
 Header: region,coverage,divergence,heterozygosity,seed,caller,iteration,total_reads,exact,shifted,clipped,span_off,mismapped,diff_chr,unmapped,missing,exact_prop,shifted_prop,clipped_prop,span_off_prop,mismapped_prop,diff_chr_prop,unmapped_prop,missing_prop

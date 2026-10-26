@@ -1,0 +1,43 @@
+Data dictionary for analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-gatk-0.08.csv
+
+Produced by : analyses/lib/variant_read_fate.py
+Command     : cd analyses/s01-baseline-iterative && sbatch run_vrf_pileup.sh gatk 0.08
+Git commit  : not recorded (table written 2026-08-06 11:00, before provenance tracking)
+Dictionary  : added 2026-10-26 10:33 at commit 38557cb53efe (backfill; the table was not regenerated)
+
+Sites      : homozygous divergent (1|1) biallelic truth SNPs; every covering read truly carries alt; recovered = (position, alt) present in the iteration's recovered VCF.
+Sampling   : systematic sample of ~30000 truth SNPs (every len/30000-th site along the region).
+Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are
+             assigned to every SNP their TRUE span covers.
+Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= 150 bp;
+             mismapped = |delta| > 150 bp; diff_chr = other contig (or true start in a
+             chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to
+             the consensus with that iteration's ref2cons chain (4th --iter field).
+
+One row per (SNP, iteration): the exact read ledger of the reads that TRULY cover the
+SNP. All cells are read counts.
+
+Fields:
+  divergence, caller : condition labels
+  iteration          : mapping iteration (1 = single-shot)
+  snp_pos            : 1-based reference position of the SNP
+  ref, alt           : truth alleles
+  recovered          : 1 if recovered at this iteration (see Sites), else 0
+  n_reads            : reads truly covering the SNP (sum of the 14 ledger cells)
+  n_true_alt         : of those, reads that truly carry the alt allele
+  ex_alt ex_ref ex_err ex_clip ex_del : exact placement; at p the read presents the
+                       alt / ref / another base, or is soft-clipped over / deletes p
+  sh_alt ... sh_del  : the same for shifted placement
+  mm_clip, mm_noclip : mismapped reads, split by whether the read has any soft-clip
+  dc, un             : reads on another contig / unmapped
+  depth_p            : reads aligned over p in the mapped BAM (samtools-style pileup,
+                       secondary/supplementary/duplicate/QC-fail skipped), whatever
+                       their true origin -- the caller's-eye view
+  ref_p, alt_p, oth_p: of those, reads presenting the ref / alt / another base at p
+  mapq_p             : mean mapping quality of those reads (0.0 when depth_p = 0)
+  mapq20_p           : of those, reads with MAPQ >= 20
+  mmin_p             : of those, reads MISMAPPED INTO p (true span does not cover p)
+  mmin_ref_p, mmin_alt_p : mismapped-in reads presenting the ref / alt base
+
+Derived downstream: f_alt = (ex_alt + sh_alt) / n_true_alt; mismapped-out =
+mm_clip + mm_noclip + dc + un.

@@ -1,5 +1,10 @@
 Data dictionary for analyses/s07-svs/results/s07-sv-confounder.csv
 
+Produced by : analyses/s07-svs/scripts/sv_confounder.py
+Command     : python analyses/s07-svs/scripts/sv_confounder.py --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv
+Git commit  : not recorded (table written 2026-08-11 21:47, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+
 s07 SV-confounder: small-variant recovery vs distance from nearest SV
 breakpoint. One row per (caller, iteration, vtype, distance bin).
 

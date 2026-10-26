@@ -1,0 +1,25 @@
+Data dictionary for analyses/synthesis/s01-mapping-vs-calling.csv
+
+Produced by : analyses/synthesis/scripts/s01_mapping_vs_calling.R
+Command     : conda run -n renv Rscript analyses/synthesis/scripts/s01_mapping_vs_calling.R
+Git commit  : not recorded (table written 2026-08-13 11:13, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : first made 2026-08-13 by an equivalent ad hoc R command (same rule and output format); this script reproduces it byte for byte (checked 2026-10-26)
+
+Per (caller, divergence, iteration): how the sampled s01 divergent (1|1) SNPs split into three
+outcomes. Input: every vrf-pileup-<caller>-<D>.csv in
+analyses/s01-baseline-iterative/results/vrf-pileup (30,000 sampled SNPs per caller x D, iterations 1-3).
+
+Classification of each (SNP, iteration):
+  recovered       : recovered == 1 (called at this iteration)
+  calling-limited : not recovered, but >= 2 reads present the alt base at the SNP in the
+                    mapped BAM (alt_p): the evidence arrived and the caller did not emit it
+  mapping-limited : not recovered and alt_p < 2: the alt-carrying reads never arrived
+
+Fields:
+  caller     : variant caller (gatk | bcftools | freebayes)
+  divergence : simulated hom-div divergence D (s01 SNP-only, seed 42)
+  iteration  : mapping iteration (1 = single-shot)
+  class      : recovered | calling-limited | mapping-limited
+  n          : SNPs in that class
+  frac       : n / all sampled SNPs of that (caller, divergence, iteration); the three sum to 1

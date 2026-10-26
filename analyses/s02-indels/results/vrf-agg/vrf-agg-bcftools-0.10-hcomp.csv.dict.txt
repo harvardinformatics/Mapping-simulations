@@ -1,0 +1,31 @@
+Data dictionary for analyses/s02-indels/results/vrf-agg/vrf-agg-bcftools-0.10-hcomp.csv
+
+Produced by : analyses/lib/variant_read_fate.py
+Command     : cd analyses/s02-indels && sbatch run_vrf_aggregate.sh bcftools 0.10
+Git commit  : not recorded (table written 2026-08-05 12:57, before provenance tracking)
+Dictionary  : added 2026-10-26 10:33 at commit 38557cb53efe (backfill; the table was not regenerated)
+
+Sites      : homozygous divergent (1|1) biallelic truth SNPs; every covering read truly carries alt; recovered = (position, alt) present in the iteration's recovered VCF.
+Sampling   : all truth SNPs on the region (--sample 0).
+Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are
+             assigned to every SNP their TRUE span covers.
+Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= 150 bp;
+             mismapped = |delta| > 150 bp; diff_chr = other contig (or true start in a
+             chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to
+             the consensus with that iteration's ref2cons chain (4th --iter field).
+
+Read-fate composition at the SNP position, SUMMED over all SNPs, per (iteration,
+call status). Counts are read-SNP pairs (a read covering 2 SNPs counts twice).
+
+Fields:
+  divergence, caller : condition labels
+  iteration          : mapping iteration (1 = single-shot)
+  status             : called | not_called at that iteration
+  alt_at_p           : reads at the locus (exact/shifted) presenting the alt base at p
+  ref_at_p           : ... presenting the reference base at p
+  err_at_p           : ... presenting another base (sequencing error)
+  clipped            : at the locus but soft-clipped over p
+  deleted            : at the locus but p falls in a deletion of the alignment
+  mapped_elsewhere   : mismapped (> 150 bp from the true start) or on another contig
+  unmapped           : unmapped reads
+  n_reads            : all reads truly covering the SNPs (sum of the above)

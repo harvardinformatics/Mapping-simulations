@@ -1,0 +1,21 @@
+Data dictionary for analyses/s02-indels/results/s02-indels-callvcf-composition.csv
+
+Produced by : analyses/s02-indels/scripts/callvcf_composition.sh
+Command     : bash analyses/s02-indels/scripts/callvcf_composition.sh
+Git commit  : not recorded (table written 2026-08-02 13:56, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : first made 2026-08-02 by an equivalent ad hoc loop (same awk counting and output format); this script reproduces it byte for byte (checked 2026-10-26)
+
+Record composition of the normalized caller VCFs
+data/s02-indels/iter/<caller>/30X/19/0.10/0.005/42/iter<k>/mm39_calls.norm.vcf.gz
+(D = 0.10; all records, no filtering). One row per (caller, iteration).
+
+Fields:
+  caller             : variant caller (gatk | bcftools | freebayes)
+  iteration          : mapping iteration (1 = single-shot)
+  total              : all records (= snp + indel + star)
+  snp                : records with 1-bp REF and 1-bp ALT
+  indel              : other records with a non-'*' ALT (REF and/or ALT longer than 1 bp)
+  star               : records whose ALT is '*' (spanning deletion)
+  multiallelic_extra : records beyond the first at the same CHROM:POS (sum over positions of
+                       records - 1), i.e. how many records come from split multiallelic sites

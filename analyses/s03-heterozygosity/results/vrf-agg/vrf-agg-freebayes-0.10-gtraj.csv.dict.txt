@@ -1,0 +1,27 @@
+Data dictionary for analyses/s03-heterozygosity/results/vrf-agg/vrf-agg-freebayes-0.10-gtraj.csv
+
+Produced by : analyses/lib/variant_read_fate.py
+Command     : cd analyses/s03-heterozygosity && sbatch run_vrf_aggregate.sh freebayes 0.10
+Git commit  : not recorded (table written 2026-08-06 03:23, before provenance tracking)
+Dictionary  : added 2026-10-26 10:34 at commit 38557cb53efe (backfill; the table was not regenerated)
+
+Sites      : HETEROZYGOUS (phased 0|1 / 1|0) biallelic truth SNPs; true-alt reads are those from the alt-carrying haplotype (mason oH tag); recovered = called correctly AS A HET in the per-iteration caller VCF.
+Sampling   : all truth SNPs on the region (--sample 0).
+Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are
+             assigned to every SNP their TRUE span covers.
+Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= 150 bp;
+             mismapped = |delta| > 150 bp; diff_chr = other contig (or true start in a
+             chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to
+             the consensus with that iteration's ref2cons chain (4th --iter field).
+
+One row per distinct trajectory of (call status, f_alt bin) across the iterations;
+the table is the aggregated input to the G (joint-state flow) plots.
+
+Fields:
+  divergence, caller : condition labels (as passed on the command line)
+  s<k>               : call status at iteration k -- called | not_called
+  fb<k>              : f_alt bin at iteration k, f_alt = (alt reads aligned at the
+                       SNP, exact or shifted placement) / (reads truly carrying alt);
+                       bins 0.0-0.2 ... 0.8-1.0 (upper edge inclusive in the top bin),
+                       or 'nocov' when no read truly carries alt
+  n_snps             : number of SNPs that followed this trajectory

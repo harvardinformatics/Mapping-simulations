@@ -1,15 +1,19 @@
-Data dictionaries for analyses/s05-heterogeneous-divergence/results/s05-realistic-{landscape,localdist}.csv
+Data dictionary for analyses/s05-heterogeneous-divergence/results/s05-realistic-landscape.csv
 
-landscape.csv -- local divergence along chr19 in 50000-bp bins:
-  field/corr_len/sigma : divergence-field config (mean D fixed at 0.03)
+Produced by : analyses/s05-heterogeneous-divergence/scripts/local_landscape.py
+Command     : python analyses/s05-heterogeneous-divergence/scripts/local_landscape.py --data-dir data/s05-heterogeneous-divergence --reference data/s05-heterogeneous-divergence/ref-regions/mm39-19.fa --div 0.03 --configs L20000-S0.0 L20000-S1.0-C0.20 --out-prefix analyses/s05-heterogeneous-divergence/results/s05-realistic
+Git commit  : not recorded (table written 2026-08-09 20:02, before provenance tracking)
+Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
+Note        : ad hoc command (2026-08-09); the current local_landscape.py reproduces both tables byte for byte (checked 2026-10-26)
+
+Sites: each config's FIXED-divergence (1|1) truth SNPs, with local divergence from
+its mm39-truth-locald.tsv (annotate_local_divergence.py). Configs: L20000-S0.0, L20000-S1.0-C0.20.
+
+Local divergence along chr19 in 50000-bp bins; one row per (config, bin).
+
+Fields:
+  field/corr_len/sigma : divergence-field config tag L{corr_len}-S{sigma}[-C{cap}]
+                         (mean D fixed at 0.03)
   bin_center           : bp center of the bin
   local_divergence     : divergent sites per ELIGIBLE (non-N) base in the bin
-  valid                : 1 if the bin is >=50%% non-N (else density is meaningless)
-
-localdist.csv -- distribution of per-site local divergence:
-  window     : local-D window half-size (150 read, 500 fragment)
-  locald_mid : local-divergence histogram bin midpoint (or '>0.6' overflow)
-  n_sites    : truth divergent SNP sites with local divergence in that bin
-
-The homogeneous control (sigma=0) concentrates near the mean; larger sigma
-spreads sites across a wide range of local divergence (the heterogeneity).
+  valid                : 1 if the bin is >=50% non-N (else density is meaningless)
