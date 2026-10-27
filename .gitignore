@@ -50,7 +50,3 @@ analyses/*/results/vrf-pileup-capped/*.csv
 analyses/*/results/neighborhood/neighborhood-per-snp.csv
 analyses/*/results/calling-metrics/calling-metrics.csv
 analyses/*/results/calling-metrics/calling-metrics-0.*.csv
-
-# s01/s02 "effective truth" (phantom-site) outputs: large, and known to be mostly an artifact of
-# mason -oa gapped CIGARs in the truth BAMs; left out until the correction is redone
-analyses/*/results/effective-truth/

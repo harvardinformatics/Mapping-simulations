@@ -79,8 +79,6 @@ for D in 0.06 0.10; do
 done
 bash analyses/s02-indels/run_calling_metrics.sh --dict-only \
     --note "made 2026-08-13 by an equivalent ad hoc loop over the same three calling_metrics.py commands, ~2 h before this script was written; the current calling_metrics.py reproduces calling-metrics-0.06.csv byte for byte (checked 2026-10-26)"; step
-bash analyses/s01-baseline-iterative/run_effective_truth.sh --dict-only; step
-bash analyses/s02-indels/run_effective_truth.sh --dict-only; step
 
 # ---------------------------------------------------------------------------------------------------
 # 4. section scripts run with ad hoc commands (commands recovered from the session log)
@@ -101,28 +99,9 @@ python $SV --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07
     --dicts-only "python $SV --data-dir data/s07-svs --div 0.02 --out analyses/s07-svs/results/s07-sv-confounder.csv"; step
 
 # ---------------------------------------------------------------------------------------------------
-# 5. phantom-site outputs (git-ignored; KNOWN ARTIFACT -- the tools write the warning into every one)
-# ---------------------------------------------------------------------------------------------------
-ET=analyses/lib/effective_truth.py
-for D in 0.04 0.06 0.08 0.10; do
-    S1=data/s01-baseline-iterative/sim/30X/19/$D/0.005/42
-    python $ET --truth-bam data/varfate/$D/truth.oa.bam --truth-vcf $S1/mm39-truth.norm.vcf.gz \
-        --region 19 --divergence $D --seed 42 \
-        --out-prefix analyses/s01-baseline-iterative/results/effective-truth/eff-$D \
-        --dicts-only "bash analyses/s01-baseline-iterative/run_effective_truth.sh"; step
-    S2=data/s02-indels/sim/30X/19/$D/0.005/42
-    python $ET --truth-bam $S2/mm39-truth.oa.bam --truth-vcf $S2/mm39-truth.norm.vcf.gz \
-        --region 19 --divergence $D --seed 42 \
-        --out-prefix analyses/s02-indels/results/effective-truth/eff-$D \
-        --dicts-only "bash analyses/s02-indels/run_effective_truth.sh"; step
-done
-PA=analyses/lib/phantom_adjacency.py
-for s in s01-baseline-iterative s02-indels; do
-    args=(--truth "data/$s/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz"
-          --phantom "analyses/$s/results/effective-truth/eff-{D}-phantom.tsv"
-          --out analyses/$s/results/effective-truth/phantom-adjacency.csv --divs 0.04,0.06,0.08,0.10)
-    python $PA "${args[@]}" --dicts-only "python $PA ${args[*]}"; step
-done
+# 5. (removed) phantom-site outputs: backfilled here on 2026-10-26, then regenerated the same day by
+#    the corrected effective_truth.py and run_effective_truth.sh, which write their own dictionaries
+#    (re-running the old steps would overwrite them with the old method's text).
 
 # ---------------------------------------------------------------------------------------------------
 # 6. orphans: tables whose producing code is no longer (or was never) in the repo as it ran

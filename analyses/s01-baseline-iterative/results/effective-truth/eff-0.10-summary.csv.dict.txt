@@ -1,0 +1,44 @@
+Data dictionary for analyses/s01-baseline-iterative/results/effective-truth/eff-0.10-summary.csv
+
+Produced by : analyses/lib/effective_truth.py
+Command     : python analyses/lib/effective_truth.py --mason-vcf data/s01-baseline-iterative/sim/30X/19/0.10/0.005/42/mm39-truth.vcf.gz --reference data/s01-baseline-iterative/ref-regions/mm39-19.fa --truth-bam data/varfate/0.10/truth.oa.bam --region 19 --divergence 0.10 --seed 42 --out-prefix analyses/s01-baseline-iterative/results/effective-truth/eff-0.10
+Git commit  : 7dfa0e4be2a1 (script has UNCOMMITTED EDITS relative to this commit)
+Written     : 2026-10-26 23:29
+Note        : Corrected method (2026-10-26). Earlier versions of this table came from reading bases through mason's -oa CIGAR, which writes dense SNP clusters as fake 1D..1I gap pairs; that wrongly flagged tens of thousands of SNPs as phantoms (still counted here as n_cigar_flag_*). Bases are now read at each read's haplotype position (oP).
+
+Method: both haplotypes rebuilt from data/s01-baseline-iterative/sim/30X/19/0.10/0.005/42/mm39-truth.vcf.gz (the mason-format truth VCF); each truth read's base
+at a SNP is SEQ[h - oP] (h = the SNP's position on the read's haplotype oH; oP = the read's
+haplotype start, from data/varfate/0.10/truth.oa.bam). A site is judged from CONSISTENT reads of the haplotypes that
+carry its alt (both for 1|1, one for a het): reads whose mismatches against their haplotype,
+away from that haplotype's truth SNPs, do not exceed mason's error count XE. Phantom = depth
+>= 5 and alt fraction < 0.10; depth < 5 = low coverage (not judged).
+
+One row (this region / divergence / seed). The first 12 columns keep the meaning they
+had in earlier versions; rates are NA when their denominator is 0.
+
+Fields:
+  region, divergence, seed : condition labels
+  n_truth_snp       : biallelic truth SNPs (div + het)
+  n_truth_div, n_truth_het : of those, 1|1 / heterozygous
+  n_phantom_div, n_phantom_het : phantom SNPs, by zygosity
+  phantom_div_rate  : n_phantom_div / n_truth_div
+  phantom_het_rate  : n_phantom_het / n_truth_het
+  n_lowcov          : SNPs with depth < 5 (not judged)
+  mean_alt_frac     : mean alt fraction over the judged SNPs
+  n_lowcov_div, n_lowcov_het : n_lowcov by zygosity
+  min_alt_frac      : lowest alt fraction of any judged SNP
+  n_af_0.10_0.50, n_af_0.50_0.90, n_af_ge_0.90 : judged SNPs by alt-fraction bin
+  refhap_alt_frac   : at het SNPs, alt fraction among consistent reads of the haplotype
+                      WITHOUT the alt (should be about the sequencing-error rate)
+  n_reads           : truth reads scanned
+  frac_reads_exact  : reads whose mismatches against their haplotype equal XE exactly
+  frac_reads_consistent : reads used for scoring (see Method)
+  frac_reads_seq_indel  : inconsistent reads explained by one 1-2 bp shift (a mason
+                      sequencing indel); not scored
+  frac_reads_unexplained : the remaining inconsistent reads (tool fails above 0.0010)
+  max_window_unexplained : highest unexplained fraction of any 10000-bp haplotype window
+                      with >= 100 reads (tool fails above 0.05)
+  n_cigar_flag_div, n_cigar_flag_het : SNPs the OLD method (bases read through the -oa
+                      CIGAR, all reads pooled) flags with the same thresholds
+  n_cigar_flag_now_phantom : of those, phantom under the corrected method
+  hap1_len, hap2_len : rebuilt haplotype lengths (checked against ref + inserted - deleted)

@@ -1,0 +1,28 @@
+Data dictionary for analyses/s02-indels/results/effective-truth/eff-0.005-phantom.tsv
+
+Produced by : analyses/lib/effective_truth.py
+Command     : python analyses/lib/effective_truth.py --mason-vcf data/s02-indels/sim/30X/19/0.005/0.005/42/mm39-truth.vcf.gz --reference data/s02-indels/ref-regions/mm39-19.fa --truth-bam data/s02-indels/sim/30X/19/0.005/0.005/42/mm39-truth.oa.bam --region 19 --divergence 0.005 --seed 42 --out-prefix analyses/s02-indels/results/effective-truth/eff-0.005
+Git commit  : 7dfa0e4be2a1 (script has UNCOMMITTED EDITS relative to this commit)
+Written     : 2026-10-26 22:47
+Note        : Corrected method (2026-10-26). Earlier versions of this table came from reading bases through mason's -oa CIGAR, which writes dense SNP clusters as fake 1D..1I gap pairs; that wrongly flagged tens of thousands of SNPs as phantoms (still counted here as n_cigar_flag_*). Bases are now read at each read's haplotype position (oP).
+
+Method: both haplotypes rebuilt from data/s02-indels/sim/30X/19/0.005/0.005/42/mm39-truth.vcf.gz (the mason-format truth VCF); each truth read's base
+at a SNP is SEQ[h - oP] (h = the SNP's position on the read's haplotype oH; oP = the read's
+haplotype start, from data/s02-indels/sim/30X/19/0.005/0.005/42/mm39-truth.oa.bam). A site is judged from CONSISTENT reads of the haplotypes that
+carry its alt (both for 1|1, one for a het): reads whose mismatches against their haplotype,
+away from that haplotype's truth SNPs, do not exceed mason's error count XE. Phantom = depth
+>= 5 and alt fraction < 0.10; depth < 5 = low coverage (not judged).
+
+One row per phantom SNP (tab-separated; header only when there are none).
+
+Fields:
+  pos         : 1-based reference position
+  ref, alt    : truth alleles
+  zyg         : div (1|1) | het (0|1 or 1|0)
+  depth       : consistent reads from the alt-carrying haplotype(s) presenting a base here
+  alt_count   : of those, presenting the alt
+  alt_frac    : alt_count / depth
+  ref_count, other_count : of those, presenting the reference / another base
+  alt_haps    : haplotypes carrying the alt (1, 2 or 1,2)
+  hap1_pos, hap2_pos : 1-based position of the SNP on each haplotype
+  depth_all, alt_count_all : the same counts over ALL reads of those haplotypes

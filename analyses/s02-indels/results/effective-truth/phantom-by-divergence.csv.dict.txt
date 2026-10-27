@@ -1,0 +1,12 @@
+Data dictionary for analyses/s02-indels/results/effective-truth/phantom-by-divergence.csv
+
+Produced by : analyses/s02-indels/run_effective_truth.sh
+Command     : cd analyses/s02-indels && sbatch run_effective_truth.sh
+Git commit  : 7dfa0e4be2a1 (script has UNCOMMITTED EDITS relative to this commit)
+Written     : 2026-10-26 23:58
+Note        : Corrected method (2026-10-26). Earlier versions of this table came from reading bases through mason's -oa CIGAR, which writes dense SNP clusters as fake 1D..1I gap pairs; that wrongly flagged tens of thousands of SNPs as phantoms (still counted here as n_cigar_flag_*). Bases are now read at each read's haplotype position (oP).
+
+The per-divergence eff-<D>-summary.csv tables (effective_truth.py, D = 0.00 0.001 0.005 0.02 0.04 0.06 0.08 0.10, seed 42)
+concatenated under one header, one row per divergence, in that order.
+
+Fields: identical to eff-<D>-summary.csv; see eff-<D>-summary.csv.dict.txt next to this file.

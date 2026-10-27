@@ -306,104 +306,42 @@ bars are <0.1 pt everywhere (aggregate recall over chr19's millions of sites is
 near-deterministic — the near-zero seed variance is itself a result). Precision confirms
 the recall gains are not bought with false positives.
 
-## Phantom truth sites and effective recall
+## Truth-site check: every truth SNP is in the reads
 
-A small fraction of the "truth" SNPs were **never simulated into the reads**: at these sites the
-`mason -oa` truth BAM — which places every read at its *true* origin, so mapping cannot be blamed —
-carries the **reference** base. Such **phantom** sites are unrecoverable by any caller or iteration —
-the alt simply isn't in the data — so counting them in the denominator understates recall and mislabels
-them as reference-bias loss. `analyses/lib/effective_truth.py` scans the truth BAM and flags every SNP
-whose truth reads carry < 10% alt (min depth 5); `run_effective_truth.sh` runs it per divergence (seed 42).
+A truth SNP that mason never simulated into the reads (a **phantom**) could not be recovered by any
+caller or iteration, so it would belong out of the recall denominator. `analyses/lib/effective_truth.py`
+checks every truth SNP (`run_effective_truth.sh`, every divergence with a truth BAM, seed 42):
 
-**Why they are phantom — adjacent-variant collision, not a reversion.** `mason_simulator -iv` only
-*applies* our truth VCF (it generates no de novo variants, so nothing mutates a site back to reference),
-and the VCF has no same-position duplicate records. Instead, phantoms are almost always **immediately
-adjacent** to another variant: when two land ~1 bp apart, mason's haplotype build drops one of them.
-Phantom sites sit a median **1 bp** from their nearest truth-variant neighbor (~96% within 2 bp) vs 4–7
-bp for normal sites (`phantom_adjacency.py`) — which is why the floor scales ~D² (the chance of a ≤1 bp
-neighbor) and why indels (s02) make it ~5× worse.
+- **Haplotypes:** mason's two haplotypes are rebuilt from the mason-format truth VCF
+  (`analyses/lib/truth_haplotypes.py`; byte-identical to `mason_materializer`'s at D = 0.10).
+- **Bases:** each truth read's base at a SNP is read from the read's position on its source haplotype
+  (`mason -oa` tags `oH`, `oP`). No alignment is involved.
+- **Reads used:** only reads consistent with their haplotype (mismatches away from truth SNPs no more than
+  mason's error count `XE`); reads from the haplotype(s) carrying the alt.
+- **Phantom:** at least 5 such reads and fewer than 10% presenting the alt.
 
-```{r phantom-adjacency}
-read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-adjacency.csv", col_types = cols()) %>%
-  filter(divergence %in% c(0.04, 0.10)) %>%
-  transmute(divergence, group, `median NN (bp)` = median_nn_bp,
-            `within 2 bp` = scales::percent(frac_within_2bp, accuracy = 1)) %>%
-  kable(caption = "Distance to the nearest other truth variant: phantom sites sit ~1 bp from a neighbor.",
-        table.attr = 'class="center"')
-```
-
-```{r phantom-load}
+```{r truth-sites}
 ph <- read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv",
                col_types = cols())
-```
-
-```{r phantom-rate, out.width="65%", fig.height=3}
-ph %>% select(divergence, `hom-div` = phantom_div_rate, het = phantom_het_rate) %>%
-  pivot_longer(-divergence, names_to = "site", values_to = "rate") %>%
-  ggplot(aes(factor(divergence), rate, color = site)) +
-  scale_x_discrete(guide = guide_axis(angle = 45)) +
-  geom_line(linewidth = 0.9) + geom_point(size = 2.6) +
-  scale_y_continuous(labels = scales::percent) +
-  scale_color_manual(values = corecol(pal = "wilke", numcol = 2), name = "truth site") +
-  labs(x = "divergence (D)", y = "phantom rate", title = "Phantom (unsimulated) truth-site rate") +
-  bartheme() + theme(plot.title = element_text(size = 11))
-```
-
-**Effective recall** removes the phantom floor from the denominator:
-`div_tp / (n_truth_div · (1 − phantom_rate))`. Since phantom sites are never called, `div_tp` is
-unchanged, so this is exact. The correction is small (≤ 0.6 pt even at D=0.10) and, being a fixed floor
-identical across callers and iterations, leaves every *relative* comparison unchanged. The top panel is
-the phantom-corrected recall; the bottom panel is the lift (effective − nominal) — on the recall axis
-the two are indistinguishable, so the lift is broken out to make the change visible.
-
-```{r effective-recall-fig, out.width="100%", fig.width=9, fig.height=6}
-er <- d %>% left_join(select(ph, divergence, prate = phantom_div_rate), by = "divergence") %>%
-  mutate(prate = ifelse(is.na(prate), 0, prate),            # D<0.04 not scanned; phantom there ~0
-         nominal = div_tp / n_truth_div,
-         effective = div_tp / (n_truth_div * (1 - prate))) %>%
-  group_by(caller, divergence, iteration) %>%
-  summarize(nominal = mean(nominal), effective = mean(effective), .groups = "drop") %>%
-  mutate(lift = 100 * (effective - nominal))
-p_eff <- ggplot(er, aes(x = factor(divergence), y = effective, color = iteration)) +
-  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) +   # connector spans iterations
-  geom_point(size = 2.6) +
-  facet_wrap(~ caller) + scale_y_continuous(labels = scales::percent) +
-  scale_x_discrete(guide = guide_axis(angle = 45)) +
-  scale_color_manual(values = cols, name = "iteration") +
-  labs(x = NULL, y = "effective recall", title = "Effective SNP recall (phantom-corrected)") +
-  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "none")
-p_lift <- ggplot(er, aes(x = factor(divergence), y = lift, color = iteration)) +
-  geom_line(aes(group = divergence), color = "grey65", linewidth = 0.6) +   # connector spans iterations
-  geom_point(size = 2.6) +
-  facet_wrap(~ caller) + scale_x_discrete(guide = guide_axis(angle = 45)) +
-  scale_color_manual(values = cols, name = "iteration") +
-  labs(x = "divergence (D)", y = "lift (pt)",
-       title = "Recall lift from phantom-accounting (effective − nominal)") +
-  bartheme() + theme(plot.title = element_text(size = 11), legend.position = "bottom")
-patchwork::wrap_plots(p_eff, p_lift, ncol = 1)
-```
-
-```{r effective-recall-table}
-d %>% left_join(select(ph, divergence, prate = phantom_div_rate), by = "divergence") %>%
-  mutate(prate = ifelse(is.na(prate), 0, prate),      # D<0.04 not scanned; phantom there <0.09% (~0)
-         recall_eff = div_tp / (n_truth_div * (1 - prate))) %>%
-  filter(divergence >= 0.04, iteration %in% c("1", as.character(n_iter))) %>%
-  group_by(caller, divergence, iteration) %>%
-  summarize(nominal = mean(div_tp / n_truth_div), effective = mean(recall_eff), .groups = "drop") %>%
-  mutate(cell = sprintf("%.1f%% → %.1f%%", 100 * nominal, 100 * effective),
-         iteration = paste0("iter", iteration)) %>%
-  select(caller, divergence, iteration, cell) %>%
-  pivot_wider(names_from = iteration, values_from = cell) %>%
-  kable(caption = "Nominal → effective SNP recall (phantom sites removed from the denominator).",
+n_ph <- sum(ph$n_phantom_div + ph$n_phantom_het)
+ph %>% transmute(divergence, `truth SNPs` = n_truth_snp,
+                 `phantom (div / het)` = sprintf("%d / %d", n_phantom_div, n_phantom_het),
+                 `lowest alt fraction` = min_alt_frac,
+                 `reads consistent` = scales::percent(frac_reads_consistent, accuracy = 0.1),
+                 `old method flags (div / het)` = sprintf("%d / %d", n_cigar_flag_div, n_cigar_flag_het)) %>%
+  kable(caption = "Truth-site check per divergence. 'Lowest alt fraction' is over all judged SNPs; the last column is what the earlier, alignment-based scan flagged.",
         table.attr = 'class="center"')
 ```
 
-**Interpretation.** The phantom floor grows ~quadratically with divergence (denser clusters) but stays
-small — ≤ 0.6% hom-div and ≤ 0.9% het at D=0.10. Effective recall lifts every number by that floor
-(e.g. gatk D=0.10 single-shot 70.4% → 70.8%) without changing the shape of any curve or any
-caller/iteration comparison. **For heterogeneous divergence this correction becomes essential**:
-phantoms concentrate in the high-divergence windows (denser clusters) — exactly where reference bias is
-scored highest — and being per-SNP, `effective_truth.py` handles that automatically.
+**Interpretation.** `r if (n_ph == 0) "No truth SNP at any divergence is a phantom" else sprintf("%d truth SNPs are phantoms", n_ph)`:
+at every judged site the reads from the alt-carrying haplotypes present the alt (lowest alt fraction
+`r min(ph$min_alt_frac, na.rm = TRUE)`). Recall in this notebook is therefore the true recall of what was
+simulated, and no correction is applied. Earlier versions reported a small "phantom floor" (up to 0.6% at
+D = 0.10), explained as mason dropping one of two adjacent variants, and a phantom-corrected "effective
+recall". Both came from an artifact of the old scan, which read bases through mason's `-oa` alignment
+strings: mason writes dense SNP clusters there as fake deletion-insertion pairs, so bases landed one
+position off and real alt sites looked like the reference. The last column reproduces the old flags; none
+is a phantom.
 
 ## Variant caller comparison
 
@@ -843,8 +781,7 @@ that in mind the **three fates** separate cleanly:
   (foreign): the mismapped-in count tracks the ref count nearly one-to-one.
 - **stayed not-called**: the contamination **persists** — ref reads stay ~15, mismapped-out stays ~17,
   `f_alt` stays ≈0 across the iteration. These are the genuinely hard sites (repetitive / multi-mapping
-  neighborhoods, or phantom alt-absent — see the note below) the consensus can't disentangle, which is
-  *why* they never flip.
+  neighborhoods) the consensus can't disentangle, which is *why* they never flip.
 
 So a flip is exactly the event where a contaminated pileup **resolves** — foreign reads out, true reads
 in — while stayed-not-called SNPs are where it doesn't. By starting `f_alt` bin (Figure 3) the flips
@@ -855,10 +792,9 @@ neighborhood), whereas **bcftools/freebayes** are freed chiefly by the pileup cl
 `scripts/vrf_pileup_decomp.R`; `--pileup` columns `depth_p, ref_p, alt_p, oth_p, mapq_p, mapq20_p` and
 mismapped-in `mmin_p, mmin_ref_p, mmin_alt_p`; mismapped-out = `mm_clip+mm_noclip+dc+un`.)
 
-*Note on the `f_alt≈0` not-called band:* a small, divergence-scaled fraction of "hom-div" truth SNPs
-were never simulated into the reads (dense-cluster **phantom** sites — see the phantom-truth note
-under SNP recovery); these are unrecoverable and sit permanently in the lowest-`f_alt` not-called band,
-so they never appear in the flip group above.
+*Note on the `f_alt≈0` not-called band:* these are not unsimulated sites. The truth-site check (under
+SNP recovery) finds every truth SNP present in its reads, so `f_alt≈0` means the reads that carry the alt
+did not arrive at the site (lost, mismapped or clipped): a mapping loss, not a missing allele.
 
 # Heterozygous site recovery
 

@@ -8,7 +8,7 @@ WHY THIS EXISTS
 The s05 truth VCF places divergent sites with an autocorrelated field, so each
 site sits in a local neighborhood that is more or less diverged than the genome
 mean. Every downstream per-site analysis (recall, read-fate decomposition,
-phantom rate, assemblable neighborhood) is binned against this LOCAL divergence
+assemblable neighborhood) is binned against this LOCAL divergence
 rather than the single global D. This script computes, for each divergent truth
 site, the local divergent-SNP density in a window around it -- the divergence a
 read/fragment covering the site actually experiences.

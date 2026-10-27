@@ -253,81 +253,62 @@ outputs:
     note: "written alongside G_grid.png by the same 2026-09-01 run; no notebook embeds them
       (s02-results.rmd builds G from the gtraj tables, synthesis.rmd embeds only G_grid.png)"
 
-  # --- effective truth / phantom sites (KNOWN ARTIFACT) ---------------------------------------------
-  - path: analyses/s02-indels/results/effective-truth/eff-{D}-effective.vcf.gz
-    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
-    what: "truth VCF minus the SNPs flagged phantom (indels passed through unchanged)"
-    script: analyses/lib/effective_truth.py
-    command: bash analyses/s02-indels/run_effective_truth.sh
-    inputs:
-      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
-      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-    used_by: []
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (found 2026-10-22): mason -oa writes dense SNP clusters as gapped 1D..1I
-      CIGAR pairs, so reading bases through those CIGARs shifts them and real alt sites look
-      all-reference; most 'phantom' flags are wrong. Do not use. Also nothing reads these VCFs.
-      Made 2026-08-06 (16:28 UTC) by the run script"
-
+  # --- truth-site check (phantom sites) ---------------------------------------------------------
   - path: analyses/s02-indels/results/effective-truth/eff-{D}-phantom.tsv
-    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
-    what: "the truth SNPs (div and het) flagged phantom: truth-BAM depth, alt count and alt fraction"
-    kind: table
+    values: {D: ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
+    what: "truth SNPs not present in the simulated reads (phantoms), one row each; header only when
+      there are none"
     script: analyses/lib/effective_truth.py
-    command: bash analyses/s02-indels/run_effective_truth.sh
+    command: cd analyses/s02-indels && sbatch run_effective_truth.sh
     inputs:
       - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
-      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-    used_by: [analyses/lib/phantom_adjacency.py]
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT: phantom flags are mostly wrong (mason -oa gapped-CIGAR SNP clusters; see
-      analyses/lib/effective_truth.py ARTIFACT_NOTE). Made 2026-08-06 by the run script"
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s02-indels/ref-regions/mm39-19.fa
+    used_by: []
+    git: tracked
+    note: "corrected method (2026-10-26): bases read at each read's haplotype position (oP) on haplotypes
+      rebuilt from the mason-format truth VCF; the earlier version read them through mason's -oa CIGAR
+      and wrongly flagged tens of thousands of SNPs (its counts are kept in the summary's n_cigar_flag_*)"
 
   - path: analyses/s02-indels/results/effective-truth/eff-{D}-summary.csv
-    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
-    what: "one-row phantom counts / rates for one divergence"
+    values: {D: ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
+    what: "one row per divergence: phantom counts and rates, alt-fraction spread, read consistency with
+      the rebuilt haplotypes, and the old CIGAR method's flag counts"
     script: analyses/lib/effective_truth.py
-    command: bash analyses/s02-indels/run_effective_truth.sh
+    command: cd analyses/s02-indels && sbatch run_effective_truth.sh
     inputs:
       - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
-      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s02-indels/ref-regions/mm39-19.fa
     used_by: [analyses/s02-indels/run_effective_truth.sh]
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (phantom flags mostly wrong; see effective_truth.py ARTIFACT_NOTE).
-      Concatenated by run_effective_truth.sh into phantom-by-divergence.csv"
+    git: tracked
 
   - path: analyses/s02-indels/results/effective-truth/phantom-by-divergence.csv
-    what: "the eff-{D}-summary.csv rows concatenated: phantom SNP counts / rates per divergence"
+    what: "the eff-<D>-summary.csv rows of every divergence under one header"
     script: analyses/s02-indels/run_effective_truth.sh
-    command: bash analyses/s02-indels/run_effective_truth.sh
+    command: cd analyses/s02-indels && sbatch run_effective_truth.sh
     inputs:
       - analyses/s02-indels/results/effective-truth/eff-{D}-summary.csv
     used_by: [analyses/s02-indels/s02-results.rmd]
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (phantom flags mostly wrong; see effective_truth.py ARTIFACT_NOTE), yet
-      s02-results.rmd still reads it. Made 2026-08-06 (16:28 UTC) by the run script"
+    git: tracked
 
-  - path: analyses/s02-indels/results/effective-truth/phantom-adjacency.csv
-    what: "distance to the nearest other truth variant for phantom vs non-phantom SNPs, per divergence"
-    script: analyses/lib/phantom_adjacency.py
+  - path: analyses/s02-indels/results/retired/phantom-adjacency.csv
+    what: "distance from the OLD scan's phantom-flagged vs other hom-div SNPs to the nearest other truth
+      variant (retired with analyses/lib/retired/phantom_adjacency.py)"
+    script: analyses/lib/retired/phantom_adjacency.py
     command: >-
-      conda run -n mapping-sims python analyses/lib/phantom_adjacency.py
+      python analyses/lib/phantom_adjacency.py
       --truth "data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz"
       --phantom "analyses/s02-indels/results/effective-truth/eff-{D}-phantom.tsv"
-      --out analyses/s02-indels/results/effective-truth/phantom-adjacency.csv --divs 0.04,0.06,0.08,0.10
-    inputs:
-      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-      - analyses/s02-indels/results/effective-truth/eff-{D}-phantom.tsv
-    used_by: [analyses/s02-indels/s02-results.rmd]
-    git: ignored
+      --out analyses/s02-indels/results/effective-truth/phantom-adjacency.csv
+      --divs 0.04,0.06,0.08,0.10
+      (2026-08-06 17:50 UTC, via conda run -n mapping-sims; the script and the table have since moved to retired/)
+    used_by: []
+    git: tracked
     status: artifact
-    note: "ad hoc command (2026-08-06 17:50 UTC, run with the mapping-sims env activated; the {D} are
-      the tool's own templates), not in a run script. KNOWN ARTIFACT: built on the wrong phantom
-      flags; s02-results.rmd still reads it"
+    note: "built on the old scan's phantom flags, which were a CIGAR artifact; its 'phantoms sit ~1 bp
+      from a neighbour' result describes where that artifact occurs (dense SNP clusters). Kept for the
+      record (moved here 2026-10-26)"
 
 ignore:
   - glob: analyses/s02-indels/results/s02-indels-callvcf-composition.csv.status

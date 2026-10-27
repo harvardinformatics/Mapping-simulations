@@ -1,0 +1,9 @@
+divergence,group,n,median_nn_bp,mean_nn_bp,frac_within_2bp
+0.04,phantom,2202,1.0,1.23,0.96
+0.04,non_phantom,2998,7.0,10.64,0.182
+0.06,phantom,3000,1.0,1.24,0.959
+0.06,non_phantom,2999,5,7.61,0.257
+0.08,phantom,3000,1.0,1.21,0.97
+0.08,non_phantom,2988,4.0,5.74,0.308
+0.10,phantom,3000,1.0,1.21,0.97
+0.10,non_phantom,2981,4,4.95,0.353

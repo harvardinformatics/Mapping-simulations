@@ -23,7 +23,9 @@ upstream:
   - path: data/varfate/
     from: "cached mason -oa truth BAMs (oH haplotype tags, seed 42): D 0.04-0.10 written by
       run_variant_read_fate.sh (which also left per-caller vrf-<caller>.csv there), D 0.02 and 0.005 by
-      `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` (2026-08-07)"
+      `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` (2026-08-07), D 0.00 and
+      0.001 by `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh 0.00 0.001`
+      (2026-10-26, for the truth-site check)"
 
 notebooks:
   - path: analyses/s01-baseline-iterative/s01-results.rmd
@@ -243,87 +245,64 @@ outputs:
       *_indel per-SNP columns); the current version reproduces this table byte for byte (checked
       2026-10-26)"
 
-  # --- effective truth / phantom sites (KNOWN ARTIFACT) -----------------------------------------
-  - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-effective.vcf.gz
-    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
-    what: "'effective' truth VCF: the normalized truth minus the sites flagged phantom (never simulated
-      into the reads) by the truth-BAM scan"
-    script: analyses/lib/effective_truth.py
-    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
-    inputs:
-      - data/varfate/{D}/truth.oa.bam
-      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-    used_by: []
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (found 2026-10-22): the phantom scan reads bases through mason -oa's gapped
-      1D..1I CIGARs for dense SNP clusters, so real alt sites look all-reference and most 'phantom'
-      sites are not phantoms. Do not use. Nothing reads this file."
-
+  # --- truth-site check (phantom sites) ---------------------------------------------------------
   - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv
-    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
-    what: "truth SNPs flagged phantom by the truth-BAM scan: position, ref/alt, zygosity, truth-BAM
-      depth and alt-read count/fraction"
+    values: {D: ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
+    what: "truth SNPs not present in the simulated reads (phantoms), one row each; header only when
+      there are none"
     script: analyses/lib/effective_truth.py
-    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    command: cd analyses/s01-baseline-iterative && sbatch run_effective_truth.sh
     inputs:
       - data/varfate/{D}/truth.oa.bam
-      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-    used_by: [analyses/lib/phantom_adjacency.py]
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (found 2026-10-22): gapped mason -oa CIGARs make the scan flag real alt sites
-      as phantom; see eff-{D}-effective.vcf.gz"
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
+    used_by: []
+    git: tracked
+    note: "corrected method (2026-10-26): bases read at each read's haplotype position (oP) on haplotypes
+      rebuilt from the mason-format truth VCF; the earlier version read them through mason's -oa CIGAR
+      and wrongly flagged tens of thousands of SNPs (its counts are kept in the summary's n_cigar_flag_*)"
 
   - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-summary.csv
-    values: {D: ["0.04", "0.06", "0.08", "0.10"]}
-    what: "one row per divergence: counts and rates of phantom-flagged hom-div and het truth SNPs,
-      low-coverage count, mean alt fraction"
+    values: {D: ["0.00", "0.001", "0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
+    what: "one row per divergence: phantom counts and rates, alt-fraction spread, read consistency with
+      the rebuilt haplotypes, and the old CIGAR method's flag counts"
     script: analyses/lib/effective_truth.py
-    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    command: cd analyses/s01-baseline-iterative && sbatch run_effective_truth.sh
     inputs:
       - data/varfate/{D}/truth.oa.bam
-      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by: [analyses/s01-baseline-iterative/run_effective_truth.sh]
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (found 2026-10-22): phantom counts are inflated by the gapped-CIGAR scan bug;
-      concatenated by run_effective_truth.sh into phantom-by-divergence.csv"
+    git: tracked
 
   - path: analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv
-    what: "the four eff-<D>-summary.csv rows under one header: phantom rate by divergence (D 0.04-0.10)"
+    what: "the eff-<D>-summary.csv rows of every divergence under one header"
     script: analyses/s01-baseline-iterative/run_effective_truth.sh
-    command: bash analyses/s01-baseline-iterative/run_effective_truth.sh
+    command: cd analyses/s01-baseline-iterative && sbatch run_effective_truth.sh
     inputs:
       - analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-summary.csv
     used_by:
       - analyses/s01-baseline-iterative/s01-results.rmd
       - analyses/s03-heterozygosity/s03-results.rmd
-    git: ignored
-    status: artifact
-    note: "KNOWN ARTIFACT (found 2026-10-22): phantom rates are inflated by the gapped-CIGAR scan bug,
-      yet s01-results.rmd (phantom-rate / effective-recall chunks) and s03-results.rmd still read it"
+    git: tracked
 
-  - path: analyses/s01-baseline-iterative/results/effective-truth/phantom-adjacency.csv
-    what: "distance from phantom-flagged vs non-phantom hom-div SNPs to the nearest other truth
-      variant, one row per divergence x group"
-    script: analyses/lib/phantom_adjacency.py
+  - path: analyses/s01-baseline-iterative/results/retired/phantom-adjacency.csv
+    what: "distance from the OLD scan's phantom-flagged vs other hom-div SNPs to the nearest other truth
+      variant (retired with analyses/lib/retired/phantom_adjacency.py)"
+    script: analyses/lib/retired/phantom_adjacency.py
     command: >-
       python analyses/lib/phantom_adjacency.py
       --truth "data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz"
       --phantom "analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv"
       --out analyses/s01-baseline-iterative/results/effective-truth/phantom-adjacency.csv
       --divs 0.04,0.06,0.08,0.10
-      (mapping-sims env; literal {D} -- the tool expands it)
-    inputs:
-      - analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv
-      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-    used_by: [analyses/s01-baseline-iterative/s01-results.rmd]
-    git: ignored
+      (2026-08-06, mapping-sims env; the script and the table have since moved to retired/)
+    used_by: []
+    git: tracked
     status: artifact
-    note: "ad hoc command (2026-08-06 17:50 UTC), not in a run script. KNOWN ARTIFACT (found
-      2026-10-22): built on the bugged phantom flags, so its 'phantoms sit ~1 bp from a neighbour'
-      result reflects the gapped-CIGAR scan, yet s01-results.rmd (phantom-adjacency chunk) still reads it"
+    note: "built on the old scan's phantom flags, which were a CIGAR artifact; its 'phantoms sit ~1 bp
+      from a neighbour' result describes where that artifact occurs (dense SNP clusters). Kept for the
+      record (moved here 2026-10-26)"
 
   # --- companion decomposition (vrf_pileup_decomp.R) --------------------------------------------
   - path: analyses/s01-baseline-iterative/results/vrf-pileup-viz/pileup_decomp_{fig}.png

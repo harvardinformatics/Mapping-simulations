@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 """
+RETIRED 2026-10-26 -- kept for the record, not part of any current analysis.
+The "phantom" sites this tool explains do not exist. They came from the first version of
+effective_truth.py, which read bases through mason's -oa CIGAR; mason writes dense SNP clusters there as
+fake 1D..1I gap pairs, so real alt sites looked all-reference. The corrected scan (analyses/lib/
+effective_truth.py, reading bases at each read's haplotype position oP) finds no phantom sites. The
+"~1 bp from another variant" result below therefore describes where the CIGAR artifact occurs (dense
+clusters), not why mason drops variants, which it does not. Its outputs moved to
+analyses/<section>/results/retired/phantom-adjacency.csv.
+
 phantom_adjacency.py -- WHY are truth SNPs phantom (never simulated into the reads)?
 
 mason_simulator with -iv only APPLIES the input VCF (it does not generate de novo variants, so nothing
@@ -20,8 +29,16 @@ import gzip
 import random
 import statistics
 
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # analyses/lib
 import provenance                       # shared provenance block for the data dictionaries
-from effective_truth import ARTIFACT_NOTE   # the phantom flags this reads are mostly an artifact
+
+# the phantom flags this tool reads are an artifact (see the module docstring)
+ARTIFACT_NOTE = ("KNOWN ARTIFACT: the phantom flags this table is built from came from reading bases "
+                 "through mason's -oa CIGAR (dense SNP clusters written as fake 1D..1I gap pairs); the "
+                 "corrected scan (effective_truth.py, 2026-10-26) finds no phantom sites. Retired.")
 
 
 def write_dictionary(a):
