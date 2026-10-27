@@ -23,15 +23,21 @@ Cells (columns), all read COUNTS per (snp, iteration):
   dc un                                 -- diff_chr, unmapped
 plus recovered (0/1) and the truth ref/alt. Identity coordinates only (s01 SNP-only; iter1).
 
+Each read's TRUE span comes from its haplotype position (mason -oa tag oP), mapped back to the
+reference through the haplotypes rebuilt from the mason-format truth VCF (truth_haplotypes.py),
+not from the truth BAM's POS/CIGAR (1-3 bp off for ~1% of reads at dense SNP clusters). Outputs
+made before 2026-10-27 used POS/CIGAR.
+
 Usage:
-  variant_read_fate.py --truth-bam T.bam --truth-vcf truth.norm.vcf.gz --region 19 \
-      --divergence 0.10 --caller gatk --sample 8000 --out rows.csv \
+  variant_read_fate.py --truth-bam T.bam --mason-vcf truth.vcf.gz --reference ref.fa \
+      --truth-vcf truth.norm.vcf.gz --region 19 --divergence 0.10 --caller gatk --sample 8000 --out rows.csv \
       --iter 1:iter1/mapped.bam:iter1/recovered.vcf.gz  --iter 2:...  --iter 3:...
 (--sample <=0 means ALL true SNPs, no sampling.)
 """
-import argparse, bisect
+import argparse, bisect, sys
 import pysam
 import provenance                       # shared provenance block for the data dictionaries
+import truth_haplotypes                 # each truth read's true span from its haplotype position (oP)
 
 TOLERANCE = 150
 CELLS = ["ex_alt", "ex_ref", "ex_err", "ex_clip", "ex_del",
@@ -231,6 +237,17 @@ def write_dictionaries(a):
             return provenance.header(table, command=a.dicts_only, backfill=True)
         return provenance.header(table)
 
+    # how each read's true span was taken. --dicts-only documents outputs made before the
+    # 2026-10-27 fix, which took it from the truth BAM's POS/CIGAR.
+    span_txt = ("mason -oa truth BAM POS/CIGAR (true start/end) + oH haplotype per read (the method\n"
+                "             before 2026-10-27: POS/CIGAR is off for ~1% of reads SNP-only, ~30% in s02);"
+                if a.dicts_only else
+                "mason -oa truth BAM: oH haplotype + oP haplotype position per read; the true\n"
+                "             reference span is [oP, oP + read length) on that haplotype, mapped back to\n"
+                "             the reference (truth_haplotypes.py, haplotypes rebuilt from --mason-vcf);\n"
+                "             a read that begins inside an insertion is PLACED at its first reference\n"
+                "             base minus its leading inserted bases (how an aligner lays it unclipped);")
+
     site = ("HETEROZYGOUS (phased 0|1 / 1|0) biallelic truth SNPs; true-alt reads are those from the "
             "alt-carrying haplotype (mason oH tag); recovered = called correctly AS A HET in the "
             "per-iteration caller VCF") if a.het else (
@@ -241,13 +258,13 @@ def write_dictionaries(a):
                 % (a.sample, a.sample))
     common = ("Sites      : %s.\n"
               "Sampling   : %s.\n"
-              "Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are\n"
-              "             assigned to every SNP their TRUE span covers.\n"
+              "Read truth : %s\n"
+              "             reads are assigned to every SNP their TRUE span covers.\n"
               "Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= %d bp;\n"
               "             mismapped = |delta| > %d bp; diff_chr = other contig (or true start in a\n"
               "             chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to\n"
               "             the consensus with that iteration's ref2cons chain (4th --iter field).\n\n"
-              % (site, sampling, TOLERANCE, TOLERANCE))
+              % (site, sampling, span_txt, TOLERANCE, TOLERANCE))
     if a.aggregate:
         with open(a.out + "-gtraj.csv.dict.txt", "w") as d:
             d.write(hdr(a.out + "-gtraj.csv") + common)
@@ -313,6 +330,10 @@ def write_dictionaries(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--truth-bam")
+    ap.add_argument("--mason-vcf",
+                    help="mason-format truth VCF the truth BAM was simulated from (mm39-truth.vcf.gz); "
+                         "rebuilds the haplotypes that give each read's true span from its oP tag")
+    ap.add_argument("--reference", help="reference FASTA the simulation used (indexed)")
     ap.add_argument("--truth-vcf")
     ap.add_argument("--region")
     ap.add_argument("--divergence", required=True)
@@ -322,7 +343,8 @@ def main():
                     metavar="ITER:MAPPED_BAM:RECOVERED_VCF")
     ap.add_argument("--out", required=True)
     ap.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
-                    help="write ONLY the data dictionaries for an already-existing output (same --out, "
+                    help="write ONLY the data dictionaries for an already-existing output made before the "
+                         "2026-10-27 true-span fix (same --out, "
                          "--aggregate/--pileup/--het, --sample, --divergence, --caller as the run that made "
                          "it), recording ORIGINAL_COMMAND as its provenance; no BAM/VCF is read.")
     ap.add_argument("--het", action="store_true",
@@ -347,19 +369,21 @@ def main():
     if a.dicts_only:
         write_dictionaries(a)
         return
-    missing = [f for f in ("truth_bam", "truth_vcf", "region", "iter") if not getattr(a, f)]
+    missing = [f for f in ("truth_bam", "mason_vcf", "reference", "truth_vcf", "region", "iter")
+               if not getattr(a, f)]
     if missing:
         ap.error("missing required arguments: " + ", ".join("--" + m.replace("_", "-") for m in missing))
 
-    # truth reads: key -> (ref_name, start, end, oH-haplotype). oH is mason's 1-based
-    # source-haplotype tag, so we know each read's TRUE allele independent of sequencing error.
-    truth = {}
-    with pysam.AlignmentFile(a.truth_bam, "rb") as tf:
-        for r in tf:
-            if r.is_secondary or r.is_supplementary:
-                continue
-            truth[read_key(r)] = (r.reference_name, r.reference_start, r.reference_end,
-                                  r.get_tag("oH") if r.has_tag("oH") else 0)
+    # truth reads: key -> (ref_name, true start, true end, oH-haplotype, placement start). oH is
+    # mason's 1-based source-haplotype tag, so we know each read's TRUE allele independent of
+    # sequencing error; the true span is the read's haplotype interval (from oP) mapped back to the
+    # reference. The placement start differs from the true start only for a read that begins inside
+    # an insertion (see truth_haplotypes.load_truth_reads).
+    truth, (n_tr, n_sd, n_ed) = truth_haplotypes.load_truth_reads(a.truth_bam, a.mason_vcf,
+                                                                  a.reference, read_key)
+    sys.stderr.write("# %d truth reads; placement start differs from truth-BAM POS for %d (%.3f%%), "
+                     "true end from its CIGAR end for %d (%.3f%%)\n"
+                     % (n_tr, n_sd, 100 * n_sd / n_tr, n_ed, 100 * n_ed / n_tr))
 
     snps = load_het_snps(a.truth_vcf) if a.het else load_hom_div_snps(a.truth_vcf)
     if a.sample and a.sample > 0:
@@ -413,9 +437,9 @@ def main():
                 for j in range(lo, hi):
                     if oh in althap[j]:                    # read truly carries alt at this SNP
                         ntrue[j] += 1
-                # read's TRUE start in the mapped BAM's coordinate system (identity for iter1;
-                # lifted reference->consensus for s02 iter>1)
-                tstart = lift(t[1]) if lift else t[1]
+                # read's TRUE (placement) start in the mapped BAM's coordinate system (identity for
+                # iter1; lifted reference->consensus for s02 iter>1)
+                tstart = lift(t[4]) if lift else t[4]
                 has_clip = r.cigartuples is not None and any(op == 4 for op, _ in r.cigartuples)
                 # ---- placement (deterministic, from the alignment) ----
                 if r.is_unmapped:

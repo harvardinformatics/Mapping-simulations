@@ -76,8 +76,14 @@ outputs:
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39-readclass-bam-summary.csv
     used_by: [analyses/s02-indels/s02-results.rmd]
     git: tracked
+    status: earlier-version
     note: "last regenerated 2026-08-07 (~06:00 UTC), submitted by a watcher loop once the
-      run_sweep.sh rerun had finished; header matches the current compare_bams.py COLUMNS"
+      run_sweep.sh rerun had finished; header matches the current compare_bams.py COLUMNS.
+      Made before the 2026-10-27 true-span fix: compare_bams.py then took each read's true start/end
+      from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel density (the
+      current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on D = 0.10
+      gatk iteration 1: exact 24.1% -> 27.6%, shifted 3.8% -> 0.31%, other classes unchanged (<= 15
+      reads). Regenerate with the command above"
 
   - path: analyses/s02-indels/results/s02-indels-callvcf-composition.csv
     what: "record composition (SNP / indel / '*' allele / split-multiallelic) of each caller's
@@ -109,10 +115,17 @@ outputs:
       - analyses/synthesis/brief.rmd
       - analyses/s02-indels/scripts/vrf_agg_G.R
     git: tracked
+    status: earlier-version
     note: "D = 0.04-0.10 submitted 2026-08-05 by bash analyses/s02-indels/submit_vrf_aggregate.sh;
       D = 0.005 / 0.02 by an ad hoc loop (2026-08-07 15:04 UTC) running the same sbatch line from
       analyses/s02-indels. brief.rmd reads only vrf-agg-gatk-0.10-gtraj.csv; vrf_agg_G.R (via
-      analyses/lib/vrf_G_figs.R) plots D = 0.02-0.10"
+      analyses/lib/vrf_G_figs.R) plots D = 0.02-0.10.
+      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
+      start/end from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel
+      density (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured
+      on D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 2.2% of rows, reads per
+      SNP in 30% (total -1.0%), exact vs shifted labels move ~30% of exact-placed reads; recovered
+      flag unchanged. Regenerate with the command above"
 
   - path: analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-hcomp.csv
     values: {caller: [gatk, bcftools, freebayes], D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
@@ -128,8 +141,15 @@ outputs:
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
     used_by: [analyses/s02-indels/s02-results.rmd]
     git: tracked
+    status: earlier-version
     note: "written by the same jobs as the -gtraj.csv tables (D = 0.04-0.10 via
-      submit_vrf_aggregate.sh 2026-08-05; D = 0.005 / 0.02 via the ad hoc loop of 2026-08-07)"
+      submit_vrf_aggregate.sh 2026-08-05; D = 0.005 / 0.02 via the ad hoc loop of 2026-08-07).
+      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
+      start/end from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel
+      density (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured
+      on D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 2.2% of rows, reads per
+      SNP in 30% (total -1.0%), exact vs shifted labels move ~30% of exact-placed reads; recovered
+      flag unchanged. Regenerate with the command above"
 
   - path: analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
     values: {caller: [gatk, bcftools, freebayes], D: ["0.06", "0.08", "0.10"]}
@@ -152,8 +172,15 @@ outputs:
       - analyses/s02-indels/run_neighborhood.sh
       - analyses/s02-indels/scripts/aggregate_calling_metrics.R
     git: ignored
+    status: earlier-version
     note: "~8 MB each, git-ignored (dictionaries are tracked). brief.rmd reads only the D = 0.10
-      files; the notebooks and both scripts read all nine"
+      files; the notebooks and both scripts read all nine.
+      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
+      start/end from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel
+      density (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured
+      on D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 2.2% of rows, reads per
+      SNP in 30% (total -1.0%), exact vs shifted labels move ~30% of exact-placed reads; recovered
+      flag unchanged. Regenerate with the command above"
 
   - path: analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv
     what: "per sampled SNP x iteration: count of still-unrecovered truth SNPs / indels within

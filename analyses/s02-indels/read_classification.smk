@@ -39,6 +39,7 @@ wildcard_constraints:
 ## --- paths (mirror workflow.smk) -----------------------------------------
 sim_dir    = os.path.join(outdir, "sim", "{cov}X", "{region}", "{div}", "{het}", "{seed}")
 truth_oa   = os.path.join(sim_dir, ref_str + "-truth.oa.bam")
+truth_vcf  = os.path.join(sim_dir, ref_str + "-truth.vcf.gz")     # mason format, as fed to -iv
 
 iter_dir   = os.path.join(outdir, "iter", "{caller}", "{cov}X", "{region}", "{div}", "{het}", "{seed}", "iter{iter}")
 mapped_bam = os.path.join(iter_dir, ref_str + "_mapped.bam")
@@ -69,7 +70,9 @@ rule classify_reads:
     input:
         truth  = truth_oa,
         mapped = mapped_bam,
-        chain  = prev_chain
+        chain  = prev_chain,
+        mason_vcf = truth_vcf,     # rebuilds the haplotypes -> each read's true span from its oP tag
+        fa     = lambda w: _base_ref(w.region)
     output:
         csv = rc_csv
     params:
@@ -77,7 +80,7 @@ rule classify_reads:
     log:
         os.path.join(iter_dir, "logs", ref_str + "-readclass.log")
     resources:
-        cpus = 1, mem = "8g", time = "2:00:00", partition = "shared"
+        cpus = 1, mem = "12g", time = "2:00:00", partition = "shared"   # peak ~6.5 GB (truth spans + haplotypes)
     shell:
         # iter1: identity coords, no chain. iter>1: point-lift start+end via cons_{k-1}->ref.
         r"""
@@ -87,6 +90,7 @@ rule classify_reads:
         [ {wildcards.iter} -ne 1 ] && CHAINARG="--chain {input.chain}"
         python {params.cmp} \
             --truth-bam {input.truth} --mapped-bam {input.mapped} $CHAINARG \
+            --mason-vcf {input.mason_vcf} --reference {input.fa} \
             --region {wildcards.region} --coverage {wildcards.cov} \
             --divergence {wildcards.div} --heterozygosity {wildcards.het} \
             --seed {wildcards.seed} --caller {wildcards.caller} --iteration {wildcards.iter} \

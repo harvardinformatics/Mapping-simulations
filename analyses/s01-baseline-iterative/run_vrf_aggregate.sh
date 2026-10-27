@@ -27,6 +27,8 @@ TB=data/varfate/$D/truth.oa.bam
 
 BASE=data/s01-baseline-iterative
 NTRUTH=$BASE/sim/30X/19/$D/0.005/$SEED/mm39-truth.norm.vcf.gz
+MTRUTH=$BASE/sim/30X/19/$D/0.005/$SEED/mm39-truth.vcf.gz      # mason-format (true read spans)
+REF=$BASE/ref-regions/mm39-19.fa
 OUT=analyses/s01-baseline-iterative/results/vrf-agg
 mkdir -p "$OUT"
 
@@ -38,6 +40,7 @@ done
 
 echo "### aggregate ledger: caller=$C div=$D (full chromosome, all SNPs) ###"
 python analyses/lib/variant_read_fate.py --truth-bam "$TB" --truth-vcf "$NTRUTH" \
+    --mason-vcf "$MTRUTH" --reference "$REF" \
     --region 19 --divergence "$D" --caller "$C" --sample 0 --aggregate $IT \
     --out "$OUT/vrf-agg-$C-$D"
 echo "### DONE caller=$C div=$D -> $OUT/vrf-agg-$C-$D-{gtraj,hcomp}.csv ###"

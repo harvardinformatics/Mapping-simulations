@@ -25,6 +25,8 @@ TB=data/varfate/$D/truth.oa.bam                              # cached mason -oa 
 [ -s "$TB" ] || { echo "ERROR: truth BAM missing: $TB"; exit 1; }
 BASE=data/s01-baseline-iterative
 NTRUTH=$BASE/sim/30X/19/$D/0.005/$SEED/mm39-truth.norm.vcf.gz
+MTRUTH=$BASE/sim/30X/19/$D/0.005/$SEED/mm39-truth.vcf.gz      # mason-format (true read spans)
+REF=$BASE/ref-regions/mm39-19.fa
 OUT=analyses/s01-baseline-iterative/results/vrf-pileup
 mkdir -p "$OUT"
 
@@ -37,6 +39,7 @@ done
 
 echo "### s01 per-SNP read-fate + pileup: caller=$C div=$D (sample $SAMPLE) ###"
 python analyses/lib/variant_read_fate.py --truth-bam "$TB" --truth-vcf "$NTRUTH" \
+    --mason-vcf "$MTRUTH" --reference "$REF" \
     --region 19 --divergence "$D" --caller "$C" --sample $SAMPLE --pileup $IT \
     --out "$OUT/vrf-pileup-$C-$D.csv"
 echo "### DONE caller=$C div=$D ###"

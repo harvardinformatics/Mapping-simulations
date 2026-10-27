@@ -2,10 +2,12 @@
 """
 compare_bams.py -- read-mapping accuracy for the mason reference-bias pipeline.
 
-Compares where reads were SIMULATED FROM (mason truth BAM, already in reference
-coordinates) against where `bwa mem` actually PLACED them (mapped BAM). Because the
-mason `-oa` truth alignment is in reference coordinates, NO CrossMap / liftover is
-needed.
+Compares where reads were SIMULATED FROM (mason truth BAM) against where `bwa mem`
+actually PLACED them (mapped BAM). Each read's true reference span comes from its
+haplotype position (mason -oa tag oP), mapped back to the reference through the
+haplotypes rebuilt from the mason-format truth VCF (truth_haplotypes.py) -- not from
+the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads at dense SNP clusters.
+Outputs made before 2026-10-27 used POS/CIGAR. NO CrossMap / liftover is needed.
 
 This is the analyses/lib copy used by s01's read-classification-by-iteration step.
 It adds two columns over the exploratory scripts/compare_bams.py version -- `caller`
@@ -27,8 +29,8 @@ identity-coordinate consensus still compare correctly at every iteration):
   unmapped    - present in truth but flagged unmapped by bwa
   missing     - present in truth but absent from the mapped BAM (expected 0 with mason)
 
-Only primary alignments are counted (secondary/supplementary skipped). Positions use
-pysam `reference_start` (0-based in both BAMs), so they are directly comparable.
+Only primary alignments are counted (secondary/supplementary skipped). Positions are
+0-based reference coordinates in both (mapped BAM: pysam `reference_start`).
 
 Outputs:
   <out_prefix>-bam-summary.csv       : one row of class counts + proportions
@@ -40,6 +42,7 @@ import bisect
 import argparse
 import pysam
 import provenance                       # shared provenance block for the data dictionaries
+import truth_haplotypes                 # each truth read's true span from its haplotype position (oP)
 
 
 # --- parameters -------------------------------------------------------------
@@ -60,7 +63,12 @@ COLUMNS = (("region", "coverage", "divergence", "heterozygosity", "seed", "calle
 # embed the same text in the dictionaries of the combined (committed) tables.
 FIELD_DEFINITIONS = (
     "Read-mapping accuracy: bwa placement vs mason truth (reference coords).\n"
-    "Reads matched by (fragment id, mate); tolerance = %d bp; contigs compared by name.\n\n" % TOLERANCE +
+    "Reads matched by (fragment id, mate); tolerance = %d bp; contigs compared by name.\n" % TOLERANCE +
+    "True span of each read: [oP, oP + read length) on its haplotype (mason -oa tags oH, oP), mapped\n"
+    "back to the reference (haplotypes rebuilt from the mason-format truth VCF). A read that begins\n"
+    "inside an insertion is placed at its first reference base minus its leading inserted bases\n"
+    "(how an aligner lays it down unclipped). Tables made before 2026-10-27 took the true start/end\n"
+    "from the truth BAM's POS/CIGAR instead (off for ~1% of reads SNP-only, ~30% in s02).\n\n" +
     "region         : reference region / chromosome label\n"
     "coverage       : simulated fold coverage\n"
     "divergence     : simulated fixed divergence (D) label\n"
@@ -87,6 +95,9 @@ def parse_args():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--truth-bam", required=True, help="mason -oa truth alignment BAM")
+    p.add_argument("--mason-vcf", required=True,
+                   help="mason-format truth VCF the truth BAM was simulated from (mm39-truth.vcf.gz)")
+    p.add_argument("--reference", required=True, help="reference FASTA the simulation used (indexed)")
     p.add_argument("--mapped-bam", required=True, help="bwa mem mapped BAM")
     p.add_argument("--region", required=True, help="region / chromosome label")
     p.add_argument("--coverage", required=True, help="coverage label")
@@ -149,15 +160,15 @@ def make_lifter(chain_path):
 def main():
     args = parse_args()
 
-    # --- 1. load truth: key -> (reference_name, reference_start) -----------
-    # Compare by contig NAME (not tid) so differing BAM headers still line up.
-    truth = {}
-    with pysam.AlignmentFile(args.truth_bam, "rb") as tf:
-        for a in tf:
-            if a.is_secondary or a.is_supplementary:
-                continue
-            truth[read_key(a)] = (a.reference_name, a.reference_start, a.reference_end)
-    sys.stderr.write("# loaded %d truth reads\n" % len(truth))
+    # --- 1. load truth: key -> (reference_name, true start, true end, oH, placement start) ----
+    # Compare by contig NAME (not tid) so differing BAM headers still line up. The placement start
+    # is the true start except for a read that begins inside an insertion (see
+    # truth_haplotypes.load_truth_reads); placement is judged against it.
+    truth, (n_tr, n_sd, n_ed) = truth_haplotypes.load_truth_reads(args.truth_bam, args.mason_vcf,
+                                                                  args.reference, read_key)
+    sys.stderr.write("# loaded %d truth reads; placement start differs from truth-BAM POS for %d "
+                     "(%.3f%%), true end from its CIGAR end for %d (%.3f%%)\n"
+                     % (n_tr, n_sd, 100 * n_sd / n_tr, n_ed, 100 * n_ed / n_tr))
     lift = make_lifter(args.chain) if args.chain else None
 
     # --- 2. stream mapped BAM and classify --------------------------------
@@ -179,7 +190,7 @@ def main():
             if a.is_unmapped:
                 counts["unmapped"] += 1
                 continue
-            truth_ref, truth_start, truth_end = t
+            truth_ref, _, truth_end, _, truth_start = t      # placement start, true end
             if a.reference_name != truth_ref:
                 counts["diff_chr"] += 1
                 continue

@@ -105,7 +105,9 @@ rule truth_bam:
 rule classify_reads:
     input:
         truth  = truth_oa,
-        mapped = mapped_bam
+        mapped = mapped_bam,
+        mason_vcf = truth_vcf,     # rebuilds the haplotypes -> each read's true span from its oP tag
+        fa     = region_fa
     output:
         csv = rc_csv
     params:
@@ -113,13 +115,14 @@ rule classify_reads:
     log:
         os.path.join(iter_dir, "logs", ref_str + "-readclass.log")
     resources:
-        cpus = 1, mem = "8g", time = "2:00:00", partition = "shared"
+        cpus = 1, mem = "12g", time = "2:00:00", partition = "shared"   # peak ~6.5 GB (truth spans + haplotypes)
     shell:
         """
         mkdir -p $(dirname {log})
         PREF="{output.csv}"; PREF="${{PREF%-bam-summary.csv}}"   # compare_bams appends -bam-summary.csv
         python {params.cmp_script} \
             --truth-bam {input.truth} --mapped-bam {input.mapped} \
+            --mason-vcf {input.mason_vcf} --reference {input.fa} \
             --region {wildcards.region} --coverage {wildcards.cov} \
             --divergence {wildcards.div} --heterozygosity {wildcards.het} \
             --seed {wildcards.seed} --caller {wildcards.caller} --iteration {wildcards.iter} \

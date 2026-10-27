@@ -23,7 +23,7 @@ D=$1; SEED=42; READLEN=150; FRAG=300; SAMPLE=8000
 BASE=data/s01-baseline-iterative
 REF=$BASE/ref-regions/mm39-19.fa
 SIM=$BASE/sim/30X/19/$D/0.005/$SEED
-MTRUTH=$SIM/mm39-truth.vcf.gz            # mason-format (for mason -iv)
+MTRUTH=$SIM/mm39-truth.vcf.gz            # mason-format (for mason -iv, and the true read spans)
 NTRUTH=$SIM/mm39-truth.norm.vcf.gz       # normalized (for SNP loading)
 WORK=data/varfate/$D; mkdir -p $WORK
 TB=$WORK/truth.oa.bam
@@ -49,6 +49,7 @@ for C in bcftools gatk freebayes; do
     it_args="$it_args --iter $k:$d/mm39_mapped.bam:$d/mm39_recovered.vcf.gz"
   done
   python analyses/lib/variant_read_fate.py --truth-bam $TB --truth-vcf $NTRUTH \
+      --mason-vcf $MTRUTH --reference $REF \
       --region 19 --divergence $D --caller $C --sample $SAMPLE $it_args --out $WORK/vrf-$C.csv
   if [ $first -eq 1 ]; then cp $WORK/vrf-$C.csv $OUT; first=0
   else tail -n +2 $WORK/vrf-$C.csv >> $OUT; fi

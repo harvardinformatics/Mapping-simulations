@@ -28,6 +28,8 @@ FIELD=L20000-S1.0; DIV=0.06; HET=0.005; SEED=42; SAMPLE=50000
 D=data/s05-heterogeneous-divergence
 TB=$D/varfate/$FIELD/truth.oa.bam                         # mason -oa truth BAM (has oH)
 NTRUTH=$D/sim/30X/19/$DIV/$HET/$FIELD/$SEED/mm39-truth.norm.vcf.gz
+MTRUTH=$D/sim/30X/19/$DIV/$HET/$FIELD/$SEED/mm39-truth.vcf.gz   # mason-format (true read spans)
+REF=$D/ref-regions/mm39-19.fa
 OUT=analyses/s05-heterogeneous-divergence/results/vrf-pileup
 mkdir -p "$OUT"
 
@@ -44,6 +46,7 @@ done
 
 echo "### s05 read-fate + pileup: caller=$C field=$FIELD D=$DIV (sample $SAMPLE) ###"
 python analyses/lib/variant_read_fate.py --truth-bam "$TB" --truth-vcf "$NTRUTH" \
+    --mason-vcf "$MTRUTH" --reference "$REF" \
     --region 19 --divergence "$DIV" --caller "$C" --sample $SAMPLE --pileup $IT \
     --out "$OUT/vrf-pileup-$C.csv"
 echo "### DONE caller=$C ###"

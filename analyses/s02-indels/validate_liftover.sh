@@ -109,6 +109,7 @@ CrossMap bam cons2ref.chain map.cons.bam map.lifted.bam > crossmap.bam.log 2>&1
 LB=$(ls -1 map.lifted*.bam 2>/dev/null | grep -v unmap | head -1)
 samtools sort -@ 8 -o map.lifted.sort.bam "$LB"; samtools index map.lifted.sort.bam
 python $LIB/compare_bams.py --truth-bam truth.oa.bam --mapped-bam map.lifted.sort.bam \
+    --mason-vcf truth.vcf.gz --reference $REF \
     --region 19 --coverage 30 --divergence $D --heterozygosity $H --seed $SEED \
     --caller bcftools --iteration 2 --out-prefix bamscore
 

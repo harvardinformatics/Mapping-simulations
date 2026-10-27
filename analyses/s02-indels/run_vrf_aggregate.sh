@@ -25,6 +25,8 @@ S=$BASE/sim/30X/19/$D/$HET/$SEED
 TB=$S/mm39-truth.oa.bam
 [ -s "$TB" ] || { echo "ERROR: truth BAM missing: $TB"; exit 1; }
 NTRUTH=$S/mm39-truth.norm.vcf.gz
+MTRUTH=$S/mm39-truth.vcf.gz                # mason-format (true read spans)
+REF=$BASE/ref-regions/mm39-19.fa
 OUT=analyses/s02-indels/results/vrf-agg
 mkdir -p "$OUT"
 
@@ -42,6 +44,7 @@ done
 
 echo "### s02 aggregate SNP read-fate: caller=$C div=$D (full chromosome, chain-lifted iter>1) ###"
 python analyses/lib/variant_read_fate.py --truth-bam "$TB" --truth-vcf "$NTRUTH" \
+    --mason-vcf "$MTRUTH" --reference "$REF" \
     --region 19 --divergence "$D" --caller "$C" --sample 0 --aggregate $IT \
     --out "$OUT/vrf-agg-$C-$D"
 echo "### DONE caller=$C div=$D ###"
