@@ -1,0 +1,25 @@
+CONFIG -- the REALISTIC CAPPED configuration (as opposed to s05-mapping-vs-calling.csv, which is the
+uncapped "characterization" config that deliberately spans the whole local-D axis)
+------
+  field         : L20000-S1.0-C0.20  (correlation length 20 kb, sigma 1.0, weight cap 0.20)
+  mean divergence : 0.03     het : 0.005     seed : 42     coverage : 30X     region : chr19
+  cap semantics : the cap limits the divergence FIELD's mean-weighting; the realized read-scale
+                  local_d_150 can still spike slightly above 0.20 from local clustering (observed
+                  max ~0.297), so the axis runs a little past the cap but the mass sits <= 0.20.
+  source pileups: analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped/vrf-pileup-<caller>.csv
+                  (mason -oa truth BAM regenerated for this config; see run_vrf_truthbam_capped.sh
+                  and run_vrf_pileup_capped.sh)
+  localdiv      : data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/
+                  mm39-truth-locald.tsv (POS -> local_d_150)
+
+KEY READING
+-----------
+Even on this realistic capped config the FULL transition is present: at low local D the loss is
+gatk CALLING-limited (mapping ~0); the calling band peaks near local D ~0.145 (gatk frac_calling
+~0.46) and MAPPING-limited then takes over (~0.80 of sites by local D 0.225). The calling->mapping
+crossover (~0.16) matches the uncapped characterization config almost exactly, confirming the
+mechanism is a property of the caller + read length, not of the field configuration. The realistic
+mass sits at local D <= 0.20 (dashed line in the figure); the bins past it are sparse (n_sites
+1640 at 0.225, 67 at 0.275) but still trace the wall's onset.
+
+(Hand-written; appended by mapping_vs_calling.py --dict-append.)

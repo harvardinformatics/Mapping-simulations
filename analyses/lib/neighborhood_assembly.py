@@ -89,7 +89,14 @@ def unrec_in_window(truth_sorted, rec_sorted, lo, hi, exclude):
 
 def write_dictionaries(a):
     """Data dictionaries for neighborhood-per-snp.csv and neighborhood-summary.csv. With --dicts-only
-    they document existing tables (backfill), recording the ORIGINAL command and any --dict-note."""
+    they document existing tables (backfill), recording the ORIGINAL command and any --dict-note.
+    Each --dict-append TABLE:FILE appends FILE's hand-written text to that table's dictionary."""
+    appended = {}
+    for spec in a.dict_append:
+        name, _, path = spec.partition(":")
+        if name not in ("per-snp", "summary") or not path:
+            raise ValueError("--dict-append %r: expected per-snp:FILE or summary:FILE" % spec)
+        appended.setdefault(name, []).append(path)
     common = ("Query sites: the SNPs sampled in the --pile per-SNP pileup CSVs (template %s);\n"
               "             their per-iteration 'recovered' flags come from that file.\n"
               "Neighbours : OTHER true hom-div (GT 1|1) variants within +/-%d bp of the query SNP p,\n"
@@ -140,6 +147,17 @@ def write_dictionaries(a):
         table = os.path.join(a.out, fname)
         with open(table + ".dict.txt", "w") as d:
             d.write(hdr(table) + common + text)
+            for path in appended.get(name, []):    # hand-written sections (--dict-append)
+                d.write("\n" + read_dict_append(path))
+
+
+def read_dict_append(path):
+    """Text of a --dict-append file, ending in one newline; fails if missing or empty."""
+    with open(path) as f:
+        text = f.read().strip("\n")
+    if not text.strip():
+        raise ValueError("--dict-append file %s is empty" % path)
+    return text + "\n"
 
 
 def main():
@@ -156,6 +174,9 @@ def main():
                          "arguments as the run that made them), recording ORIGINAL_COMMAND as provenance")
     ap.add_argument("--dict-note", action="append", default=[],
                     help="extra provenance note for the dictionaries (repeatable)")
+    ap.add_argument("--dict-append", action="append", default=[], metavar="TABLE:FILE",
+                    help="append FILE's hand-written text (e.g. interpretation) to the dictionary of TABLE "
+                         "(per-snp | summary), so a re-run keeps it (repeatable)")
     ap.add_argument("--dicts-only-table", choices=["both", "per-snp", "summary"], default="both",
                     help="with --dicts-only: which table's dictionary to write (default both)")
     a = ap.parse_args()

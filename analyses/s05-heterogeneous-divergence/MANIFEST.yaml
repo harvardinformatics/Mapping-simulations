@@ -357,9 +357,11 @@ outputs:
       --localdiv data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv
       --window 150
       --out analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv
+      --dict-append analyses/s05-heterogeneous-divergence/config/s05-mapping-vs-calling-capped.dict-notes.txt
     inputs:
       - analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped/vrf-pileup-{caller}.csv
       - data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv
+      - analyses/s05-heterogeneous-divergence/config/s05-mapping-vs-calling-capped.dict-notes.txt
     used_by:
       - analyses/synthesis/synthesis.rmd
       - analyses/synthesis/brief.rmd
@@ -367,9 +369,10 @@ outputs:
     note: >-
       re-run 2026-10-28 (commit 8111fc4) on the regenerated capped vrf-pileup tables (--alt-min
       left at its default, 2): every count and frac_* column identical to the previous table;
-      the mean_* columns change by <= 0.0006. The dictionary's CONFIG and KEY READING sections
-      are hand-written (2026-08-13) and were re-inserted from git after this run, under the
-      script's provenance block; a re-run of the script drops them
+      the mean_* columns change by <= 0.0006. The dictionary's hand-written (2026-08-13) CONFIG
+      and KEY READING sections live in
+      analyses/s05-heterogeneous-divergence/config/s05-mapping-vs-calling-capped.dict-notes.txt,
+      appended by --dict-append (since 2026-10-28), so a re-run keeps them
 
   # --- QC figure for the realistic capped config ------------------------------------------------------
   - path: analyses/s05-heterogeneous-divergence/results/capped-divergence-distribution.png

@@ -56,6 +56,9 @@ def parse_args():
                    help="min alt reads in the pileup to count the evidence as PRESENT "
                         "(>= this and uncalled = calling-limited). Default 2.")
     p.add_argument("--out", required=True)
+    p.add_argument("--dict-append", action="append", default=[], metavar="FILE",
+                   help="append FILE's hand-written text (e.g. configuration notes, interpretation) to "
+                        "the dictionary, so a re-run keeps it (repeatable)")
     return p.parse_args()
 
 
@@ -163,6 +166,12 @@ def main():
         d.write("  mean_mismapped_frac : mean fraction mismapped/diff-chr/unmapped\n")
         d.write("  mean_alt_p/depth_p: mean alt-supporting reads / total depth in the pileup at p\n")
         d.write("\nfrac_recovered + frac_calling + frac_mapping = 1 within each bin.\n")
+        for path in a.dict_append:                  # hand-written sections (--dict-append)
+            with open(path) as f:
+                text = f.read().strip("\n")
+            if not text.strip():
+                raise ValueError("--dict-append file %s is empty" % path)
+            d.write("\n" + text + "\n")
 
     sys.stderr.write("# wrote %d rows to %s\n" % (len(rows_out), a.out))
 

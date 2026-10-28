@@ -1,0 +1,22 @@
+WHAT THIS IS
+------------
+Per divergent-SNP, per-iteration measure of the local "assemblable neighbourhood": how many nearby
+truth variants are STILL UNRECOVERED (not yet called into the consensus) around each divergent SNP.
+The premise (see the tool docstring): gatk's reference-anchored reassembler fails while the local
+sequence is too divergent from the (consensus) reference; as iteration bakes neighbouring variants
+into the consensus, the local unrecovered load falls and the site becomes callable.
+
+The *_indel columns mirror the SNP columns so the notebook can contrast the neighbour SNP-vs-indel
+unrecovered load across iterations (synthesis §5 "Indels").
+
+KEY READING (s02, pooled fraction still unrecovered = sum(unrec)/sum(neighbor_truth), D = 0.06-0.10)
+---------------------------------------------------------------------------------------------------
+At every caller and divergence the indel unrecovered-fraction sits ABOVE the SNP one: iteration
+clears indels LESS completely than SNPs, leaving a larger residual (~15-47% of neighbour indels vs
+~2-30% of SNPs still unrecovered by iteration 3). Strongly caller-dependent: bcftools recovers almost
+no indels single-shot (78-95% unrecovered at iter 1) then iteration rescues it sharply (15-32% by
+iter 3); freebayes stays stuck (30-47% at iter 3); gatk improves modestly (52% -> 40% at D = 0.10).
+Iteration reduces the indel load but cannot eliminate it — that residual is the divergence it cannot
+bake into the consensus.
+
+(Hand-written; appended by neighborhood_assembly.py --dict-append, called from run_neighborhood.sh.)
