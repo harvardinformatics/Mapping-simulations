@@ -34,8 +34,8 @@ outputs:
       - analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
     used_by: [analyses/synthesis/synthesis.rmd]
     git: tracked
-    note: "first made 2026-08-13 by an equivalent ad hoc R command; the script reproduces it
-      byte for byte (checked 2026-10-26)"
+    note: "re-run 2026-10-28 (commit 8111fc4) on the regenerated s01 vrf-pileup tables:
+      byte-identical to the previous table"
 
   - path: analyses/synthesis/figures/brief/{fig}.{ext}
     values:

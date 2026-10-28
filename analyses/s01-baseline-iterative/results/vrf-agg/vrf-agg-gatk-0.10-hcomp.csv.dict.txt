@@ -1,14 +1,21 @@
 Data dictionary for analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-gatk-0.10-hcomp.csv
 
 Produced by : analyses/lib/variant_read_fate.py
-Command     : cd analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh gatk 0.10
-Git commit  : not recorded (table written 2026-08-04 23:15, before provenance tracking)
-Dictionary  : added 2026-10-26 10:33 at commit 38557cb53efe (backfill; the table was not regenerated)
+Command     : python analyses/lib/variant_read_fate.py --truth-bam data/varfate/0.10/truth.oa.bam --truth-vcf data/s01-baseline-iterative/sim/30X/19/0.10/0.005/42/mm39-truth.norm.vcf.gz --mason-vcf data/s01-baseline-iterative/sim/30X/19/0.10/0.005/42/mm39-truth.vcf.gz --reference data/s01-baseline-iterative/ref-regions/mm39-19.fa --region 19 --divergence 0.10 --caller gatk --sample 0 --aggregate --iter 1:data/s01-baseline-iterative/iter/gatk/30X/19/0.10/0.005/42/iter1/mm39_mapped.bam:data/s01-baseline-iterative/iter/gatk/30X/19/0.10/0.005/42/iter1/mm39_recovered.vcf.gz --iter 2:data/s01-baseline-iterative/iter/gatk/30X/19/0.10/0.005/42/iter2/mm39_mapped.bam:data/s01-baseline-iterative/iter/gatk/30X/19/0.10/0.005/42/iter2/mm39_recovered.vcf.gz --iter 3:data/s01-baseline-iterative/iter/gatk/30X/19/0.10/0.005/42/iter3/mm39_mapped.bam:data/s01-baseline-iterative/iter/gatk/30X/19/0.10/0.005/42/iter3/mm39_recovered.vcf.gz --out analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-gatk-0.10
+Git commit  : efa152b4eb3c (table written 2026-10-27 22:52 by the script as committed there)
+Dictionary  : rewritten 2026-10-28 09:57 at commit 8111fc4126e8 (script as committed; the table was not regenerated)
 
 Sites      : homozygous divergent (1|1) biallelic truth SNPs; every covering read truly carries alt; recovered = (position, alt) present in the iteration's recovered VCF.
 Sampling   : all truth SNPs on the region (--sample 0).
-Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are
-             assigned to every SNP their TRUE span covers.
+Read truth : mason -oa truth BAM: oH haplotype + oP haplotype position per read; the true
+             reference span is [oP, oP + read length) on that haplotype, mapped back to
+             the reference (truth_haplotypes.py, haplotypes rebuilt from --mason-vcf);
+             each read is PLACED where an aligner would lay it unclipped: the start of
+             the best alignment of its leftmost 30 bases on its haplotype (bwa mem
+             scores; moves 1-3 bp off oP only for a sequencing indel among those bases,
+             ~0.02% of reads; since commit efa152b, 2026-10-27), minus any inserted
+             bases it starts on;
+             reads are assigned to every SNP their TRUE span covers.
 Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= 150 bp;
              mismapped = |delta| > 150 bp; diff_chr = other contig (or true start in a
              chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to

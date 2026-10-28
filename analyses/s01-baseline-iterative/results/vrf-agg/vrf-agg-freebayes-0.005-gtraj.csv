@@ -1,5 +1,5 @@
 divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
-0.005,freebayes,called,0.8-1.0,called,0.8-1.0,called,0.8-1.0,303263
+0.005,freebayes,called,0.8-1.0,called,0.8-1.0,called,0.8-1.0,303259
 0.005,freebayes,called,0.2-0.4,called,0.8-1.0,called,0.8-1.0,153
 0.005,freebayes,not_called,0.6-0.8,called,0.4-0.6,called,0.8-1.0,6
 0.005,freebayes,not_called,0.0-0.2,not_called,0.2-0.4,not_called,0.0-0.2,19
@@ -7,7 +7,7 @@ divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
 0.005,freebayes,not_called,0.0-0.2,not_called,0.0-0.2,not_called,0.0-0.2,580
 0.005,freebayes,not_called,0.0-0.2,not_called,0.0-0.2,not_called,0.2-0.4,74
 0.005,freebayes,not_called,0.0-0.2,called,0.8-1.0,called,0.8-1.0,20
-0.005,freebayes,called,0.6-0.8,called,0.8-1.0,called,0.8-1.0,997
+0.005,freebayes,called,0.6-0.8,called,0.8-1.0,called,0.8-1.0,1001
 0.005,freebayes,called,0.4-0.6,called,0.8-1.0,called,0.8-1.0,466
 0.005,freebayes,not_called,0.0-0.2,called,0.0-0.2,called,0.8-1.0,14
 0.005,freebayes,called,0.0-0.2,called,0.8-1.0,called,0.8-1.0,28
@@ -39,7 +39,7 @@ divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
 0.005,freebayes,not_called,0.6-0.8,called,0.6-0.8,called,0.8-1.0,25
 0.005,freebayes,not_called,0.4-0.6,not_called,0.4-0.6,called,0.8-1.0,30
 0.005,freebayes,not_called,0.6-0.8,not_called,0.6-0.8,called,0.8-1.0,10
-0.005,freebayes,not_called,0.4-0.6,not_called,0.4-0.6,not_called,0.4-0.6,174
+0.005,freebayes,not_called,0.4-0.6,not_called,0.4-0.6,not_called,0.4-0.6,175
 0.005,freebayes,not_called,0.0-0.2,not_called,0.0-0.2,called,0.2-0.4,18
 0.005,freebayes,not_called,0.0-0.2,not_called,0.0-0.2,called,0.4-0.6,13
 0.005,freebayes,called,0.2-0.4,called,0.8-1.0,called,0.6-0.8,1
@@ -48,7 +48,7 @@ divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
 0.005,freebayes,not_called,0.0-0.2,not_called,0.0-0.2,called,0.6-0.8,11
 0.005,freebayes,not_called,0.4-0.6,not_called,0.6-0.8,not_called,0.4-0.6,4
 0.005,freebayes,not_called,0.4-0.6,not_called,0.6-0.8,called,0.8-1.0,5
-0.005,freebayes,not_called,0.6-0.8,not_called,0.6-0.8,not_called,0.6-0.8,47
+0.005,freebayes,not_called,0.6-0.8,not_called,0.6-0.8,not_called,0.6-0.8,46
 0.005,freebayes,not_called,0.0-0.2,not_called,0.4-0.6,not_called,0.4-0.6,7
 0.005,freebayes,not_called,0.4-0.6,not_called,0.4-0.6,called,0.6-0.8,25
 0.005,freebayes,not_called,0.4-0.6,not_called,0.4-0.6,called,0.4-0.6,22

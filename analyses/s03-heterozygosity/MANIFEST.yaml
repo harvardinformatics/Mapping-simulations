@@ -140,7 +140,7 @@ outputs:
 
   # --- per-variant read fate at het sites (s01 BAMs + mason -oa truth BAMs) -----------------------
   - path: analyses/s03-heterozygosity/results/vrf-agg/vrf-agg-{caller}-{D}-{part}.csv
-    values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.04", "0.06", "0.08", "0.10"],
+    values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"],
              part: ["gtraj", "hcomp"]}
     what: "full-chromosome het read-fate aggregates: gtraj = SNP counts per (call status, f_alt bin)
       trajectory over iterations 1-3; hcomp = read-fate composition at p summed per iteration x status"
@@ -153,41 +153,18 @@ outputs:
       - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_calls.norm.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by: [analyses/s03-heterozygosity/s03-results.rmd]
     git: tracked
-    status: earlier-version
-    note: "submitted 2026-08-05 18:33 UTC (jobs 37405833-37405844). variant_read_fate.py was edited
-      afterwards only in its --pileup (per-SNP) code path and its dictionary code; the --aggregate
-      computation is unchanged.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
-
-  - path: analyses/s03-heterozygosity/results/vrf-agg/vrf-agg-{caller}-{D}-{part}.csv
-    values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.005", "0.02"], part: ["gtraj", "hcomp"]}
-    what: "the same het read-fate aggregates at the low divergences D = 0.005 and 0.02"
-    script: analyses/s03-heterozygosity/run_vrf_aggregate.sh
-    command: cd analyses/s03-heterozygosity && sbatch run_vrf_aggregate.sh {caller} {D}
-    inputs:
-      - data/varfate/{D}/truth.oa.bam
-      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
-      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
-      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_calls.norm.vcf.gz
-    used_by: [analyses/s03-heterozygosity/s03-results.rmd]
-    git: tracked
-    status: earlier-version
-    note: "ad hoc submission loop (2026-08-07 15:04 UTC, jobs 37649542-37649557), not in a submit script
-      (submit_vrf_aggregate.sh covers only D = 0.04-0.10): for D in 0.02 0.005; do for C in gatk
-      bcftools freebayes; do (cd analyses/s03-heterozygosity && sbatch --parsable run_vrf_aggregate.sh
-      $C $D >/dev/null); done; done -- the same loop also submitted the s01 and s02 aggregate jobs.
-      Later variant_read_fate.py edits are dictionary-code only.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55773513-55774200; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix; D = 0.005/0.02 were a separate ad hoc
+      loop before, now in submit_vrf_aggregate.sh) after the true-span fix (true read spans from
+      mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). Against the previous tables: called SNP counts
+      identical; at-p class shares move by <= 0.09 percentage points; the trajectory
+      distribution by <= 0.13%
 
   - path: analyses/s03-heterozygosity/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
     values: {caller: ["gatk", "bcftools", "freebayes"], D: ["0.06", "0.08", "0.10"]}
@@ -202,20 +179,19 @@ outputs:
       - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_calls.norm.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by:
       - analyses/s03-heterozygosity/s03-results.rmd
       - analyses/s03-heterozygosity/run_neighborhood.sh
     git: ignored
-    status: earlier-version
-    note: "submitted 2026-08-06 16:31 UTC (jobs 37519068-37519080), after the last computational edit
-      of variant_read_fate.py (14:44 UTC, the mismapped-in pileup columns); later edits are
-      dictionary-code only. The notebook reads the whole directory (decomp_load in
-      analyses/lib/decomp_figs.R).
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55774204-55776430; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). The previous tables were git-ignored and are
+      overwritten; the derived neighborhood-summary.csv came out byte-identical. The notebook
+      reads the whole directory (decomp_load in analyses/lib/decomp_figs.R)
 
   # --- neighbourhood assembly (unrecovered hom-div neighbours around each het query SNP) ---------
   - path: analyses/s03-heterozygosity/results/neighborhood/neighborhood-summary.csv
@@ -229,9 +205,8 @@ outputs:
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
     used_by: [analyses/s03-heterozygosity/s03-results.rmd]
     git: tracked
-    note: "made 2026-08-06 (by a background watcher that ran this script once the 9 pileup tables were
-      done) with an earlier version of analyses/lib/neighborhood_assembly.py; the current version
-      reproduces this table byte for byte (checked 2026-10-26)"
+    note: "regenerated 2026-10-28 (commit 8111fc4) from the regenerated vrf-pileup tables;
+      byte-identical to the previous table"
 
   - path: analyses/s03-heterozygosity/results/neighborhood/neighborhood-per-snp.csv
     what: "per het query SNP x iteration: neighbour truth and unrecovered hom-div SNP counts within
@@ -244,8 +219,6 @@ outputs:
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
     used_by: [analyses/s03-heterozygosity/s03-results.rmd]
     git: ignored
-    status: earlier-version
-    note: "made 2026-08-06 by an earlier analyses/lib/neighborhood_assembly.py that did not yet write
-      the per-SNP n_neighbor_truth_indel / n_unrecovered_indel columns; the current version
-      reproduces every other column byte for byte (checked 2026-10-26). Re-running the command adds
-      the two indel columns"
+    note: "regenerated 2026-10-28 (commit 8111fc4) from the regenerated vrf-pileup tables; now
+      includes the n_neighbor_truth_indel / n_unrecovered_indel columns (0 here: the s01 data
+      are SNP-only)"

@@ -1,10 +1,9 @@
 Data dictionary for analyses/synthesis/s01-mapping-vs-calling.csv
 
 Produced by : analyses/synthesis/scripts/s01_mapping_vs_calling.R
-Command     : conda run -n renv Rscript analyses/synthesis/scripts/s01_mapping_vs_calling.R
-Git commit  : not recorded (table written 2026-08-13 11:13, before provenance tracking)
-Dictionary  : added 2026-10-26 10:35 at commit 38557cb53efe (backfill; the table was not regenerated)
-Note        : first made 2026-08-13 by an equivalent ad hoc R command (same rule and output format); this script reproduces it byte for byte (checked 2026-10-26)
+Command     : Rscript analyses/synthesis/scripts/s01_mapping_vs_calling.R
+Git commit  : 8111fc4126e8 (script as committed)
+Written     : 2026-10-28 10:08
 
 Per (caller, divergence, iteration): how the sampled s01 divergent (1|1) SNPs split into three
 outcomes. Input: every vrf-pileup-<caller>-<D>.csv in

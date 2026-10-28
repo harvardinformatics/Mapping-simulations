@@ -65,7 +65,15 @@ config `config/config.yaml`, launched with the `run_*.sh` orchestrators.
   indel:SNP ≈ 1:8), sizes uniform **1–10 bp**, 50/50 ins/del; heterozygous SNPs at H=0.005.
   All sites are **disjoint and biallelic** (no multiallelic sites are simulated).
 - **Reads** (`mason_simulator`): chr19, **30×**, 150 bp paired, 300 bp fragment; + the mason
-  `-oa` truth alignment (reference coords) for read classification.
+  `-oa` truth alignment (reference coords) for read classification. Each read's true position is
+  its start on its source haplotype (`oP` tag) mapped back to the reference through the simulated
+  indels (`analyses/lib/truth_haplotypes.py`). Placement is judged against where an aligner would
+  lay the read down unclipped: the start of the best alignment of its leftmost 30 bases on that
+  haplotype (bwa mem scores), which moves it 1–3 bp off `oP` only for the ~0.02% of reads with a
+  sequencing indel among those bases; a read that then starts inside an insertion is placed at its
+  first reference base minus the inserted bases. Tables before 2026-10-27 used the truth BAM's
+  alignment start instead, which is off for ~32% of reads here; tables made at commit 8762eab
+  (also 2026-10-27, before this rule) placed every read at `oP`.
 - **Mapping & iteration:** `bwa mem`; **3 iterations**; iter1 maps to the reference
   (single-shot), iter *k* maps to the consensus from iter *k−1*.
 - **Callers:** **gatk** HaplotypeCaller (reference-anchored reassembly, scatter-gather),
@@ -114,7 +122,8 @@ callcols <- corecol(pal = "wilke", numcol = 3)
 The mapping-side view. Each stacked bar is the composition of read placements at one
 iteration (exact / shifted / soft-clipped / mismapped / unmapped), per caller (rows) and
 divergence (columns). Iteration ≥2 BAMs are point-lifted from consensus to reference
-coordinates before classifying.
+coordinates before classifying. `span_off` = correct start, but the read's reference footprint
+is >10 bp off its true one (it was laid across the wrong indel structure); ≤0.014% of reads.
 
 ```{r readclass, out.width="100%", fig.width=11, fig.height=6.5}
 classes <- c("exact", "shifted", "clipped", "span_off", "mismapped", "diff_chr", "unmapped", "missing")
@@ -134,12 +143,13 @@ ggplot(comp, aes(x = iteration, y = prop, fill = class)) +
                      legend.title = element_blank(), legend.key.size = unit(0.4, "cm"))
 ```
 
-**Interpretation.** Single-shot mapping with indels is **brutal** — at D=0.10 only ~24% of
+**Interpretation.** Single-shot mapping with indels is **brutal** — at D=0.10 only ~28% of
 reads map exactly and ~65% are soft-clipped (vs ~40% clipped SNP-only in s01: the indels add
 a lot of clipping). iter1 is identical across the three caller rows (everyone maps to the
-reference — the control). Iteration then recovers the mapping dramatically (clipped → ~15%,
-exact → ~60% by iter3), because once indels are baked into the consensus, reads span them
-cleanly. **`missing` is ~0 everywhere** — the point-lift retains every read, even the
+reference — the control). Iteration then recovers the mapping dramatically (clipped → ~15–19%,
+exact → ~78–84% by iter3), because once indels are baked into the consensus, reads span them
+cleanly. `shifted` stays ≤ 1.2%; tables before 2026-10-27 showed up to ~22% shifted at iter3,
+almost all of it the truth BAM's alignment-start error (see Methods). **`missing` is ~0 everywhere** — the point-lift retains every read, even the
 indel-spanning ones, across the whole sweep. This falling clip rate is the mechanism behind
 the variant recovery below.
 
@@ -317,7 +327,7 @@ read-fate analysis (`analyses/lib/variant_read_fate.py --aggregate`, `run_vrf_ag
 chromosome, all callers × divergences), with **one s02-specific addition**: at iteration > 1 the
 consensus is length-shifted by recovered indels, so reads are in *consensus* coordinates — the tool
 lifts each SNP position and each read's true start into consensus coordinates via that iteration's
-`ref2cons.chain` before classifying at `p`. All definitions (covering reads by mason-truth position;
+`ref2cons.chain` before classifying at `p`. All definitions (covering reads by true span from the `oP` tag;
 `n_true_alt` via the `oH` haplotype tag; `f_alt` = alt aligned at `p` / reads truly carrying alt; the
 per-`p` classes) are exactly as in the s01 section. **The SNP set is s02's hom-div SNPs — we are
 tracing SNP fate in the indel context, not the fate of the indels themselves.**
@@ -358,8 +368,8 @@ patchwork::wrap_plots(p_clip, p_alt, ncol = 2, guides = "collect")
 ```
 
 **Interpretation.** Left: indels roughly **double** the clipping of called-SNP reads (e.g. at D=0.10,
-~13%→~22–26%) — reads spanning a nearby unrepresented indel get soft-clipped, taking the SNP with them.
-Right: at high divergence, indels **lower** not-called `alt_at_p` for every caller (gatk 76%→53%,
+~13%→~21–25%) — reads spanning a nearby unrepresented indel get soft-clipped, taking the SNP with them.
+Right: at high divergence, indels **lower** not-called `alt_at_p` for every caller (gatk 76%→54%,
 bcftools 24%→11%, freebayes 23%→13% at D=0.10) — so indels add an **alignment-limited** component on top
 of s01's assembler ceiling. **Caveat:** the *not-called set differs* between s01 and s02, so this mixes
 "same SNP, worse mapping" with "different SNPs uncalled." That's why freebayes' not-called `alt_at_p` is

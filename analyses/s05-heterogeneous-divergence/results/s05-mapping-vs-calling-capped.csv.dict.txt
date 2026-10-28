@@ -1,5 +1,10 @@
 Data dictionary for analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv
 
+Produced by : analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py
+Command     : python analyses/s05-heterogeneous-divergence/scripts/mapping_vs_calling.py --vrf-dir analyses/s05-heterogeneous-divergence/results/vrf-pileup-capped --localdiv data/s05-heterogeneous-divergence/sim/30X/19/0.03/0.005/L20000-S1.0-C0.20/42/mm39-truth-locald.tsv --window 150 --out analyses/s05-heterogeneous-divergence/results/s05-mapping-vs-calling-capped.csv
+Git commit  : 8111fc4126e8 (script as committed)
+Written     : 2026-10-28 10:08
+
 s05 mapping-vs-calling decomposition, binned by local divergence -- the REALISTIC CAPPED
 configuration (as opposed to s05-mapping-vs-calling.csv, which is the uncapped
 "characterization" config that deliberately spans the whole local-D axis).

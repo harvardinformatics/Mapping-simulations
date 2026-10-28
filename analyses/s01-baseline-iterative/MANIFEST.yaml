@@ -80,39 +80,31 @@ outputs:
 
   - path: analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv
     what: "read placement per caller x D x seed x iteration (compare_bams.py classes of each mapped BAM
-      vs the mason -oa truth BAM: exact/shifted/clipped/mismapped/diff_chr/unmapped/missing), 216 rows"
+      vs the mason -oa truth BAM: exact/shifted/clipped/span_off/mismapped/diff_chr/unmapped/missing), 216
+      rows"
     script: analyses/lib/combine_summaries.py
-    command: |
-      # ad hoc command (2026-08-07 06:47 UTC), not in a run script; replaces the failed
-      # combine_readclass step of `cd analyses/s01-baseline-iterative && sbatch run_read_classification.sh`
-      cd /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations
-      # strip span_off (field 12) and span_off_prop (field 20) from the new-div read-class CSVs (s01 identity -> span_off==0, unused)
-      n=0
-      for f in $(find data/s01-baseline-iterative/iter -path '*/19/0.001/*' -name 'mm39-readclass-bam-summary.csv'; \
-                 find data/s01-baseline-iterative/iter -path '*/19/0.005/*' -name 'mm39-readclass-bam-summary.csv'); do
-        awk -F, 'BEGIN{OFS=","}{out="";for(i=1;i<=NF;i++) if(i!=12 && i!=20){out=(out==""?$i:out FS $i)} print out}' "$f" > "$f.fix" && mv "$f.fix" "$f"
-        n=$((n+1))
-      done
-      source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh; conda activate mapping-sims
-      python analyses/lib/combine_summaries.py \
-        --inputs $(find data/s01-baseline-iterative -name 'mm39-readclass-bam-summary.csv' | sort) \
-        --out analyses/s01-baseline-iterative/results/s01-base-readclass-by-iter.csv --kind readclass-bam
+    command: >-
+      cd analyses/s01-baseline-iterative && sbatch run_read_classification.sh --forcerun
+      classify_reads (snakemake rule combine_readclass in read_classification.smk,
+      config/config.yaml; rule truth_bam first rebuilds the 24 truth BAMs, which are temp() and
+      deleted at the end)
     inputs:
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39-readclass-bam-summary.csv
     used_by: [analyses/s01-baseline-iterative/s01-results.rmd]
     git: tracked
-    status: earlier-version
-    note: "mixed compare_bams.py versions. D 0.00 and 0.02-0.10 rows come from the 2026-07-31 version
-      (no span_off class); D 0.001/0.005 rows come from the 2026-08-01 version (adds span_off: right
-      start, wrong reference footprint) with span_off/span_off_prop stripped in place in data/ by the
-      command above, so in those 54 rows the classes sum to total_reads minus the dropped span_off
-      reads (<= 91 reads per row). The snakemake combine failed on the header mismatch. Re-running
-      read_classification.smk now gives a table with span_off columns and exact split into
-      exact/span_off.
-      Made before the 2026-10-27 true-span fix: compare_bams.py then took each read's true start/end
-      from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only runs (the
-      current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on D = 0.10
-      gatk iteration 1: 0.08% of reads change class (exact 56.97% -> 56.90%). Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (job 55770602): each read's true span comes from
+      its oP tag and its placement start from the best alignment of its leftmost 30 bases on its
+      haplotype (analyses/lib/truth_haplotypes.py). --forcerun because the fix is in an imported
+      module, which snakemake's code-change trigger cannot see. Dictionaries rewritten
+      2026-10-28 at 8111fc4 for a wording fix; the combined table was re-made then by its
+      recorded combine_summaries.py command (byte-identical). All 216 rows come from one script
+      version and carry span_off/span_off_prop (right start, wrong reference footprint; <= 464
+      reads per row, counted as exact before). Change vs the previous table (mean over seeds):
+      only exact and shifted move, by <= 0.94 pp; at D = 0.10 iterations 2-3 exact +0.4 to +0.9
+      pp (from shifted); iteration 1 exact -0.07 to 0.00 pp. The workflow's per-seed truth BAMs
+      (data/.../sim/.../mm39-truth.oa.bam) are temp() and were deleted at the end of this run,
+      as designed; the read-fate scripts use their own seed-42 copies in data/varfate/
 
   # --- per-variant read fate (variant_read_fate.py) ---------------------------------------------
   - path: analyses/s01-baseline-iterative/results/s01-varfate-{D}.csv
@@ -127,19 +119,18 @@ outputs:
       - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by: [analyses/s01-baseline-iterative/s01-variant-fate-panel.rmd]
     git: tracked
-    status: earlier-version
-    note: "regenerated 2026-10-26 with the current variant_read_fate.py (Slurm jobs 55435011-19).
-      The 2026-08-04 tables had an older column layout; the panel's quantities derived from the new
-      ledger (recovered, n_reads, the four per-SNP visibility counts and the read placement classes)
-      are identical to the old tables in every row, and the re-rendered panel's 12 figures are
-      byte-identical.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770609-55770621; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix: each read's
+      true span now comes from mason's oP tag and its placement start from its leftmost-bases
+      alignment (analyses/lib/truth_haplotypes.py), not the truth BAM's POS/CIGAR. Against the
+      previous tables (D = 0.10): recovered flag identical in every row; reads per SNP change by
+      <= 2 in 2.5% of rows; the exact/shifted split of the reads moves by 1-7 reads in ~15% of
+      rows
 
   - path: analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
     values:
@@ -149,30 +140,27 @@ outputs:
       trajectory across iterations 1-3; the input of the G (joint-state flow) plots"
     script: analyses/s01-baseline-iterative/run_vrf_aggregate.sh
     command: >-
-      cd analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh {caller} {D}
-      (D 0.04-0.10: submitted by `bash analyses/s01-baseline-iterative/submit_vrf_aggregate.sh`,
-      2026-08-05 02:55 UTC; D 0.005/0.02: submitted by an ad hoc watcher loop, 2026-08-07 14:10 UTC,
-      after `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` made their truth BAMs)
+      bash analyses/s01-baseline-iterative/submit_vrf_aggregate.sh (submits: cd
+      analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh {caller} {D})
     inputs:
       - data/varfate/{D}/truth.oa.bam
       - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by:
       - analyses/s01-baseline-iterative/s01-results.rmd
       - analyses/s01-baseline-iterative/scripts/vrf_agg_G.R
       - analyses/lib/vrf_G_figs.R
     git: tracked
-    status: earlier-version
-    note: "D 0.04-0.10 written 2026-08-05, D 0.005/0.02 on 2026-08-07. Later edits to
-      variant_read_fate.py only added opt-in paths (4th --iter chain field, --het, --pileup) and
-      dictionary writing, none of which this s01 hom-div aggregate run uses; judged current by code
-      inspection, not re-run.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770623-55770662; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). Against the previous tables: total and per-iteration
+      called SNP counts identical; the trajectory distribution moves by <= 0.14%
+      (total-variation distance), f_alt-bin shares by <= 0.12 percentage points
 
   - path: analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-hcomp.csv
     values:
@@ -182,28 +170,27 @@ outputs:
       p, clipped, deleted, mapped elsewhere, unmapped) per iteration x call status"
     script: analyses/s01-baseline-iterative/run_vrf_aggregate.sh
     command: >-
-      cd analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh {caller} {D}
-      (D 0.04-0.10: submitted by `bash analyses/s01-baseline-iterative/submit_vrf_aggregate.sh`,
-      2026-08-05 02:55 UTC; D 0.005/0.02: submitted by an ad hoc watcher loop, 2026-08-07 14:10 UTC,
-      after `cd analyses/s01-baseline-iterative && sbatch run_truth_bams_lowdiv.sh` made their truth BAMs)
+      bash analyses/s01-baseline-iterative/submit_vrf_aggregate.sh (submits: cd
+      analyses/s01-baseline-iterative && sbatch run_vrf_aggregate.sh {caller} {D})
     inputs:
       - data/varfate/{D}/truth.oa.bam
       - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by:
       - analyses/s01-baseline-iterative/s01-results.rmd
       - analyses/s02-indels/s02-results.rmd
       - analyses/s01-baseline-iterative/scripts/vrf_agg_figs.R
     git: tracked
-    status: earlier-version
-    note: "same runs as the -gtraj tables (one job writes both); judged current by code inspection,
-      not re-run.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770623-55770662; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). Against the previous tables: the share of covering
+      reads in each at-p class moves by <= 0.27 percentage points; covering reads +0.01 to
+      +0.35%
 
   - path: analyses/s01-baseline-iterative/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
     values:
@@ -220,6 +207,8 @@ outputs:
       - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.vcf.gz
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s01-baseline-iterative/ref-regions/mm39-19.fa
     used_by:
       - analyses/s01-baseline-iterative/s01-results.rmd
       - analyses/synthesis/synthesis.rmd
@@ -227,15 +216,14 @@ outputs:
       - analyses/s01-baseline-iterative/run_neighborhood.sh
       - analyses/synthesis/scripts/s01_mapping_vs_calling.R
     git: ignored
-    status: earlier-version
-    note: "submitted twice on 2026-08-06 (14:20 and 14:50 UTC); the files (14:59-15:01 UTC) are from the
-      second submission, made after the last edit to the --pileup code (14:44 UTC); later
-      variant_read_fate.py edits were dictionary writing only.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is 1-3 bp off for ~1% of reads in SNP-only
-      runs (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on
-      s01 D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 0.09% of rows, the
-      recovered flag in none. Not re-run"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770664-55770684; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). The previous tables were git-ignored and are
+      overwritten; the tables derived from them (neighborhood/,
+      synthesis/s01-mapping-vs-calling.csv) came out byte-identical. The notebooks read the
+      whole directory
 
   # --- neighborhood (assemblable-neighborhood load) ---------------------------------------------
   - path: analyses/s01-baseline-iterative/results/neighborhood/neighborhood-per-snp.csv
@@ -252,10 +240,9 @@ outputs:
       - analyses/synthesis/synthesis.rmd
       - analyses/s01-baseline-iterative/scripts/vrf_pileup_decomp.R
     git: ignored
-    status: earlier-version
-    note: "made 2026-08-06 by an earlier version of analyses/lib/neighborhood_assembly.py that did not
-      yet write the n_neighbor_truth_indel / n_unrecovered_indel columns; the current version
-      reproduces every other column byte for byte (checked 2026-10-26)"
+    note: "regenerated 2026-10-28 (commit 8111fc4) from the regenerated vrf-pileup tables; now
+      includes the n_neighbor_truth_indel / n_unrecovered_indel columns (0 here: s01 is
+      SNP-only)"
 
   - path: analyses/s01-baseline-iterative/results/neighborhood/neighborhood-summary.csv
     what: "mean +/-200 bp neighborhood load (truth SNPs; unrecovered before/after) by caller x D x
@@ -268,10 +255,8 @@ outputs:
       - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz
     used_by: [analyses/s01-baseline-iterative/s01-results.rmd]
     git: tracked
-    status: earlier-version
-    note: "made 2026-08-06 by an earlier version of analyses/lib/neighborhood_assembly.py (before the
-      *_indel per-SNP columns); the current version reproduces this table byte for byte (checked
-      2026-10-26)"
+    note: "regenerated 2026-10-28 (commit 8111fc4) from the regenerated vrf-pileup tables;
+      byte-identical to the previous table"
 
   # --- truth-site check (phantom sites) ---------------------------------------------------------
   - path: analyses/s01-baseline-iterative/results/effective-truth/eff-{D}-phantom.tsv
@@ -345,7 +330,7 @@ outputs:
     used_by: []
     git: tracked
     status: unused
-    note: "made by the current script (run 2026-08-06 16:18 UTC, right after its last edit); nothing
+    note: "redrawn 2026-10-28 from the regenerated vrf-pileup and neighborhood tables; nothing
       embeds them -- s01-results.rmd draws the same decomposition inline from the same tables"
 
   # --- figures ---------------------------------------------------------------------------------
@@ -362,10 +347,8 @@ outputs:
     used_by: []
     git: tracked
     status: unused
-    note: "ad hoc command (2026-08-05 03:34 UTC, the same Bash call that wrote the script), not in a run
-      script. Nothing embeds them -- s01-results.rmd draws both plots inline. Made when only D
-      0.04-0.10 existed; the script reads every -hcomp file, so a re-run now adds D 0.005/0.02 points
-      to full_altatp_notcalled.png."
+    note: "redrawn 2026-10-28 from the regenerated hcomp tables (now including D 0.005/0.02);
+      nothing embeds them -- s01-results.rmd draws both plots inline"
 
   - path: analyses/s01-baseline-iterative/results/vrf-viz-full/G_{caller}_D{D}.png
     values:
@@ -379,10 +362,9 @@ outputs:
       - analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
     used_by: []
     git: tracked
-    note: "drawn by the shared builder analyses/lib/vrf_G_figs.R (called by vrf_agg_G.R) on 2026-09-01
-      (18:54 UTC); that run is not in the session log -- the command is the script's usage line,
-      consistent with the mtimes (both scripts edited just before the PNGs). s01-results.rmd points
-      readers to these panels in text but draws G inline."
+    note: "redrawn 2026-10-28 by the shared builder analyses/lib/vrf_G_figs.R (called by
+      vrf_agg_G.R) from the regenerated gtraj tables. s01-results.rmd points readers to these
+      panels in text but draws G inline"
 
   - path: analyses/s01-baseline-iterative/results/vrf-viz-full/G_grid.png
     what: "figure G, all 15 panels (callers x D 0.02-0.10) in one grid with a single shared f_alt legend"
@@ -392,6 +374,6 @@ outputs:
       - analyses/s01-baseline-iterative/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
     used_by: [analyses/synthesis/synthesis.rmd]
     git: tracked
-    note: "written 2026-09-01 (18:55 UTC) by analyses/lib/vrf_G_figs.R via vrf_agg_G.R (run not in the
-      session log; command from the script's usage line). It replaced an ImageMagick montage of the
-      2026-08-13 panels in results/vrf-viz-G/ (deleted 2026-10-26 as superseded by these)"
+    note: >-
+      redrawn 2026-10-28 by analyses/lib/vrf_G_figs.R via vrf_agg_G.R from the regenerated gtraj
+      tables

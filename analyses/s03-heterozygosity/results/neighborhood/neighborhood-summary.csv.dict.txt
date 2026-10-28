@@ -1,10 +1,9 @@
 Data dictionary for analyses/s03-heterozygosity/results/neighborhood/neighborhood-summary.csv
 
 Produced by : analyses/lib/neighborhood_assembly.py
-Command     : bash analyses/s03-heterozygosity/run_neighborhood.sh
-Git commit  : not recorded (table written 2026-08-06 12:48, before provenance tracking)
-Dictionary  : added 2026-10-26 10:34 at commit 38557cb53efe (backfill; the table was not regenerated)
-Note        : made 2026-08-06 by an earlier version of neighborhood_assembly.py that did not yet write the n_neighbor_truth_indel / n_unrecovered_indel columns; the current version reproduces neighborhood-summary.csv and every other per-SNP column byte for byte (checked 2026-10-26)
+Command     : python analyses/lib/neighborhood_assembly.py --truth 'data/s01-baseline-iterative/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz' --recovered 'data/s01-baseline-iterative/iter/{C}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.vcf.gz' --pile 'analyses/s03-heterozygosity/results/vrf-pileup/vrf-pileup-{C}-{D}.csv' --out analyses/s03-heterozygosity/results/neighborhood --divs 0.06,0.08,0.10
+Git commit  : 8111fc4126e8 (script as committed)
+Written     : 2026-10-28 10:03
 
 Query sites: the SNPs sampled in the --pile per-SNP pileup CSVs (template analyses/s03-heterozygosity/results/vrf-pileup/vrf-pileup-{C}-{D}.csv);
              their per-iteration 'recovered' flags come from that file.

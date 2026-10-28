@@ -1,14 +1,21 @@
 Data dictionary for analyses/s02-indels/results/vrf-pileup/vrf-pileup-freebayes-0.08.csv
 
 Produced by : analyses/lib/variant_read_fate.py
-Command     : cd analyses/s02-indels && sbatch run_vrf_pileup.sh freebayes 0.08
-Git commit  : not recorded (table written 2026-08-06 12:39, before provenance tracking)
-Dictionary  : added 2026-10-26 10:34 at commit 38557cb53efe (backfill; the table was not regenerated)
+Command     : python analyses/lib/variant_read_fate.py --truth-bam data/s02-indels/sim/30X/19/0.08/0.005/42/mm39-truth.oa.bam --truth-vcf data/s02-indels/sim/30X/19/0.08/0.005/42/mm39-truth.norm.vcf.gz --mason-vcf data/s02-indels/sim/30X/19/0.08/0.005/42/mm39-truth.vcf.gz --reference data/s02-indels/ref-regions/mm39-19.fa --region 19 --divergence 0.08 --caller freebayes --sample 30000 --pileup --iter 1:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter1/mm39_mapped.bam:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter1/mm39_recovered.acc.vcf.gz --iter 2:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter2/mm39_mapped.bam:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter2/mm39_recovered.acc.vcf.gz:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter1/ref2cons.chain --iter 3:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter3/mm39_mapped.bam:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter3/mm39_recovered.acc.vcf.gz:data/s02-indels/iter/freebayes/30X/19/0.08/0.005/42/iter2/ref2cons.chain --out analyses/s02-indels/results/vrf-pileup/vrf-pileup-freebayes-0.08.csv
+Git commit  : efa152b4eb3c (table written 2026-10-27 22:54 by the script as committed there)
+Dictionary  : rewritten 2026-10-28 09:57 at commit 8111fc4126e8 (script as committed; the table was not regenerated)
 
 Sites      : homozygous divergent (1|1) biallelic truth SNPs; every covering read truly carries alt; recovered = (position, alt) present in the iteration's recovered VCF.
 Sampling   : systematic sample of ~30000 truth SNPs (every len/30000-th site along the region).
-Read truth : mason -oa truth BAM (true start/end + oH haplotype per read); reads are
-             assigned to every SNP their TRUE span covers.
+Read truth : mason -oa truth BAM: oH haplotype + oP haplotype position per read; the true
+             reference span is [oP, oP + read length) on that haplotype, mapped back to
+             the reference (truth_haplotypes.py, haplotypes rebuilt from --mason-vcf);
+             each read is PLACED where an aligner would lay it unclipped: the start of
+             the best alignment of its leftmost 30 bases on its haplotype (bwa mem
+             scores; moves 1-3 bp off oP only for a sequencing indel among those bases,
+             ~0.02% of reads; since commit efa152b, 2026-10-27), minus any inserted
+             bases it starts on;
+             reads are assigned to every SNP their TRUE span covers.
 Placement  : exact = mapped start == true start; shifted = 0 < |delta| <= 150 bp;
              mismapped = |delta| > 150 bp; diff_chr = other contig (or true start in a
              chain gap); unmapped. For s02 iter > 1 the true start is point-lifted to

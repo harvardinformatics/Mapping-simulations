@@ -1,5 +1,5 @@
 divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
-0.005,bcftools,called,0.8-1.0,called,0.8-1.0,called,0.8-1.0,303285
+0.005,bcftools,called,0.8-1.0,called,0.8-1.0,called,0.8-1.0,303281
 0.005,bcftools,called,0.2-0.4,called,0.6-0.8,called,0.6-0.8,3
 0.005,bcftools,not_called,0.6-0.8,called,0.4-0.6,called,0.8-1.0,4
 0.005,bcftools,not_called,0.0-0.2,not_called,0.2-0.4,not_called,0.2-0.4,46
@@ -8,7 +8,7 @@ divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
 0.005,bcftools,not_called,0.0-0.2,not_called,0.2-0.4,called,0.2-0.4,14
 0.005,bcftools,not_called,0.0-0.2,called,0.6-0.8,called,0.8-1.0,36
 0.005,bcftools,called,0.2-0.4,called,0.8-1.0,called,0.8-1.0,166
-0.005,bcftools,called,0.6-0.8,called,0.8-1.0,called,0.8-1.0,1023
+0.005,bcftools,called,0.6-0.8,called,0.8-1.0,called,0.8-1.0,1027
 0.005,bcftools,called,0.4-0.6,called,0.8-1.0,called,0.8-1.0,488
 0.005,bcftools,not_called,0.0-0.2,called,0.0-0.2,called,0.8-1.0,12
 0.005,bcftools,called,0.0-0.2,called,0.8-1.0,called,0.8-1.0,38
@@ -32,7 +32,7 @@ divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
 0.005,bcftools,not_called,0.2-0.4,not_called,0.6-0.8,called,0.6-0.8,1
 0.005,bcftools,not_called,0.2-0.4,called,0.6-0.8,called,0.8-1.0,48
 0.005,bcftools,not_called,0.0-0.2,not_called,0.2-0.4,called,0.4-0.6,14
-0.005,bcftools,not_called,0.4-0.6,not_called,0.4-0.6,not_called,0.4-0.6,166
+0.005,bcftools,not_called,0.4-0.6,not_called,0.4-0.6,not_called,0.4-0.6,167
 0.005,bcftools,not_called,0.8-1.0,not_called,0.6-0.8,called,0.6-0.8,1
 0.005,bcftools,not_called,0.8-1.0,not_called,0.8-1.0,called,0.8-1.0,14
 0.005,bcftools,not_called,0.6-0.8,not_called,0.6-0.8,called,0.6-0.8,2
@@ -56,7 +56,7 @@ divergence,caller,s1,fb1,s2,fb2,s3,fb3,n_snps
 0.005,bcftools,not_called,0.2-0.4,not_called,0.0-0.2,not_called,0.0-0.2,22
 0.005,bcftools,not_called,0.4-0.6,not_called,0.6-0.8,called,0.8-1.0,3
 0.005,bcftools,not_called,0.2-0.4,not_called,0.2-0.4,not_called,0.2-0.4,84
-0.005,bcftools,not_called,0.6-0.8,not_called,0.6-0.8,not_called,0.6-0.8,36
+0.005,bcftools,not_called,0.6-0.8,not_called,0.6-0.8,not_called,0.6-0.8,35
 0.005,bcftools,not_called,0.0-0.2,not_called,0.4-0.6,not_called,0.4-0.6,8
 0.005,bcftools,not_called,0.2-0.4,not_called,0.4-0.6,called,0.4-0.6,5
 0.005,bcftools,not_called,0.6-0.8,not_called,0.6-0.8,called,0.8-1.0,9

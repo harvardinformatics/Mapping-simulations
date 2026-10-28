@@ -70,20 +70,23 @@ outputs:
       mapped BAM vs the mason -oa truth, iter>1 point-lifted to reference (compare_bams.py)"
     script: analyses/lib/combine_summaries.py
     command: >-
-      cd analyses/s02-indels && sbatch run_read_classification.sh   (snakemake rule
-      combine_readclass in read_classification.smk, config/config.yaml; run after run_sweep.sh)
+      cd analyses/s02-indels && sbatch run_read_classification.sh --forcerun classify_reads
+      (snakemake rule combine_readclass in read_classification.smk, config/config.yaml; run
+      after run_sweep.sh)
     inputs:
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39-readclass-bam-summary.csv
     used_by: [analyses/s02-indels/s02-results.rmd]
     git: tracked
-    status: earlier-version
-    note: "last regenerated 2026-08-07 (~06:00 UTC), submitted by a watcher loop once the
-      run_sweep.sh rerun had finished; header matches the current compare_bams.py COLUMNS.
-      Made before the 2026-10-27 true-span fix: compare_bams.py then took each read's true start/end
-      from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel density (the
-      current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured on D = 0.10
-      gatk iteration 1: exact 24.1% -> 27.6%, shifted 3.8% -> 0.31%, other classes unchanged (<= 15
-      reads). Regenerate with the command above"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (job 55770604): each read's true span comes from
+      its oP tag and its placement start from the best alignment of its leftmost 30 bases on its
+      haplotype (analyses/lib/truth_haplotypes.py). --forcerun because the fix is in an imported
+      module, which snakemake's code-change trigger cannot see. Dictionaries rewritten
+      2026-10-28 at 8111fc4 for a wording fix; the combined table was re-made then by its
+      recorded combine_summaries.py command (byte-identical). Change vs the previous table
+      (mean): most of the old shifted class was the truth BAM's alignment-start error -- at D =
+      0.10 iteration 3 shifted fell by ~21.5 pp and exact rose by ~21.5-22 pp; span_off fell by
+      <= 0.45 pp; clipped, mismapped and unmapped unchanged
 
   - path: analyses/s02-indels/results/s02-indels-callvcf-composition.csv
     what: "record composition (SNP / indel / '*' allele / split-multiallelic) of each caller's
@@ -103,53 +106,56 @@ outputs:
     what: "full-chromosome count of hom-div SNPs per (call status, f_alt bin) trajectory across
       iterations 1-3 (figure G input); iter>1 lifted into consensus coords via ref2cons.chain"
     script: analyses/s02-indels/run_vrf_aggregate.sh
-    command: cd analyses/s02-indels && sbatch run_vrf_aggregate.sh {caller} {D}
+    command: >-
+      bash analyses/s02-indels/submit_vrf_aggregate.sh (submits: cd analyses/s02-indels &&
+      sbatch run_vrf_aggregate.sh {caller} {D})
     inputs:
       - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
       - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.acc.vcf.gz
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s02-indels/ref-regions/mm39-19.fa
     used_by:
       - analyses/s02-indels/s02-results.rmd
       - analyses/synthesis/brief.rmd
       - analyses/s02-indels/scripts/vrf_agg_G.R
     git: tracked
-    status: earlier-version
-    note: "D = 0.04-0.10 submitted 2026-08-05 by bash analyses/s02-indels/submit_vrf_aggregate.sh;
-      D = 0.005 / 0.02 by an ad hoc loop (2026-08-07 15:04 UTC) running the same sbatch line from
-      analyses/s02-indels. brief.rmd reads only vrf-agg-gatk-0.10-gtraj.csv; vrf_agg_G.R (via
-      analyses/lib/vrf_G_figs.R) plots D = 0.02-0.10.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel
-      density (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured
-      on D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 2.2% of rows, reads per
-      SNP in 30% (total -1.0%), exact vs shifted labels move ~30% of exact-placed reads; recovered
-      flag unchanged. Regenerate with the command above"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770711-55770826; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py; mason's POS is off for ~32% of s02 reads). Against the
+      previous tables: total and per-iteration called SNP counts identical; the trajectory
+      distribution moves by up to 1.5% (total-variation distance, D = 0.10), f_alt-bin shares by
+      up to 1.1 percentage points
 
   - path: analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-hcomp.csv
     values: {caller: [gatk, bcftools, freebayes], D: ["0.005", "0.02", "0.04", "0.06", "0.08", "0.10"]}
     what: "full-chromosome read-fate composition at each hom-div SNP position p by call status and
       iteration (figure H input: alt at p, clipped, absent ...)"
     script: analyses/s02-indels/run_vrf_aggregate.sh
-    command: cd analyses/s02-indels && sbatch run_vrf_aggregate.sh {caller} {D}
+    command: >-
+      bash analyses/s02-indels/submit_vrf_aggregate.sh (submits: cd analyses/s02-indels &&
+      sbatch run_vrf_aggregate.sh {caller} {D})
     inputs:
       - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.oa.bam
       - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.acc.vcf.gz
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s02-indels/ref-regions/mm39-19.fa
     used_by: [analyses/s02-indels/s02-results.rmd]
     git: tracked
-    status: earlier-version
-    note: "written by the same jobs as the -gtraj.csv tables (D = 0.04-0.10 via
-      submit_vrf_aggregate.sh 2026-08-05; D = 0.005 / 0.02 via the ad hoc loop of 2026-08-07).
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel
-      density (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured
-      on D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 2.2% of rows, reads per
-      SNP in 30% (total -1.0%), exact vs shifted labels move ~30% of exact-placed reads; recovered
-      flag unchanged. Regenerate with the command above"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770711-55770826; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). Against the previous tables: at-p class shares move by
+      up to 2.5 percentage points (largest: gatk D = 0.10 iteration 3 called SNPs, alt at p
+      95.6% -> 98.1%, clipped 2.0% -> 0.8%); covering reads -2.1% to +0.4%
 
   - path: analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
     values: {caller: [gatk, bcftools, freebayes], D: ["0.06", "0.08", "0.10"]}
@@ -165,6 +171,8 @@ outputs:
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_mapped.bam
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2,3}/mm39_recovered.acc.vcf.gz
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{1,2}/ref2cons.chain
+      - data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.vcf.gz
+      - data/s02-indels/ref-regions/mm39-19.fa
     used_by:
       - analyses/s02-indels/s02-results.rmd
       - analyses/synthesis/synthesis.rmd
@@ -172,15 +180,13 @@ outputs:
       - analyses/s02-indels/run_neighborhood.sh
       - analyses/s02-indels/scripts/aggregate_calling_metrics.R
     git: ignored
-    status: earlier-version
-    note: "~8 MB each, git-ignored (dictionaries are tracked). brief.rmd reads only the D = 0.10
-      files; the notebooks and both scripts read all nine.
-      Made before the 2026-10-27 true-span fix: variant_read_fate.py then took each read's true
-      start/end from the truth BAM's POS/CIGAR, which is off for ~32% of reads at s02's indel
-      density (the current script uses the oP tag; see analyses/lib/truth_haplotypes.py). Measured
-      on D = 0.10 gatk (8,000 SNPs x 3 iterations): the f_alt bin changes in 2.2% of rows, reads per
-      SNP in 30% (total -1.0%), exact vs shifted labels move ~30% of exact-placed reads; recovered
-      flag unchanged. Regenerate with the command above"
+    note: >-
+      regenerated 2026-10-27 at commit efa152b (Slurm jobs 55770853-55773446; dictionaries
+      rewritten 2026-10-28 at 8111fc4 for a wording fix) after the true-span fix (true read
+      spans from mason's oP tag, placement start from each read's leftmost-bases alignment,
+      analyses/lib/truth_haplotypes.py). The previous tables were git-ignored and are
+      overwritten; the tables derived from them (neighborhood/, calling-metrics-by-{fate}.csv)
+      came out byte-identical. The notebooks and both scripts read all nine
 
   - path: analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv
     what: "per sampled SNP x iteration: count of still-unrecovered truth SNPs / indels within
@@ -196,6 +202,10 @@ outputs:
       - analyses/synthesis/synthesis.rmd
       - analyses/synthesis/brief.rmd
     git: ignored
+    note: "regenerated 2026-10-28 (commit 8111fc4) from the regenerated vrf-pileup tables. The
+      script writes the dictionary's provenance and field sections; its WHAT THIS IS / KEY
+      READING sections were hand-written earlier and re-appended from git after this run (a
+      re-run of the script drops them)"
 
   - path: analyses/s02-indels/results/neighborhood/neighborhood-summary.csv
     what: "per caller x divergence x iteration-transition fate (flip / stayed called / stayed
@@ -208,6 +218,8 @@ outputs:
       - data/s02-indels/iter/{caller}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.acc.vcf.gz
     used_by: [analyses/s02-indels/s02-results.rmd]
     git: tracked
+    note: "regenerated 2026-10-28 (commit 8111fc4) from the regenerated vrf-pileup tables;
+      byte-identical to the previous table"
 
   # --- static calling-side covariates ----------------------------------------------------------------
   - path: analyses/s02-indels/results/calling-metrics/calling-metrics-{D}.csv
@@ -251,8 +263,9 @@ outputs:
       - analyses/s02-indels/results/vrf-pileup/vrf-pileup-{caller}-{D}.csv
     used_by: [analyses/synthesis/synthesis.rmd]
     git: tracked
-    note: "first written by ad hoc .llm-tmp R scripts (2026-08-13), then regenerated by this script
-      right after it was written (2026-08-13 18:33 UTC); the script has not changed since"
+    note: >-
+      re-run 2026-10-28 on the regenerated vrf-pileup tables: both tables byte-identical to the
+      previous ones (their dictionaries were not rewritten)
 
   # --- figure G (call-state x f_alt flow), from the vrf-agg -gtraj tables ---------------------------
   - path: analyses/s02-indels/results/vrf-viz-G/G_grid.png
@@ -263,9 +276,9 @@ outputs:
       - analyses/s02-indels/results/vrf-agg/vrf-agg-{caller}-{D}-gtraj.csv
     used_by: [analyses/synthesis/synthesis.rmd]
     git: tracked
-    note: "made 2026-09-01 14:55, one minute after the driver and analyses/lib/vrf_G_figs.R were
-      written, in a session not in the available log; command taken from the driver's usage header
-      (run from the project root)"
+    note: >-
+      redrawn 2026-10-28 by analyses/lib/vrf_G_figs.R via this driver (run from the project
+      root) from the regenerated gtraj tables
 
   - path: analyses/s02-indels/results/vrf-viz-G/G_{caller}_D{d}.png
     values: {caller: [gatk, bcftools, freebayes], d: ["0.02", "0.04", "0.06", "0.08", "0.1"]}
@@ -277,7 +290,7 @@ outputs:
     used_by: []
     git: tracked
     status: unused
-    note: "written alongside G_grid.png by the same 2026-09-01 run; no notebook embeds them
+    note: "written alongside G_grid.png by the same 2026-10-28 run; no notebook embeds them
       (s02-results.rmd builds G from the gtraj tables, synthesis.rmd embeds only G_grid.png)"
 
   # --- truth-site check (phantom sites) ---------------------------------------------------------

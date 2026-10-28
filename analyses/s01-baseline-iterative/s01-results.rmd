@@ -90,6 +90,14 @@ all driven by `config/config.yaml` and launched with the `run_*.sh` orchestrator
   `div_other`); *read placement* = mason `-oa` truth alignment regenerated at the original
   seed (deterministic → identical reads) and each iteration's BAM classified with
   `compare_bams.py` (exact / shifted / soft-clipped / mismapped / unmapped; 150 bp tolerance).
+  Each read's true position is its start on its source haplotype (mason's `oP` tag) mapped back
+  to the reference (`analyses/lib/truth_haplotypes.py`). Placement is judged against where an
+  aligner would lay the read down unclipped: the start of the best alignment of its leftmost 30
+  bases on that haplotype (bwa mem scores), which moves it 1–3 bp off `oP` only for the ~0.02% of
+  reads with a sequencing indel among those bases. Tables before 2026-10-27 took the position from
+  the truth BAM's alignment start/CIGAR instead, which is 1–3 bp off for ~1% of reads here (mason
+  writes dense SNP clusters as fake deletion-insertion pairs) and for ~32% of reads in s02; tables
+  made at commit 8762eab (also 2026-10-27, before this rule) placed every read at `oP`.
 
 ```{r load}
 # --- divergence recovery (from the consensus-vs-reference diff) ---
@@ -148,13 +156,15 @@ small_legend <- theme(legend.position = "bottom",
 
 The mapping-side view: where did each read actually land relative to where it was
 simulated from? Each stacked bar is the composition of read placements at one iteration
-(exact / shifted / soft-clipped / mismapped / diff-chr / unmapped), for every caller
+(exact / shifted / soft-clipped / span-off / mismapped / diff-chr / unmapped), for every caller
 (rows) and divergence (columns). Iteration 1 maps to the reference and so is
-caller-independent; later iterations map to each caller's own consensus.
+caller-independent; later iterations map to each caller's own consensus. `span_off` = correct
+start, but the read's reference footprint is >10 bp off its true one; ≤0.004% of reads here
+(a class of its own only since the 2026-10-27 tables; before, these reads counted as exact).
 
 ```{r readclass-composition, out.width="100%", fig.width=11, fig.height=6.5}
-classes <- c("exact", "shifted", "clipped", "mismapped", "diff_chr", "unmapped", "missing")
-class_cols <- c(exact = "#009E73", shifted = "#56B4E9", clipped = "#E69F00",
+classes <- c("exact", "shifted", "clipped", "span_off", "mismapped", "diff_chr", "unmapped", "missing")
+class_cols <- c(exact = "#009E73", shifted = "#56B4E9", clipped = "#E69F00", span_off = "#F0E442",
                 mismapped = "#D55E00", diff_chr = "#CC79A7",
                 unmapped = "#999999", missing = "#333333")
 comp <- rc %>% group_by(caller, divergence, iteration) %>%
@@ -384,7 +394,9 @@ reference coordinate `p` and classify what that read does **at `p`**:
 
 - **Covering reads** — reads whose *true* (mason-simulated) fragment spans `p`, assigned from the `-oa`
   truth BAM (i.e. from where the read came from, **not** where `bwa` put it) — so reads that were lost,
-  mismapped, or unmapped are still counted in the denominator.
+  mismapped, or unmapped are still counted in the denominator. A read's true span is its interval on
+  its source haplotype (`oP` tag, read length) mapped back to the reference, not the truth BAM's
+  alignment start/CIGAR (see Methods).
 - **True allele via `oH`** — mason tags each read with its source haplotype (`oH`); with the phased
   genotype this gives each read's *true* allele independent of sequencing error. For hom `1|1` SNPs both
   haplotypes carry the alt, so **`n_true_alt` = all covering reads** (verified exactly). (For a het
