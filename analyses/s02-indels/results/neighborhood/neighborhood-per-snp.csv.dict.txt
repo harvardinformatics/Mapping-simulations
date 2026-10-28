@@ -1,9 +1,9 @@
 Data dictionary for analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv
 
 Produced by : analyses/lib/neighborhood_assembly.py
-Command     : python analyses/lib/neighborhood_assembly.py --truth 'data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz' --recovered 'data/s02-indels/iter/{C}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.acc.vcf.gz' --pile 'analyses/s02-indels/results/vrf-pileup/vrf-pileup-{C}-{D}.csv' --out analyses/s02-indels/results/neighborhood --divs 0.06,0.08,0.10
-Git commit  : 8111fc4126e8 (script as committed)
-Written     : 2026-10-28 10:05
+Command     : python analyses/lib/neighborhood_assembly.py --truth 'data/s02-indels/sim/30X/19/{D}/0.005/42/mm39-truth.norm.vcf.gz' --recovered 'data/s02-indels/iter/{C}/30X/19/{D}/0.005/42/iter{k}/mm39_recovered.acc.vcf.gz' --pile 'analyses/s02-indels/results/vrf-pileup/vrf-pileup-{C}-{D}.csv' --out analyses/s02-indels/results/neighborhood --divs 0.06,0.08,0.10 --dict-append per-snp:analyses/s02-indels/config/neighborhood-per-snp.dict-notes.txt
+Git commit  : 77eb26a9e87c (script as committed)
+Written     : 2026-10-28 11:14
 
 Query sites: the SNPs sampled in the --pile per-SNP pileup CSVs (template analyses/s02-indels/results/vrf-pileup/vrf-pileup-{C}-{D}.csv);
              their per-iteration 'recovered' flags come from that file.
@@ -41,11 +41,14 @@ into the consensus, the local unrecovered load falls and the site becomes callab
 The *_indel columns mirror the SNP columns so the notebook can contrast the neighbour SNP-vs-indel
 unrecovered load across iterations (synthesis §5 "Indels").
 
-KEY READING (s02, pooled fraction still unrecovered = sum(unrec)/sum(neighbor_truth))
-------------------------------------------------------------------------------------
+KEY READING (s02, pooled fraction still unrecovered = sum(unrec)/sum(neighbor_truth), D = 0.06-0.10)
+---------------------------------------------------------------------------------------------------
 At every caller and divergence the indel unrecovered-fraction sits ABOVE the SNP one: iteration
-clears indels LESS completely than SNPs, leaving a larger residual (~20-47% of neighbour indels vs
-3-30% of SNPs still unrecovered by iteration 3). Strongly caller-dependent: bcftools recovers almost
-no indels single-shot (~95% unrecovered at iter 1) then iteration rescues it sharply; freebayes stays
-stuck (~47%); gatk improves modestly. Iteration reduces the indel load but cannot eliminate it — that
-residual is the divergence it cannot bake into the consensus.
+clears indels LESS completely than SNPs, leaving a larger residual (~15-47% of neighbour indels vs
+~2-30% of SNPs still unrecovered by iteration 3). Strongly caller-dependent: bcftools recovers almost
+no indels single-shot (78-95% unrecovered at iter 1) then iteration rescues it sharply (15-32% by
+iter 3); freebayes stays stuck (30-47% at iter 3); gatk improves modestly (52% -> 40% at D = 0.10).
+Iteration reduces the indel load but cannot eliminate it — that residual is the divergence it cannot
+bake into the consensus.
+
+(Hand-written; appended by neighborhood_assembly.py --dict-append, called from run_neighborhood.sh.)
