@@ -18,7 +18,7 @@
 #
 # NO --forcerun (that forces every instance of a rule and balloons the DAG).
 # Extra arguments go to snakemake, e.g. `sbatch run_read_classification.sh --forcerun classify_reads`
-# (2026-10-28: reclassify all 216 after the anchored placement start in truth_haplotypes.py, which
+# (2026-10-27: reclassify all 216 after the anchored placement start in truth_haplotypes.py, which
 # snakemake cannot see -- it is imported by compare_bams.py, not a rule input).
 
 set -euo pipefail

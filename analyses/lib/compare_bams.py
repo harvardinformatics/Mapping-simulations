@@ -71,7 +71,8 @@ FIELD_DEFINITIONS = (
     "1-3 bp only when a sequencing indel sits among those bases (~0.02% of reads); a read that then\n"
     "begins inside an insertion is placed at its first reference base minus its leading inserted\n"
     "bases. Tables made before 2026-10-27 took the true start/end from the truth BAM's POS/CIGAR\n"
-    "(off for ~1% of reads SNP-only, ~30% in s02); tables from 2026-10-27 placed every read at oP.\n\n" +
+    "(off for ~1% of reads SNP-only, ~30% in s02); tables made at commit 8762eab (also 2026-10-27)\n"
+    "placed every read at oP.\n\n" +
     "region         : reference region / chromosome label\n"
     "coverage       : simulated fold coverage\n"
     "divergence     : simulated fixed divergence (D) label\n"

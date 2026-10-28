@@ -272,8 +272,9 @@ def load_truth_reads(truth_bam, mason_vcf, reference, read_key, chunk=1_000_000)
     where an aligner would lay the read down unclipped. It differs from true_start in two cases:
       - a sequencing indel among the read's leftmost bases (~0.02% of reads): an aligner absorbs it
         as a 1-3 bp shift plus mismatches. The start comes from aligning the read's leftmost
-        ANCHOR_LEN bases to its haplotype (anchor_offsets, bwa mem scores); added 2026-10-28, before
-        which these reads were placed at oP and so judged 'shifted' when bwa agreed with mason's POS.
+        ANCHOR_LEN bases to its haplotype (anchor_offsets, bwa mem scores); added at commit efa152b
+        (2026-10-27). Tables made at 8762eab placed these reads at oP, so they counted as 'shifted'
+        when bwa agreed with mason's POS.
       - a read that begins inside a simulated insertion (no reference position for its first
         bases): an aligner can place it without clipping only by laying the inserted bases over the
         reference bases before the insertion, so place_start = its first reference base minus the

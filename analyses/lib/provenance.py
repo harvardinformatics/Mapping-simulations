@@ -26,6 +26,11 @@ uses backfill=True / --backfill. The block then says the commit that produced th
 recorded, gives the table's own modification time, and says when the dictionary was added. The
 --command given for a backfill must be the command that originally produced the table.
 
+REWRITE: a dictionary rewritten for a table whose producing commit IS known (from its previous
+dictionary) uses table_commit=<commit> / --table-commit, with backfill. The block then gives that
+commit and the table's modification time, and the commit the dictionary was rewritten at -- e.g.
+after a fix to the dictionary text only, when re-running the table would reproduce it unchanged.
+
 Git failures raise (no silent fallback): a dictionary must never claim a provenance it can't verify.
 All paths are written relative to the project root.
 """
@@ -80,7 +85,7 @@ def _now():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
-def header(table, script=None, command=None, backfill=False, notes=()):
+def header(table, script=None, command=None, backfill=False, notes=(), table_commit=None):
     """The 'Data dictionary for ...' title plus the provenance block, ending in a blank line.
 
     table    : path of the table being documented
@@ -88,10 +93,13 @@ def header(table, script=None, command=None, backfill=False, notes=()):
     command  : exact producing command (default: the running tool's own command line)
     backfill : the table already existed and is NOT being regenerated -- see the module docstring
     notes    : extra 'Note' lines (e.g. that a table came from an earlier version of the script)
+    table_commit : with backfill, the commit whose script produced the table (see REWRITE above)
     """
     script = script if script is not None else sys.argv[0]
     if backfill and command is None:
         raise ValueError("backfill dictionaries must be given the ORIGINAL producing command")
+    if table_commit is not None and not backfill:
+        raise ValueError("table_commit is only for a dictionary rewritten without regenerating the table")
     command = command if command is not None else current_command()
     lines = ["Data dictionary for %s" % relpath(table), "",
              "Produced by : %s" % relpath(script),
@@ -100,6 +108,13 @@ def header(table, script=None, command=None, backfill=False, notes=()):
         if not os.path.exists(table):
             raise FileNotFoundError("backfill: table %s does not exist" % table)
         mtime = datetime.datetime.fromtimestamp(os.path.getmtime(table)).strftime("%Y-%m-%d %H:%M")
+    if backfill and table_commit is not None:
+        # the commit must exist in this repo (fails loudly otherwise)
+        made_at = _git("rev-parse", "--short=12", "--verify", table_commit + "^{commit}").strip()
+        lines += ["Git commit  : %s (table written %s by the script as committed there)" % (made_at, mtime),
+                  "Dictionary  : rewritten %s at commit %s (%s; the table was not regenerated)"
+                  % (_now(), git_commit(), script_state(script))]
+    elif backfill:
         lines += ["Git commit  : not recorded (table written %s, before provenance tracking)" % mtime,
                   "Dictionary  : added %s at commit %s (backfill; the table was not regenerated)"
                   % (_now(), git_commit())]
@@ -131,6 +146,8 @@ def main():
     ap.add_argument("--backfill", action="store_true",
                     help="the table already existed and is not being regenerated")
     ap.add_argument("--note", action="append", default=[], help="extra Note line (repeatable)")
+    ap.add_argument("--table-commit", metavar="COMMIT",
+                    help="with --backfill: the commit that produced the table (a dictionary rewrite)")
     ap.add_argument("--replace", action="store_true",
                     help="with --backfill: allow overwriting an existing dictionary")
     ap.add_argument("--append-definitions", metavar="MODULE",
@@ -148,7 +165,8 @@ def main():
         body = (body.rstrip("\n") + "\n\nColumn definitions (from analyses/lib/%s.py):\n\n"
                 % a.append_definitions + module.FIELD_DEFINITIONS)
     path = write_dictionary(a.table, body, replace_existing=(a.replace or not a.backfill),
-                            script=a.script, command=a.command, backfill=a.backfill, notes=a.note)
+                            script=a.script, command=a.command, backfill=a.backfill, notes=a.note,
+                            table_commit=a.table_commit)
     print("wrote %s" % relpath(path))
 
 

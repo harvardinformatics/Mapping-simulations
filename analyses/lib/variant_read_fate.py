@@ -231,24 +231,28 @@ def write_dictionaries(a):
     """Write the data dictionary for every table this run produces (per-SNP mode: <out>.dict.txt;
     aggregate mode: <out>-gtraj.csv.dict.txt and <out>-hcomp.csv.dict.txt). Each starts with the
     shared provenance block (lib/provenance.py): this run's own command line, or with --dicts-only
-    the ORIGINAL producing command, marked as a backfill."""
+    the ORIGINAL producing command, marked as a backfill (with --table-commit: as a rewrite for an
+    output made by the current method at that commit)."""
     def hdr(table):
         if a.dicts_only:
-            return provenance.header(table, command=a.dicts_only, backfill=True)
+            return provenance.header(table, command=a.dicts_only, backfill=True,
+                                     table_commit=a.table_commit)
         return provenance.header(table)
 
-    # how each read's true span was taken. --dicts-only documents outputs made before the
-    # 2026-10-27 fix, which took it from the truth BAM's POS/CIGAR.
+    # how each read's true span was taken. --dicts-only alone documents outputs made before the
+    # 2026-10-27 fix, which took it from the truth BAM's POS/CIGAR; with --table-commit, outputs made
+    # by the current method.
     span_txt = ("mason -oa truth BAM POS/CIGAR (true start/end) + oH haplotype per read (the method\n"
                 "             before 2026-10-27: POS/CIGAR is off for ~1% of reads SNP-only, ~30% in s02);"
-                if a.dicts_only else
+                if a.dicts_only and not a.table_commit else
                 "mason -oa truth BAM: oH haplotype + oP haplotype position per read; the true\n"
                 "             reference span is [oP, oP + read length) on that haplotype, mapped back to\n"
                 "             the reference (truth_haplotypes.py, haplotypes rebuilt from --mason-vcf);\n"
                 "             each read is PLACED where an aligner would lay it unclipped: the start of\n"
                 "             the best alignment of its leftmost 30 bases on its haplotype (bwa mem\n"
                 "             scores; moves 1-3 bp off oP only for a sequencing indel among those bases,\n"
-                "             ~0.02% of reads, since 2026-10-28), minus any inserted bases it starts on;")
+                "             ~0.02% of reads; since commit efa152b, 2026-10-27), minus any inserted\n"
+                "             bases it starts on;")
 
     site = ("HETEROZYGOUS (phased 0|1 / 1|0) biallelic truth SNPs; true-alt reads are those from the "
             "alt-carrying haplotype (mason oH tag); recovered = called correctly AS A HET in the "
@@ -345,10 +349,15 @@ def main():
                     metavar="ITER:MAPPED_BAM:RECOVERED_VCF")
     ap.add_argument("--out", required=True)
     ap.add_argument("--dicts-only", metavar="ORIGINAL_COMMAND",
-                    help="write ONLY the data dictionaries for an already-existing output made before the "
-                         "2026-10-27 true-span fix (same --out, "
+                    help="write ONLY the data dictionaries for an already-existing output (same --out, "
                          "--aggregate/--pileup/--het, --sample, --divergence, --caller as the run that made "
-                         "it), recording ORIGINAL_COMMAND as its provenance; no BAM/VCF is read.")
+                         "it), recording ORIGINAL_COMMAND as its provenance; no BAM/VCF is read. Alone: an "
+                         "output made before the 2026-10-27 true-span fix; with --table-commit: one made "
+                         "by the current method at that commit.")
+    ap.add_argument("--table-commit", metavar="COMMIT",
+                    help="with --dicts-only: the commit whose variant_read_fate.py made the output (its "
+                         "previous dictionary's Git commit); the dictionary then describes the current "
+                         "method. For a fix to the dictionary text that leaves the computation unchanged.")
     ap.add_argument("--het", action="store_true",
                     help="score HETEROZYGOUS (0/1) truth sites instead of hom-div (1|1). n_true_alt is "
                          "then the alt-HAPLOTYPE reads only (via oH), f_alt measures how much of that "
@@ -368,6 +377,8 @@ def main():
     a = ap.parse_args()
 
     # --dicts-only: document an existing output without recomputing it
+    if a.table_commit and not a.dicts_only:
+        ap.error("--table-commit needs --dicts-only")
     if a.dicts_only:
         write_dictionaries(a)
         return
