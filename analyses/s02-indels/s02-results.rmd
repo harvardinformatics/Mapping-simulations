@@ -74,6 +74,11 @@ config `config/config.yaml`, launched with the `run_*.sh` orchestrators.
   first reference base minus the inserted bases. Tables before 2026-10-27 used the truth BAM's
   alignment start instead, which is off for ~32% of reads here; tables made at commit 8762eab
   (also 2026-10-27, before this rule) placed every read at `oP`.
+- **Truth check:** as in s01, every truth SNP (divergent and het) was simulated into the reads, at
+  every divergence (`analyses/lib/effective_truth.py`, `run_effective_truth.sh`, seed 42; results in
+  `results/effective-truth/phantom-by-divergence.csv`). Each read's base is read from its position on
+  its source haplotype, which follows the indels (at D = 0.10 the haplotypes are 1.5 Mb longer than
+  chr19). The `load` chunk stops if the check ever fails.
 - **Mapping & iteration:** `bwa mem`; **3 iterations**; iter1 maps to the reference
   (single-shot), iter *k* maps to the consensus from iter *k−1*.
 - **Callers:** **gatk** HaplotypeCaller (reference-anchored reassembly, scatter-gather),
@@ -89,6 +94,9 @@ config `config/config.yaml`, launched with the `run_*.sh` orchestrators.
 
 ```{r load}
 res <- "analyses/s02-indels/results/"
+# --- truth check (Methods): stop rather than score recall against SNPs the reads do not carry ---
+tc <- read_csv(paste0(res, "effective-truth/phantom-by-divergence.csv"), col_types = cols())
+stopifnot(sum(tc$n_phantom_div + tc$n_phantom_het) == 0)
 lv  <- c("gatk", "bcftools", "freebayes")
 
 rec <- read_csv(paste0(res, "s02-indels-recovery-summary.csv")) %>%
@@ -289,35 +297,6 @@ ggplot(cmp, aes(x = factor(divergence), y = snp_recall, color = sim)) +
 reads around an indel are clipped/mismapped, taking nearby SNPs down with them) — largest at
 high divergence. So ignoring indels *understates* SNP reference bias, and iteration recovers
 this indel-induced SNP loss too.
-
-## Truth-site check: every truth SNP is in the reads
-
-As in s01, `analyses/lib/effective_truth.py` checks that every truth SNP was simulated into the reads
-(`run_effective_truth.sh`, every divergence, seed 42). Each read's base at a SNP is read from the read's
-position on its source haplotype, which handles the indels here: at D = 0.10 the haplotypes are 1.5 Mb
-longer than chr19, so haplotype and reference positions drift apart along the chromosome, and the
-haplotypes are rebuilt from the mason-format truth VCF to match. A site would be a **phantom** if at least 5 consistent
-reads from the alt-carrying haplotype(s) cover it and fewer than 10% present the alt.
-
-```{r s2-truth-sites}
-ph <- read_csv("analyses/s02-indels/results/effective-truth/phantom-by-divergence.csv", col_types = cols())
-n_ph <- sum(ph$n_phantom_div + ph$n_phantom_het)
-ph %>% transmute(divergence, `truth SNPs` = n_truth_snp,
-                 `phantom (div / het)` = sprintf("%d / %d", n_phantom_div, n_phantom_het),
-                 `lowest alt fraction` = min_alt_frac,
-                 `reads consistent` = scales::percent(frac_reads_consistent, accuracy = 0.1),
-                 `old method flags (div / het)` = sprintf("%d / %d", n_cigar_flag_div, n_cigar_flag_het)) %>%
-  kable(caption = "Truth-site check per divergence (s02, with indels). The last column is what the earlier, alignment-based scan flagged.",
-        table.attr = 'class="center"')
-```
-
-**Interpretation.** `r if (n_ph == 0) "No truth SNP at any divergence is a phantom" else sprintf("%d truth SNPs are phantoms", n_ph)`
-(lowest alt fraction `r min(ph$min_alt_frac, na.rm = TRUE)`), so recall here needs no correction. Earlier
-versions reported a phantom floor about 5x larger than s01's, explained as indels adding partners for
-adjacent-variant collisions, and a phantom-corrected recall with up to 2-3 points of lift. That was the
-same artifact as in s01: the old scan read bases through mason's `-oa` alignment strings, which write
-dense variant clusters as fake deletion-insertion pairs; the last column reproduces its flags, and none
-is a phantom.
 
 # Per-variant read fate: SNPs in the presence of indels
 

@@ -81,9 +81,19 @@ question at their het sites (`analyses/lib/allele_balance.py`, driven by `het_al
 - Divergence **D ∈ {0.02–0.10}** homozygous background, het rate **H = 0.005**, 30×, 3 iterations,
   3 callers. (The caller only matters at iteration ≥ 2, where each caller's consensus differs;
   iteration 1 maps to the shared reference and is caller-independent.)
+- **Truth check:** every het truth SNP was simulated into the reads, at every divergence, in both the
+  s01 and s02 data: the reads from the haplotype carrying the alt present it (the s01 and s02 checks,
+  `results/effective-truth/phantom-by-divergence.csv` in each section; see the s01 notebook). The
+  `load` chunk stops if the check ever fails.
 
 ```{r load}
 res <- "analyses/s03-heterozygosity/results/"
+# --- truth check (Methods): stop rather than score het sites the reads do not carry ---
+for (f in c("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv",
+            "analyses/s02-indels/results/effective-truth/phantom-by-divergence.csv")) {
+  tc <- read_csv(f, col_types = cols())
+  stopifnot(sum(tc$n_phantom_het) == 0)
+}
 lv  <- c("gatk", "bcftools", "freebayes")
 
 load_ab <- function(tag) {
@@ -417,33 +427,6 @@ the reference-anchored reassembler can finally resolve the het haplotype; **bcft
 clear a contaminated pileup — mismapped-in ref reads leave and MAPQ rises — restoring an alt/ref balance
 the caller will call `0/1`. So het dropout is corrected by iteration through the very same
 alignment-vs-assembler split as the hom-div SNPs, now measured per het site.
-
-## Truth-site check for het SNPs
-
-A het SNP whose alt allele was never simulated into the reads would be unrecoverable. s03 reuses the s01
-(SNP-only) data, so it uses the s01 truth-site check (`analyses/lib/effective_truth.py`, see the s01
-notebook). For a het, only reads from the haplotype carrying the alt are scored (the read's source
-haplotype is known from the `mason -oa` tag `oH`). As a control, the other haplotype's reads at the same
-het sites should show the alt only at the sequencing-error rate.
-
-```{r s3-truth-sites}
-ph <- read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv",
-               col_types = cols())
-ph %>% filter(n_truth_het > 0) %>%
-  transmute(divergence, `het SNPs` = n_truth_het, `phantom hets` = n_phantom_het,
-            `low coverage (not judged)` = n_lowcov_het,
-            `alt on the other haplotype` = scales::percent(as.numeric(refhap_alt_frac), accuracy = 0.01),
-            `old method flags` = n_cigar_flag_het) %>%
-  kable(caption = "Het truth-site check (s01 data). The last column is what the earlier, alignment-based scan flagged.",
-        table.attr = 'class="center"')
-```
-
-**Interpretation.** `r if (sum(ph$n_phantom_het) == 0) "No het SNP at any divergence is a phantom" else sprintf("%d het SNPs are phantoms", sum(ph$n_phantom_het))`,
-so het recall here needs no correction. Earlier versions reported a het phantom floor (up to 0.85% at
-D = 0.10) and a phantom-corrected het recall; both came from the old scan's artifact (bases read through
-mason's `-oa` alignment strings, which write dense SNP clusters as fake deletion-insertion pairs). That
-scan also pooled both haplotypes' reads at a het, where half the reads carry the reference anyway; the
-corrected check scores only the alt haplotype's reads.
 
 # Do indels worsen het allele bias?
 

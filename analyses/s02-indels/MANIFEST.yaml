@@ -332,7 +332,9 @@ outputs:
     command: cd analyses/s02-indels && sbatch run_effective_truth.sh
     inputs:
       - analyses/s02-indels/results/effective-truth/eff-{D}-summary.csv
-    used_by: [analyses/s02-indels/s02-results.rmd]
+    used_by:
+      - analyses/s02-indels/s02-results.rmd
+      - analyses/s03-heterozygosity/s03-results.rmd
     git: tracked
 
   - path: analyses/s02-indels/results/retired/phantom-adjacency.csv

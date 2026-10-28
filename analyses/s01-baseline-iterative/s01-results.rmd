@@ -98,8 +98,18 @@ all driven by `config/config.yaml` and launched with the `run_*.sh` orchestrator
   the truth BAM's alignment start/CIGAR instead, which is 1–3 bp off for ~1% of reads here (mason
   writes dense SNP clusters as fake deletion-insertion pairs) and for ~32% of reads in s02; tables
   made at commit 8762eab (also 2026-10-27, before this rule) placed every read at `oP`.
+- **Truth check:** every truth SNP (divergent and het) was simulated into the reads, at every
+  divergence: at each one, the reads from the haplotype(s) carrying the alt present it. Checked by
+  `analyses/lib/effective_truth.py` (`run_effective_truth.sh`, seed 42), which reads each simulated
+  read's base from its position on its source haplotype; per-divergence results in
+  `results/effective-truth/phantom-by-divergence.csv`. Recall here is therefore measured against
+  everything that was simulated; the `load` chunk stops if the check ever fails.
 
 ```{r load}
+# --- truth check (Methods): stop rather than score recall against SNPs the reads do not carry ---
+tc <- read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv", col_types = cols())
+stopifnot(sum(tc$n_phantom_div + tc$n_phantom_het) == 0)
+
 # --- divergence recovery (from the consensus-vs-reference diff) ---
 d <- read_csv("analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv") %>%
   filter(divergence > 0) %>%                       # no divergence sites at D=0
@@ -315,43 +325,6 @@ whose single-shot recall collapses at high divergence but is substantially rescu
 bars are <0.1 pt everywhere (aggregate recall over chr19's millions of sites is
 near-deterministic — the near-zero seed variance is itself a result). Precision confirms
 the recall gains are not bought with false positives.
-
-## Truth-site check: every truth SNP is in the reads
-
-A truth SNP that mason never simulated into the reads (a **phantom**) could not be recovered by any
-caller or iteration, so it would belong out of the recall denominator. `analyses/lib/effective_truth.py`
-checks every truth SNP (`run_effective_truth.sh`, every divergence with a truth BAM, seed 42):
-
-- **Haplotypes:** mason's two haplotypes are rebuilt from the mason-format truth VCF
-  (`analyses/lib/truth_haplotypes.py`; byte-identical to `mason_materializer`'s at D = 0.10).
-- **Bases:** each truth read's base at a SNP is read from the read's position on its source haplotype
-  (`mason -oa` tags `oH`, `oP`). No alignment is involved.
-- **Reads used:** only reads consistent with their haplotype (mismatches away from truth SNPs no more than
-  mason's error count `XE`); reads from the haplotype(s) carrying the alt.
-- **Phantom:** at least 5 such reads and fewer than 10% presenting the alt.
-
-```{r truth-sites}
-ph <- read_csv("analyses/s01-baseline-iterative/results/effective-truth/phantom-by-divergence.csv",
-               col_types = cols())
-n_ph <- sum(ph$n_phantom_div + ph$n_phantom_het)
-ph %>% transmute(divergence, `truth SNPs` = n_truth_snp,
-                 `phantom (div / het)` = sprintf("%d / %d", n_phantom_div, n_phantom_het),
-                 `lowest alt fraction` = min_alt_frac,
-                 `reads consistent` = scales::percent(frac_reads_consistent, accuracy = 0.1),
-                 `old method flags (div / het)` = sprintf("%d / %d", n_cigar_flag_div, n_cigar_flag_het)) %>%
-  kable(caption = "Truth-site check per divergence. 'Lowest alt fraction' is over all judged SNPs; the last column is what the earlier, alignment-based scan flagged.",
-        table.attr = 'class="center"')
-```
-
-**Interpretation.** `r if (n_ph == 0) "No truth SNP at any divergence is a phantom" else sprintf("%d truth SNPs are phantoms", n_ph)`:
-at every judged site the reads from the alt-carrying haplotypes present the alt (lowest alt fraction
-`r min(ph$min_alt_frac, na.rm = TRUE)`). Recall in this notebook is therefore the true recall of what was
-simulated, and no correction is applied. Earlier versions reported a small "phantom floor" (up to 0.6% at
-D = 0.10), explained as mason dropping one of two adjacent variants, and a phantom-corrected "effective
-recall". Both came from an artifact of the old scan, which read bases through mason's `-oa` alignment
-strings: mason writes dense SNP clusters there as fake deletion-insertion pairs, so bases landed one
-position off and real alt sites looked like the reference. The last column reproduces the old flags; none
-is a phantom.
 
 ## Variant caller comparison
 
@@ -804,8 +777,8 @@ neighborhood), whereas **bcftools/freebayes** are freed chiefly by the pileup cl
 `scripts/vrf_pileup_decomp.R`; `--pileup` columns `depth_p, ref_p, alt_p, oth_p, mapq_p, mapq20_p` and
 mismapped-in `mmin_p, mmin_ref_p, mmin_alt_p`; mismapped-out = `mm_clip+mm_noclip+dc+un`.)
 
-*Note on the `f_alt≈0` not-called band:* these are not unsimulated sites. The truth-site check (under
-SNP recovery) finds every truth SNP present in its reads, so `f_alt≈0` means the reads that carry the alt
+*Note on the `f_alt≈0` not-called band:* these are not unsimulated sites. Every truth SNP is present in
+its reads (truth check, Methods), so `f_alt≈0` means the reads that carry the alt
 did not arrive at the site (lost, mismapped or clipped): a mapping loss, not a missing allele.
 
 # Heterozygous site recovery
