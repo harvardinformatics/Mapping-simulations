@@ -41,7 +41,7 @@ outputs:
     values:
       fig: [fig1-problem, fig1b-local-divergence, fig2-fix, fig2b-fix-uniform,
             fig3a-mapping-vs-calling, fig3b-per-site-flow, fig3c-what-changed,
-            fig3d-indel-distance, fig4a-repeats, fig4b-svs, fig4c-filtering]
+            fig3d-indel-distance, fig3e-snp-clusters, fig4a-repeats, fig4b-svs, fig4c-filtering]
       ext: [png, pdf]
     what: "the coauthor brief's figures, each as PNG (300 dpi) and PDF, rewritten on every render"
     kind: figure

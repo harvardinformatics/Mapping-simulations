@@ -71,6 +71,7 @@ S08_MAP      <- "analyses/s08-mappability/results/s08-mappability-recovery.csv"
 FLIP_PILEUP  <- "analyses/s02-indels/results/vrf-pileup"                       # per-site read ledger (sample)
 FLIP_NEIGH   <- "analyses/s02-indels/results/neighborhood/neighborhood-per-snp.csv"  # uncalled neighbours
 FLIP_CALLMET <- "analyses/s02-indels/results/calling-metrics/calling-metrics-%s.csv"  # fixed context; %s = D
+S01_CLUSTER  <- "analyses/s01-baseline-iterative/results/cluster-recall/s01-cluster-recall-w10-w25.csv"  # recall by SNP clustering
 
 # --- display choices (documented in each figure's caption) ------------------------------------
 PATCHY_FIELD    <- "L20000-S1.0-C0.20"  # Fig 1B: the realistic (patchy) field config, mean D = 0.03
@@ -85,6 +86,9 @@ INDEL_NEAR_BP  <- 10     # Fig 3C fixed-context row: "near an indel" = nearest t
 DIST_MAX       <- 1000   # Fig 3D: x-axis limit; larger distances (or no indel nearby) are plotted here
 DIST_BINS      <- c(-1, 2, 5, 10, 25, 50, 100, Inf)          # Fig 3D: rescue-rate distance bins (bp)
 DIST_LABS      <- c("0–2", "3–5", "6–10", "11–25", "26–50", "51–100", ">100")
+CLUSTER_DIV    <- "0.10" # Fig 3E: divergence shown (s01); file label, so a string
+CLUSTER_W      <- 10     # Fig 3E: half-window (bp) for counting the other divergent SNPs near a site
+CLUSTER_ITERS  <- c(1, 3) # Fig 3E: iterations shown
 MAP_DIV        <- 0.06   # Fig 4A: divergence shown for the repeat (mappability) comparison
 SV_ITERS       <- c(1, 3)
 
@@ -549,7 +553,7 @@ yellow and magenta = missed, split by cause. Top row single-shot, bottom row aft
 
 - **Calling-limited (yellow)** loss is mostly GATK's: from moderate local divergence (~0.05) the
   reads are there but its local re-assembly fails. bcftools and freebayes, which call directly
-  from the aligned reads, barely show it.
+  from the aligned reads, barely show it. GATK's loss concentrates where SNPs cluster (Figure 3E).
 - **Mapping-limited (magenta)** loss is a wall for every caller at high local divergence
   (≳ 0.15): a 150 bp read with that many mismatches no longer aligns.
 - **Iteration shrinks both** (bottom row): writing the recovered variants into the reference lowers
@@ -686,7 +690,8 @@ read-level ledger on a systematic sample of ~30,000 divergent SNPs · consecutiv
 # in one iteration, what changed by the next iteration -- for those that became called ("rescued")
 # versus those that stayed uncalled ("still missed")? Only factors that CAN change between
 # iterations are shown (read placement, uncalled neighbourhood); fixed sequence context can't
-# change, so the one fixed feature that matters (a nearby indel) is shown separately in Fig 3D.
+# change, so the fixed features that matter are shown separately: a nearby indel (Fig 3D) and
+# SNP clustering (Fig 3E).
 
 # --- per-site data: read ledger (sample) + uncalled neighbours, every iteration ------------------
 pile <- bind_rows(lapply(list.files(FLIP_PILEUP, sprintf("-%s\\.csv$", FLIP_DIV), full.names = TRUE),
@@ -790,8 +795,8 @@ gives the group's average before → after that iteration. Blue means it got bet
 variant's reads, higher quality, fewer misplaced reads or uncalled neighbours). Because each row has
 its own units, the colour is relative within a row: the darkest cell in a row is the biggest change
 seen for that factor; grey means little change. Fixed features of the site (sequence context)
-can't change between iterations, so they aren't in this figure; the one that matters, a nearby
-indel, is in Figure 3D.
+can't change between iterations, so they aren't in this figure; the ones that matter are a nearby
+indel (Figure 3D) and SNP clustering (Figure 3E).
 
 **What it shows.**
 
@@ -932,10 +937,70 @@ one iteration, the share called in the next, for SNPs at each distance.
   `r MANY_INDELS` indels within ±100 bp vs `r MANY_INDELS` or more is `r cr("bcftools", FALSE)` vs
   `r cr("bcftools", TRUE)` for bcftools, `r cr("freebayes", FALSE)` vs `r cr("freebayes", TRUE)` for
   freebayes, and `r cr("gatk", FALSE)` vs `r cr("gatk", TRUE)` for GATK.
-- Of the fixed sequence features, closeness to an indel is the only one that separates the groups.
+- Of the fixed features measured over ±100 bp around each SNP (`calling_metrics.py`), closeness to an
+  indel is the only one that separates the groups.
   The others barely differ between SNPs called both times, rescued and still missed (homopolymer
   fraction `r homo_rng("gatk")[1]`–`r homo_rng("gatk")[2]` for GATK,
-  `r homo_rng("bcftools")[1]`–`r homo_rng("bcftools")[2]` for bcftools), so they aren't shown.
+  `r homo_rng("bcftools")[1]`–`r homo_rng("bcftools")[2]` for bcftools), so they aren't shown. At a
+  finer scale, SNP clustering does matter for GATK (Figure 3E).
+
+## 3E — SNP clusters and GATK
+
+<p class="datasrc"><span class="k">SIM DATA</span> — chr19, 30× · <b>s01</b> SNP-only sim · uniform divergence, D = 0.10 · seeds 42–44 pooled ·
+every divergent SNP (no sampling) · iterations 1 and 3</p>
+
+```{r fig3e, fig.width=12, fig.height=5}
+# Recall of divergent SNPs by how many OTHER divergent SNPs lie within +/-CLUSTER_W bp of each one
+# (cluster_recall.py; bins 0 / 1 / 2 / 3 / 4-5 / 6+, the last open-ended). Uniform divergence, so the
+# count varies only by chance. Found = the SNP is in that iteration's recovered (consensus) set.
+CL_BINS <- c("0", "1", "2", "3", "4-5", "6+")
+clus <- read_csv(S01_CLUSTER, col_types = cols(divergence = col_character(), n_near_bin = col_character())) %>%
+  filter(divergence == CLUSTER_DIV, window_bp == CLUSTER_W, iteration %in% CLUSTER_ITERS) %>%
+  group_by(caller, iteration, n_near_bin) %>%                         # pool the seeds
+  summarize(n_sites = sum(n_sites), n_recovered = sum(n_recovered), .groups = "drop") %>%
+  mutate(recall = n_recovered / n_sites, caller = fac(caller),
+         n_near_bin = factor(n_near_bin, levels = CL_BINS),
+         iter_lab = factor(iteration, levels = CLUSTER_ITERS, labels = c("iteration 1 (single-shot)", "iteration 3")))
+stopifnot(nrow(clus) == length(callers) * length(CLUSTER_ITERS) * length(CL_BINS), !anyNA(clus$n_near_bin))
+# share of divergent SNPs per bin (the same for every caller and iteration; taken from GATK iteration 1)
+clus_share <- filter(clus, caller == caller_names["gatk"], iteration == 1) %>% mutate(share = n_sites / sum(n_sites))
+
+p3e <- ggplot(clus, aes(n_near_bin, recall, colour = iter_lab, group = iter_lab)) +
+  geom_line(linewidth = 1) + geom_point(size = 2.2) +
+  scale_colour_manual(values = c("grey50", "#08519C"), name = NULL) +
+  scale_y_continuous(labels = pct) +
+  facet_wrap(~caller, nrow = 1) +
+  labs(x = paste0("other divergent SNPs within ±", CLUSTER_W, " bp"), y = "divergent SNPs found",
+       title = "GATK misses SNPs in clusters; the other callers miss only the densest ones",
+       subtitle = "Share of divergent SNPs found, by how many other divergent SNPs lie close by.",
+       caption = paste0("Data: s01 uniform SNP-only simulation, D = ", CLUSTER_DIV, ", seeds 42–44 pooled; every divergent SNP on chr19, ",
+                        format(min(clus_share$n_sites), big.mark = ","), "–", format(max(clus_share$n_sites), big.mark = ","),
+                        " per bin. Found = in that iteration's consensus (cluster_recall.py).")) +
+  brieftheme()
+save_fig(p3e, "fig3e-snp-clusters", 12, 5)
+```
+
+```{r fig3e-numbers}
+# values quoted in the text
+cl3 <- function(cc, k, b) pct(filter(clus, caller == caller_names[cc], iteration == k, n_near_bin == b)$recall, 1)
+sh3 <- function(b) pct(sum(filter(clus_share, n_near_bin %in% b)$share), 1)
+```
+
+**How to read it.** For each divergent SNP, the x axis counts the other divergent SNPs within
+±`r CLUSTER_W` bp. In a uniform genome that count varies only by chance: at D = `r CLUSTER_DIV`,
+`r sh3("0")` of SNPs have none and `r sh3(c("4-5", "6+"))` have four or more. Grey = single-shot,
+blue = after 3 iterations.
+
+**What it shows.**
+
+- **GATK** finds fewer SNPs the more they cluster: `r cl3("gatk", 1, "0")` of SNPs with no close
+  neighbour but `r cl3("gatk", 1, "6+")` of those with six or more. Iteration lifts every bin but keeps
+  the gap (`r cl3("gatk", 3, "0")` vs `r cl3("gatk", 3, "6+")`). Its re-assembly is built from short
+  stretches of sequence shared with the reference, and close-packed SNPs leave few of them, which fits
+  the calling-limited loss in Figure 3A being GATK's.
+- **bcftools and freebayes**, which call from the aligned reads, stay at 95% or more until the densest
+  bin (`r cl3("bcftools", 1, "6+")` and `r cl3("freebayes", 1, "6+")`), and iteration repairs that bin
+  (`r cl3("bcftools", 3, "6+")` and `r cl3("freebayes", 3, "6+")`).
 
 # Figure 4 — The limits {#fig4}
 
@@ -1085,13 +1150,15 @@ Every figure above is also saved, at 300 dpi PNG and as vector PDF, in
 
 ```{r files, echo=FALSE}
 knitr::kable(tibble::tibble(
-  figure = c("1A", "1B", "2A", "2B", "3A", "3B", "3C", "3D", "4A", "4B", "4C"),
+  figure = c("1A", "1B", "2A", "2B", "3A", "3B", "3C", "3D", "3E", "4A", "4B", "4C"),
   file   = paste0(c("fig1-problem", "fig1b-local-divergence", "fig2-fix", "fig2b-fix-uniform",
                     "fig3a-mapping-vs-calling", "fig3b-per-site-flow", "fig3c-what-changed", "fig3d-indel-distance",
+                    "fig3e-snp-clusters",
                     "fig4a-repeats", "fig4b-svs", "fig4c-filtering"), ".png / .pdf"),
   source = c("s01, s02, s05 summaries", "s05 realistic local recall + s01 summary", "s05 summaries",
              "s01, s02 summaries",
              "s05 mapping-vs-calling (capped)",
              "s02 vrf-agg gatk D = 0.10", "s02 vrf-pileup + neighborhood, D = 0.10", "s02 vrf-pileup + calling-metrics, D = 0.10",
+             "s01 cluster recall, D = 0.10",
              "s08 mappability", "s07 SV confounder", "s06 filter sweep")))
 ```

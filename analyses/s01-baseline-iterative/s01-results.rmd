@@ -354,6 +354,75 @@ for gatk at high divergence — iteration lowers the *effective* divergence so g
 reference-anchored assembly (which fails on far-from-reference sequence) starts working
 again. Iteration mitigates reference bias exactly where single-shot suffers most.
 
+## Recall by local SNP clustering
+
+GATK HaplotypeCaller re-assembles each active region from k-mers (default k = 10 and 25) anchored on
+the reference, so tightly packed SNPs, which leave few k-mers shared with the reference, should be hard
+for it even when the reads carrying them map; bcftools and freebayes call from the aligned reads. To test
+this at a fixed genome-wide divergence:
+
+- **Cluster count:** for every divergent truth SNP, the number of *other* divergent truth SNPs within
+  ±10 bp (`n_near`), binned 0 / 1 / 2 / 3 / 4–5 / 6+. In these uniform simulations the count varies only
+  by chance.
+- **Recall per bin:** recovered sites / sites, pooled over seeds 42–44, where *recovered* means the SNP's
+  position and alt are in that iteration's recovered set (the same set scored under SNP recovery). Made
+  by `analyses/lib/cluster_recall.py` via `run_cluster_recall.sh`
+  (`results/cluster-recall/s01-cluster-recall-w10-w25.csv`); the tool checks that each condition's
+  summed sites and recovered sites equal `n_truth_div` and `div_tp` of the recall table above.
+- **Shown:** D = 0.04–0.10 (below that almost no SNP has a neighbour within ±10 bp), iterations 1–3; bins
+  with fewer than `MIN_SITES` pooled sites would be dropped (none are at these divergences). The table
+  repeats the count at ±25 bp, GATK's larger k-mer, for D = 0.10.
+
+```{r cluster-recall, out.width="100%", fig.width=10, fig.height=7}
+MIN_SITES <- 100                                    # drop sparser bins (pooled over seeds)
+CL_DIVS   <- c("0.04", "0.06", "0.08", "0.10")      # divergences shown in the figure
+cl_bins   <- c("0", "1", "2", "3", "4-5", "6+")
+cl <- read_csv("analyses/s01-baseline-iterative/results/cluster-recall/s01-cluster-recall-w10-w25.csv",
+               col_types = cols(divergence = col_character(), n_near_bin = col_character())) %>%
+  group_by(caller, divergence, iteration, window_bp, n_near_bin) %>%      # pool the seeds
+  summarize(n_sites = sum(n_sites), n_recovered = sum(n_recovered), .groups = "drop") %>%
+  filter(n_sites >= MIN_SITES) %>%
+  mutate(recall = n_recovered / n_sites,
+         caller = factor(caller, levels = c("gatk", "bcftools", "freebayes")),
+         iteration = factor(iteration), n_near_bin = factor(n_near_bin, levels = cl_bins))
+cl_r <- function(c, d, k, b, w = 10)                # one pooled recall, for the text below
+  filter(cl, caller == c, divergence == d, iteration == k, n_near_bin == b, window_bp == w)$recall
+
+ggplot(filter(cl, window_bp == 10, divergence %in% CL_DIVS),
+       aes(x = n_near_bin, y = recall, color = iteration, group = iteration)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.4) +
+  facet_grid(paste("D =", divergence) ~ caller) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cols, name = "Iteration") +
+  xlab("Other divergent SNPs within ±10 bp") + ylab("Divergent-SNP recall") +
+  bartheme() + theme(legend.position = "bottom")
+```
+
+```{r cluster-recall-25}
+filter(cl, window_bp == 25, divergence == "0.10", iteration %in% c("1", as.character(n_iter))) %>%
+  transmute(caller, iteration, n_near_bin, recall = scales::percent(recall, accuracy = 0.1)) %>%
+  pivot_wider(names_from = n_near_bin, values_from = recall) %>%
+  arrange(caller, iteration) %>%
+  kable(caption = "Recall at D = 0.10 by the number of other divergent SNPs within ±25 bp, iterations 1 and 3 (seeds pooled).",
+        table.attr = 'class="center"')
+```
+
+**Interpretation.** GATK's single-shot recall falls steadily as SNPs cluster, at every divergence: at
+D = 0.10 from `r scales::percent(cl_r("gatk", "0.10", 1, "0"), 1)` for SNPs with no other divergent SNP
+within ±10 bp to `r scales::percent(cl_r("gatk", "0.10", 1, "6+"), 1)` for those with six or more, and
+already at D = 0.04 from `r scales::percent(cl_r("gatk", "0.04", 1, "0"), 1)` to
+`r scales::percent(cl_r("gatk", "0.04", 1, "6+"), 1)`. bcftools and freebayes stay flat until the
+densest bin (there `r scales::percent(cl_r("bcftools", "0.10", 1, "6+"), 1)` and
+`r scales::percent(cl_r("freebayes", "0.10", 1, "6+"), 1)` at D = 0.10), and iteration repairs that bin
+for them (`r scales::percent(cl_r("bcftools", "0.10", 3, "6+"), 1)` and
+`r scales::percent(cl_r("freebayes", "0.10", 3, "6+"), 1)` by iteration 3). Iteration lifts GATK in every
+bin but leaves the gap: at D = 0.10, iteration 3 recall is
+`r scales::percent(cl_r("gatk", "0.10", 3, "6+"), 1)` in the densest bin against
+`r scales::percent(cl_r("gatk", "0.10", 3, "0"), 1)` for isolated SNPs. The same gradient appears at
+±25 bp (table). This is the fixed-context, single-shot side of GATK's failure; the neighbourhood
+analysis below shows the dynamic side (a SNP becomes callable once the unrecovered SNPs around it are
+written into the consensus).
+
 ## Per-variant read fate: why a SNP is (not) called — whole chromosome
 
 Everything above measures recovery in aggregate; this section asks, **per variant and directly at the

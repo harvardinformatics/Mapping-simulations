@@ -322,6 +322,25 @@ heterogeneity creates. This split is the project's unifying lens — s02/s03 los
 mapping-limited (spanning reads, alt-read exclusion), and the off-axis limits (s07 SVs, s08 repeats)
 are mapping-limited failures the sample's divergence can't explain.
 
+```{r cluster-recall-numbers, echo=FALSE}
+# s01 recall by local SNP clustering at D = 0.10, +/-10 bp, seeds pooled (analyses/lib/cluster_recall.py
+# via analyses/s01-baseline-iterative/run_cluster_recall.sh; figure in the s01 notebook)
+clr <- read_csv("analyses/s01-baseline-iterative/results/cluster-recall/s01-cluster-recall-w10-w25.csv",
+                col_types = cols(divergence = col_character(), n_near_bin = col_character())) %>%
+  filter(window_bp == 10, divergence == "0.10") %>%
+  group_by(caller, iteration, n_near_bin) %>%
+  summarize(recall = sum(n_recovered) / sum(n_sites), .groups = "drop")
+clr_pct <- function(c, k, b) scales::percent(filter(clr, caller == c, iteration == k, n_near_bin == b)$recall, 1)
+```
+
+**GATK's calling-limited loss concentrates in SNP clusters.** In the uniform s01 simulations, where the
+number of SNPs near a site varies only by chance, GATK's single-shot recall at D = 0.10 falls from
+`r clr_pct("gatk", 1, "0")` for SNPs with no other divergent SNP within ±10 bp to
+`r clr_pct("gatk", 1, "6+")` for those with six or more, while bcftools and freebayes stay at 95% or
+more until that densest bin. Iteration lifts GATK but leaves the gap (`r clr_pct("gatk", 3, "0")` vs
+`r clr_pct("gatk", 3, "6+")` at iteration 3). Close-packed SNPs leave few k-mers shared with the
+reference for its re-assembly (s01 notebook, *Recall by local SNP clustering*).
+
 ## Per variant: the G plots (full sweep)
 
 The joint-state flow diagrams show the same split one SNP at a time — each site's *called /

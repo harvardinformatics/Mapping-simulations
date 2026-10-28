@@ -1,0 +1,30 @@
+Data dictionary for analyses/s01-baseline-iterative/results/cluster-recall/s01-cluster-recall-w10-w25.csv
+
+Produced by : analyses/lib/cluster_recall.py
+Command     : python analyses/lib/cluster_recall.py --truth 'data/s01-baseline-iterative/sim/30X/19/{D}/0.005/{seed}/mm39-truth.norm.vcf.gz' --recovered 'data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39_recovered.vcf.gz' --divs 0.001,0.005,0.02,0.04,0.06,0.08,0.10 --seeds 42,43,44 --iterations 1,2,3 --windows 10,25 --threads 8 --check-summary analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv --out analyses/s01-baseline-iterative/results/cluster-recall/s01-cluster-recall-w10-w25.csv
+Git commit  : 1281ccaf5741 (script as committed)
+Written     : 2026-10-28 12:07
+
+Recall of divergent truth SNPs binned by the number of OTHER divergent truth SNPs within
++/-W bp (see the cluster_recall.py docstring for the rationale).
+
+Sites      : records of the normalized truth VCF (template data/s01-baseline-iterative/sim/30X/19/{D}/0.005/{seed}/mm39-truth.norm.vcf.gz) whose ID starts
+             with 'div_snp' and REF/ALT are single bases.
+Recovered  : the site's (POS, ALT) is in that iteration's recovered VCF (template data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39_recovered.vcf.gz),
+             the cumulative set of SNPs written into the consensus.
+             Checked against analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv: per condition, the summed sites and
+             recovered equal its n_truth_div and div_tp.
+Windows    : W = 10, 25 bp (half-window; n_near counts other sites in [pos-W, pos+W]).
+Bins       : n_near = 0 | 1 | 2 | 3 | 4-5 | 6+ (the last bin is open-ended).
+Conditions : callers gatk, bcftools, freebayes; divergences 0.001, 0.005, 0.02, 0.04, 0.06, 0.08, 0.10; seeds 42, 43, 44; iterations 1, 2, 3.
+
+Fields:
+  caller      : variant caller (gatk | bcftools | freebayes)
+  divergence  : simulated divergence D (label as in the data paths)
+  seed        : simulation seed
+  iteration   : mapping iteration (1 = single-shot)
+  window_bp   : half-window W (bp)
+  n_near_bin  : bin of n_near, the number of OTHER sites within +/-W bp
+  n_sites     : sites in the bin
+  n_recovered : of those, recovered at this iteration
+  recall      : n_recovered / n_sites (NA when the bin is empty)

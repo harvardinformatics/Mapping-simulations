@@ -106,6 +106,26 @@ outputs:
       (data/.../sim/.../mm39-truth.oa.bam) are temp() and were deleted at the end of this run,
       as designed; the read-fate scripts use their own seed-42 copies in data/varfate/
 
+  # --- recall by local SNP clustering (cluster_recall.py) ---------------------------------------
+  - path: analyses/s01-baseline-iterative/results/cluster-recall/s01-cluster-recall-w10-w25.csv
+    what: "divergent-SNP recall per caller x D (0.001-0.10) x seed x iteration, binned by the number of
+      OTHER divergent truth SNPs within +/-10 and +/-25 bp (0 / 1 / 2 / 3 / 4-5 / 6+)"
+    script: analyses/lib/cluster_recall.py
+    command: cd analyses/s01-baseline-iterative && sbatch run_cluster_recall.sh
+    inputs:
+      - data/s01-baseline-iterative/sim/30X/19/{D}/0.005/{seed}/mm39-truth.norm.vcf.gz
+      - data/s01-baseline-iterative/iter/{caller}/30X/19/{D}/0.005/{seed}/iter{k}/mm39_recovered.vcf.gz
+      - analyses/s01-baseline-iterative/results/s01-base-iterative-summary.csv
+    used_by:
+      - analyses/s01-baseline-iterative/s01-results.rmd
+      - analyses/synthesis/synthesis.rmd
+      - analyses/synthesis/brief.rmd
+    git: tracked
+    note: >-
+      added 2026-10-28 (commit 1281cca). The run checks every condition against s01-base-iterative-summary.csv
+      (summed sites = n_truth_div, summed recovered = div_tp) and stops on a mismatch; all 378
+      conditions matched
+
   # --- per-variant read fate (variant_read_fate.py) ---------------------------------------------
   - path: analyses/s01-baseline-iterative/results/s01-varfate-{D}.csv
     values: {D: ["0.04", "0.06", "0.08", "0.10"]}
