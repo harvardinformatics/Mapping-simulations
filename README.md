@@ -12,7 +12,7 @@ with three callers (GATK HaplotypeCaller, bcftools, freebayes). The project char
 | path | what it holds |
 |---|---|
 | `analyses/<section>/` | The current analyses, one section per question (table below). Each has its workflow and run scripts, `config/`, `scripts/`, `results/` (tables with data dictionaries), a notebook (`.rmd` + rendered `.html`) and a `MANIFEST.yaml`. |
-| `analyses/lib/` | Shared tools: truth-VCF generation, divergence fields, scoring of calls and read placements, the per-variant read-fate ledger, provenance helpers and the manifest checker. |
+| `analyses/lib/` | Shared tools: truth-VCF generation, divergence fields, scoring of calls and read placements, the per-variant read-fate ledger, provenance helpers, the manifest checker and the re-run planner. |
 | `data/` | All simulation work files (references, truth VCFs, reads, BAMs, calls, consensus sequences). **Not in git.** |
 | `docs/` | HTML pages from earlier phases. `docs/mason_results.html` is the first, exploratory mason2 pass. |
 | `scripts/`, `snakemake/`, `simulation-configs/`, `summary-data/` | The exploratory mason2 pipeline behind `docs/mason_results.html` (`snakemake/simulate_and_map.smk`). The analyses in `analyses/` do not use it. |
@@ -120,3 +120,32 @@ Three things record where every result in `analyses/` came from:
 Large per-site intermediate tables are not in git (`git: ignored` in the manifests). Before
 re-rendering a notebook that reads one, regenerate it from `data/` with the command in its
 manifest entry.
+
+## Re-running after a change
+
+The manifests together form a dependency graph, and `analyses/lib/rerun.py` walks it to list what a
+change requires, in run order. It only prints a plan; it runs nothing.
+
+```bash
+# everything downstream of a changed file (code, config or input)
+conda run -n mapping-sims python analyses/lib/rerun.py plan --changed analyses/lib/truth_haplotypes.py
+
+# outputs whose code or inputs changed since the commit their dictionary (or provenance box) records
+conda run -n mapping-sims python analyses/lib/rerun.py plan --stale
+```
+
+For each step the plan gives the reason, the exact command, whether it runs on Slurm or locally, and
+warnings: steps that delete files (for example Snakemake `temp()` outputs), and steps where Snakemake
+will not see the change and needs `--forcerun`. Dependencies are tracked per file, so a change
+anywhere in a file lists everything that uses it; read the plan and strike steps the change cannot
+affect. Tables whose dictionaries predate provenance tracking can only be judged through their inputs
+by `--stale`.
+
+To keep provenance clean when acting on a plan:
+
+1. Commit the code change first, so every regenerated dictionary records a real commit.
+2. Run the listed commands stage by stage, waiting for each stage's Slurm jobs to finish.
+3. Check the manifests (`check_manifest.py`) and commit the regenerated outputs.
+4. Render the affected notebooks from that clean commit, the brief last (rendering it rewrites its
+   exported figures, which would otherwise show as uncommitted edits in the other notebooks'
+   provenance boxes), and commit the HTML.
