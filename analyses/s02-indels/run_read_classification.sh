@@ -12,6 +12,9 @@
 # EXISTING per-iteration mapped BAM against the mason -oa truth, point-lifting iter>1 BAMs
 # (consensus coords) back to reference via the cons->ref chains. Consumes outputs of
 # run_sweep.sh; run AFTER it. Launch from this directory:  sbatch run_read_classification.sh
+# Extra arguments go to snakemake, e.g. `sbatch run_read_classification.sh --forcerun classify_reads`
+# (2026-10-27: reclassify all 72 after the compare_bams.py true-span fix; one table was made
+# outside snakemake, so its code-change trigger cannot see the fix).
 
 set -euo pipefail
 source /n/home07/gthomas/miniconda3/etc/profile.d/conda.sh
@@ -24,4 +27,4 @@ snakemake -s read_classification.smk --configfile config/config.yaml --unlock ||
 snakemake -p -s read_classification.smk --configfile config/config.yaml \
     --profile ../../snakemake/profiles/slurm_profile/ \
     --rerun-incomplete \
-    --keep-going
+    --keep-going "$@"

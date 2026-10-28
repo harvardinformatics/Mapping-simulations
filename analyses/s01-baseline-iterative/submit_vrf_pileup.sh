@@ -8,7 +8,7 @@ cd /n/holylfs05/LABS/informatics/Lab/projects/gwct/Mapping-simulations/analyses/
 for C in gatk bcftools freebayes; do
     for D in 0.06 0.08 0.10; do
         TB=../../data/varfate/$D/truth.oa.bam
-        if [ ! -s "$TB" ]; then echo "SKIP $C $D: truth BAM missing"; continue; fi
+        if [ ! -s "$TB" ]; then echo "ERROR $C $D: truth BAM missing ($TB)"; exit 1; fi
         jid=$(sbatch --parsable run_vrf_pileup.sh "$C" "$D")
         echo "submitted caller=$C div=$D -> job $jid"
     done

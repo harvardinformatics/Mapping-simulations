@@ -245,8 +245,10 @@ def write_dictionaries(a):
                 "mason -oa truth BAM: oH haplotype + oP haplotype position per read; the true\n"
                 "             reference span is [oP, oP + read length) on that haplotype, mapped back to\n"
                 "             the reference (truth_haplotypes.py, haplotypes rebuilt from --mason-vcf);\n"
-                "             a read that begins inside an insertion is PLACED at its first reference\n"
-                "             base minus its leading inserted bases (how an aligner lays it unclipped);")
+                "             each read is PLACED where an aligner would lay it unclipped: the start of\n"
+                "             the best alignment of its leftmost 30 bases on its haplotype (bwa mem\n"
+                "             scores; moves 1-3 bp off oP only for a sequencing indel among those bases,\n"
+                "             ~0.02% of reads, since 2026-10-28), minus any inserted bases it starts on;")
 
     site = ("HETEROZYGOUS (phased 0|1 / 1|0) biallelic truth SNPs; true-alt reads are those from the "
             "alt-carrying haplotype (mason oH tag); recovered = called correctly AS A HET in the "
@@ -377,13 +379,14 @@ def main():
     # truth reads: key -> (ref_name, true start, true end, oH-haplotype, placement start). oH is
     # mason's 1-based source-haplotype tag, so we know each read's TRUE allele independent of
     # sequencing error; the true span is the read's haplotype interval (from oP) mapped back to the
-    # reference. The placement start differs from the true start only for a read that begins inside
-    # an insertion (see truth_haplotypes.load_truth_reads).
-    truth, (n_tr, n_sd, n_ed) = truth_haplotypes.load_truth_reads(a.truth_bam, a.mason_vcf,
-                                                                  a.reference, read_key)
+    # reference. The placement start is where an aligner would lay the read down unclipped (see
+    # truth_haplotypes.load_truth_reads).
+    truth, (n_tr, n_sd, n_ed, n_sh) = truth_haplotypes.load_truth_reads(a.truth_bam, a.mason_vcf,
+                                                                        a.reference, read_key)
     sys.stderr.write("# %d truth reads; placement start differs from truth-BAM POS for %d (%.3f%%), "
-                     "true end from its CIGAR end for %d (%.3f%%)\n"
-                     % (n_tr, n_sd, 100 * n_sd / n_tr, n_ed, 100 * n_ed / n_tr))
+                     "true end from its CIGAR end for %d (%.3f%%); placed off oP by the leftmost-bases "
+                     "alignment: %d (%.3f%%)\n"
+                     % (n_tr, n_sd, 100 * n_sd / n_tr, n_ed, 100 * n_ed / n_tr, n_sh, 100 * n_sh / n_tr))
 
     snps = load_het_snps(a.truth_vcf) if a.het else load_hom_div_snps(a.truth_vcf)
     if a.sample and a.sample > 0:

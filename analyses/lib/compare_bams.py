@@ -65,10 +65,13 @@ FIELD_DEFINITIONS = (
     "Read-mapping accuracy: bwa placement vs mason truth (reference coords).\n"
     "Reads matched by (fragment id, mate); tolerance = %d bp; contigs compared by name.\n" % TOLERANCE +
     "True span of each read: [oP, oP + read length) on its haplotype (mason -oa tags oH, oP), mapped\n"
-    "back to the reference (haplotypes rebuilt from the mason-format truth VCF). A read that begins\n"
-    "inside an insertion is placed at its first reference base minus its leading inserted bases\n"
-    "(how an aligner lays it down unclipped). Tables made before 2026-10-27 took the true start/end\n"
-    "from the truth BAM's POS/CIGAR instead (off for ~1% of reads SNP-only, ~30% in s02).\n\n" +
+    "back to the reference (haplotypes rebuilt from the mason-format truth VCF). Placement is judged\n"
+    "against where an aligner would lay the read down unclipped: the start of the best alignment of\n"
+    "its leftmost 30 bases on its haplotype (bwa mem scores, start within 3 bp of oP), which moves it\n"
+    "1-3 bp only when a sequencing indel sits among those bases (~0.02% of reads); a read that then\n"
+    "begins inside an insertion is placed at its first reference base minus its leading inserted\n"
+    "bases. Tables made before 2026-10-27 took the true start/end from the truth BAM's POS/CIGAR\n"
+    "(off for ~1% of reads SNP-only, ~30% in s02); tables from 2026-10-27 placed every read at oP.\n\n" +
     "region         : reference region / chromosome label\n"
     "coverage       : simulated fold coverage\n"
     "divergence     : simulated fixed divergence (D) label\n"
@@ -162,13 +165,14 @@ def main():
 
     # --- 1. load truth: key -> (reference_name, true start, true end, oH, placement start) ----
     # Compare by contig NAME (not tid) so differing BAM headers still line up. The placement start
-    # is the true start except for a read that begins inside an insertion (see
-    # truth_haplotypes.load_truth_reads); placement is judged against it.
-    truth, (n_tr, n_sd, n_ed) = truth_haplotypes.load_truth_reads(args.truth_bam, args.mason_vcf,
-                                                                  args.reference, read_key)
+    # is where an aligner would lay the read down unclipped (see truth_haplotypes.load_truth_reads);
+    # placement is judged against it.
+    truth, (n_tr, n_sd, n_ed, n_sh) = truth_haplotypes.load_truth_reads(args.truth_bam, args.mason_vcf,
+                                                                        args.reference, read_key)
     sys.stderr.write("# loaded %d truth reads; placement start differs from truth-BAM POS for %d "
-                     "(%.3f%%), true end from its CIGAR end for %d (%.3f%%)\n"
-                     % (n_tr, n_sd, 100 * n_sd / n_tr, n_ed, 100 * n_ed / n_tr))
+                     "(%.3f%%), true end from its CIGAR end for %d (%.3f%%); placed off oP by the "
+                     "leftmost-bases alignment: %d (%.3f%%)\n"
+                     % (n_tr, n_sd, 100 * n_sd / n_tr, n_ed, 100 * n_ed / n_tr, n_sh, 100 * n_sh / n_tr))
     lift = make_lifter(args.chain) if args.chain else None
 
     # --- 2. stream mapped BAM and classify --------------------------------

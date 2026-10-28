@@ -26,7 +26,9 @@ Library use:
     haps[0].ref_span(h0, n)  # reference span [start, end) of haplotype intervals [h0, h0 + n),
                              # plus the number of inserted bases before each interval's first
                              # reference base
+    th.anchor_offsets(hap_seq, h0, bases)  # where an aligner would start reads (offset from h0)
     truth, diffs = th.load_truth_reads(bam, vcf, fasta, read_key)   # each truth read's TRUE span
+                                                                     # and its placement start
 Every check fails loudly (ValueError); nothing is skipped silently.
 """
 import gzip
@@ -34,6 +36,16 @@ import gzip
 import numpy as np
 
 GT_ALLELES = {"1|1": (1, 1), "0|1": (0, 1), "1|0": (1, 0)}   # phased genotypes the simulations write
+
+# --- placement start: where an aligner would start the read (see anchor_offsets) ------------------
+# A read with a sequencing indel among its leftmost bases is laid down by an aligner 1-3 bp off oP
+# (the indel absorbed as a shift plus mismatches). Its placement start comes from aligning its
+# leftmost ANCHOR_LEN bases to its own haplotype with bwa mem's default scores.
+ANCHOR_LEN   = 30     # leftmost read bases aligned to the haplotype
+ANCHOR_SHIFT = 3      # candidate starts on the haplotype: oP - 3 .. oP + 3
+MATCH, MISMATCH, N_SCORE = 1, -4, -1   # bwa mem -A 1 -B 4; a base vs N scores -1 (bwa's ambiguous score)
+GAP_OPEN, GAP_EXTEND = 6, 1            # bwa mem -O 6 -E 1: a gap of length l costs 6 + l
+ANCHOR_CHUNK = 200_000                 # reads per vectorized alignment batch
 
 
 class Variants:
@@ -175,6 +187,79 @@ def expected_length(ref_len, v, k):
     return ref_len + delta
 
 
+def anchor_offsets(hap_seq, h0, lead_bases):
+    """Where an aligner would start each read on its haplotype, as an offset c (-ANCHOR_SHIFT ..
+    ANCHOR_SHIFT) from the read's haplotype start h0 (its oP tag).
+
+    The read's leftmost ANCHOR_LEN bases (lead_bases: uint8 ASCII, shape (n, ANCHOR_LEN)) are aligned
+    to its haplotype (hap_seq) with bwa mem's default scores: MATCH / MISMATCH / N_SCORE per base, and
+    GAP_OPEN + l * GAP_EXTEND for a gap of length l. The read's first base must be aligned (no clipping,
+    no leading gap) and must sit within ANCHOR_SHIFT bases of h0; the alignment may end anywhere on
+    the haplotype. c is the start of the best-scoring alignment. Ties go to the smaller |c|, then to
+    c > 0 over c < 0, so c = 0 unless a shifted start scores strictly better than starting at h0.
+    Example: a read whose first base is a sequencing insertion aligns from h0 - 1 (the inserted base
+    over the haplotype base before h0, one mismatch at most) rather than with a gap at h0.
+
+    A read whose leftmost bases all match the haplotype at h0 scores the maximum possible there, so
+    only reads with at least one mismatch are aligned (an exact shortcut: c = 0 for all others)."""
+    K, W = ANCHOR_LEN, ANCHOR_SHIFT
+    L = K + 3 * W                       # window on the haplotype: [h0 - W, h0 + K + 2W)
+    SC = 16                             # scores are scaled by SC; the low bits hold the tie-break rank
+    if 2 * W + 1 >= SC:
+        raise ValueError("ANCHOR_SHIFT %d too large for the tie-break encoding" % W)
+    NEG = -(1 << 40)                    # "impossible" (far below any reachable score)
+    h0 = np.asarray(h0, dtype=np.int64)
+    if lead_bases.shape != (len(h0), K):
+        raise ValueError("lead_bases shape %s, expected (%d, %d)" % (lead_bases.shape, len(h0), K))
+    # pad the haplotype so every window exists; pad bytes (0) are no base: a read cannot START on one,
+    # and aligned against one a base scores as a mismatch
+    hp = np.concatenate([np.zeros(W, np.uint8), hap_seq, np.zeros(K + 2 * W, np.uint8)])
+    col = np.arange(L)
+    c_of_col = np.arange(2 * W + 1) - W                      # start column j -> offset c = j - W
+    rank = 2 * np.abs(c_of_col) + (c_of_col < 0)            # tie-break rank: 0 for c = 0, then 1, -1, 2, ...
+    off = np.zeros(len(h0), dtype=np.int64)
+
+    def score(read_base, win):
+        """per-base score of read bases (m, 1) against window bases (m, L), scaled by SC"""
+        s = np.where(read_base == win, MATCH, MISMATCH)
+        s = np.where((read_base == ord("N")) | (win == ord("N")), N_SCORE, s)
+        return SC * s.astype(np.int64)
+
+    def deletions(M):
+        """best score ending in a deletion (haplotype bases skipped) after the row's aligned cells:
+        Y[j] = max over k < j of M[k] - SC * (GAP_OPEN + (j - k) * GAP_EXTEND)"""
+        A = np.maximum.accumulate(M + SC * GAP_EXTEND * col, axis=1)
+        Y = np.full_like(M, NEG)
+        Y[:, 1:] = A[:, :-1] - SC * (GAP_OPEN + GAP_EXTEND * col[1:])
+        return Y
+
+    for s0 in range(0, len(h0), ANCHOR_CHUNK):
+        sl = slice(s0, s0 + ANCHOR_CHUNK)
+        win = hp[h0[sl, None] + col]                         # hp index h0 + j = haplotype h0 - W + j
+        rd = lead_bases[sl]
+        need = np.nonzero(np.any(win[:, W:W + K] != rd, axis=1))[0]
+        if len(need) == 0:
+            continue
+        win, rd = win[need], rd[need]
+        # row 0: the read's first base is aligned at a start column (c = -W .. W) holding a real base
+        M = np.full(win.shape, NEG, dtype=np.int64)
+        first = score(rd[:, :1], win)[:, :2 * W + 1] - rank
+        M[:, :2 * W + 1] = np.where(win[:, :2 * W + 1] != 0, first, NEG)
+        X = np.full_like(M, NEG)                              # no leading insertion (that is a clip)
+        Y = deletions(M)
+        for i in range(1, K):
+            prev = np.maximum(np.maximum(M, X), Y)
+            Mn = np.full_like(M, NEG)
+            Mn[:, 1:] = prev[:, :-1] + score(rd[:, i:i + 1], win)[:, 1:]
+            X = np.maximum(M - SC * (GAP_OPEN + GAP_EXTEND), X - SC * GAP_EXTEND)   # read base i inserted
+            M = Mn
+            Y = deletions(M)
+        best = np.max(np.maximum(M, X), axis=1)              # free end on the haplotype
+        r = np.mod(-best, SC)                                 # the winning start's tie-break rank
+        off[s0 + need] = (r // 2) * np.where(r % 2 == 1, -1, 1)
+    return off
+
+
 def load_truth_reads(truth_bam, mason_vcf, reference, read_key, chunk=1_000_000):
     """{read_key(read): (contig, true_start, true_end, oH, place_start)} for every primary read of a
     mason -oa truth BAM, with the TRUE reference span taken from the read's haplotype position: the
@@ -183,22 +268,29 @@ def load_truth_reads(truth_bam, mason_vcf, reference, read_key, chunk=1_000_000)
     (mason's fake 1D..1I pairs at dense SNP clusters) and for ~30% at s02's indel density.
 
     true_start/true_end: the reference positions the read's bases came from -- use these to decide
-    which sites a read truly covers. place_start: the start to compare an alignment's start with.
-    It equals true_start except for a read that begins inside an insertion (no reference position
-    for its first bases): an aligner can place such a read without clipping only by laying the
-    inserted bases over the reference bases before the insertion, so place_start = true_start minus
-    the number of leading inserted bases (mason's own POS does the same).
+    which sites a read truly covers. place_start: the start to compare an alignment's start with --
+    where an aligner would lay the read down unclipped. It differs from true_start in two cases:
+      - a sequencing indel among the read's leftmost bases (~0.02% of reads): an aligner absorbs it
+        as a 1-3 bp shift plus mismatches. The start comes from aligning the read's leftmost
+        ANCHOR_LEN bases to its haplotype (anchor_offsets, bwa mem scores); added 2026-10-28, before
+        which these reads were placed at oP and so judged 'shifted' when bwa agreed with mason's POS.
+      - a read that begins inside a simulated insertion (no reference position for its first
+        bases): an aligner can place it without clipping only by laying the inserted bases over the
+        reference bases before the insertion, so place_start = its first reference base minus the
+        leading inserted bases (mason's own POS does the same).
 
     Assumption: the read's footprint on its haplotype is its length (query_length). mason's
     sequencing indels (~1.5% of reads) make the true footprint 1-2 bp longer or shorter, which
     moves true_end by that much; only SNPs within 2 bp of such a read's end are affected.
 
-    Also returns (n_reads, n_start_differs, n_end_differs): how many reads' place_start / true_end
-    differ from the truth BAM's POS / CIGAR end, for the caller's log."""
+    Also returns (n_reads, n_start_differs, n_end_differs, n_anchor_shifted): how many reads'
+    place_start / true_end differ from the truth BAM's POS / CIGAR end, and how many reads the
+    leftmost-bases alignment placed off oP, for the caller's log."""
     import array
     import pysam
     keys, oh, op, ln = array.array("q"), array.array("b"), array.array("q"), array.array("q")
     pos_s, pos_e, contigs = array.array("q"), array.array("q"), set()
+    left = bytearray()                                 # each read's leftmost ANCHOR_LEN bases, concatenated
     with pysam.AlignmentFile(truth_bam, "rb") as tf:
         for r in tf:
             if r.is_secondary or r.is_supplementary:
@@ -206,6 +298,10 @@ def load_truth_reads(truth_bam, mason_vcf, reference, read_key, chunk=1_000_000)
             keys.append(read_key(r)); oh.append(r.get_tag("oH")); op.append(r.get_tag("oP"))
             ln.append(r.query_length); pos_s.append(r.reference_start); pos_e.append(r.reference_end)
             contigs.add(r.reference_name)
+            if r.query_length < ANCHOR_LEN:
+                raise ValueError("%s: read %s is %d bp, shorter than ANCHOR_LEN %d"
+                                 % (truth_bam, r.query_name, r.query_length, ANCHOR_LEN))
+            left += r.query_sequence[:ANCHOR_LEN].upper().encode()   # SEQ is in reference orientation
     if len(contigs) != 1:
         raise ValueError("%s: reads on %d contigs (%s); one contig expected"
                          % (truth_bam, len(contigs), ", ".join(sorted(contigs))))
@@ -216,13 +312,18 @@ def load_truth_reads(truth_bam, mason_vcf, reference, read_key, chunk=1_000_000)
     if not np.isin(oh, (1, 2)).all():
         raise ValueError("%s: oH tag outside {1, 2}" % truth_bam)
     op, ln = np.frombuffer(op, dtype=np.int64), np.frombuffer(ln, dtype=np.int64)
-    start, end, lead = (np.empty(len(op), dtype=np.int64) for _ in range(3))
+    left = np.frombuffer(bytes(left), dtype=np.uint8).reshape(len(op), ANCHOR_LEN)
+    start, end, place, shift = (np.empty(len(op), dtype=np.int64) for _ in range(4))
     for k in (1, 2):                                   # each read's span on its own haplotype
         m = oh == k
-        start[m], end[m], lead[m] = haps[k - 1].ref_span(op[m], ln[m])
-    place = start - lead                               # start to compare alignments with
+        start[m], end[m], _ = haps[k - 1].ref_span(op[m], ln[m])
+        # placement: where the read's leftmost bases align on the haplotype (oP + shift), then the
+        # reference position there, minus any inserted bases it starts on
+        shift[m] = anchor_offsets(haps[k - 1].seq, op[m], left[m])
+        p_start, _, p_lead = haps[k - 1].ref_span(op[m] + shift[m], ln[m] - shift[m])
+        place[m] = p_start - p_lead                    # start to compare alignments with
     diffs = (len(op), int(np.sum(place != np.frombuffer(pos_s, dtype=np.int64))),
-             int(np.sum(end != np.frombuffer(pos_e, dtype=np.int64))))
+             int(np.sum(end != np.frombuffer(pos_e, dtype=np.int64))), int(np.sum(shift != 0)))
     # build the lookup in chunks, so the temporary Python ints stay small
     truth, keys = {}, np.frombuffer(keys, dtype=np.int64)
     for c in range(0, len(keys), chunk):
